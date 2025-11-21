@@ -1,0 +1,9 @@
+[build]
+target = "bun"
+minify = { whitespace = true, identifiers = true, syntax = true }
+splitting = false
+naming = { entry = "[dir]/[name]", chunk = "[name]-[hash]", asset = "[name]-[hash].[ext]" }
+
+[install]
+# Peer dependencies
+optional = true
