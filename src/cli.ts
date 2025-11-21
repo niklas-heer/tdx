@@ -86,7 +86,8 @@ Interactive TUI Controls:
   e                      Edit selected todo text
   d                      Delete selected todo immediately
   u                      Undo last action
-  1-9                    Jump to todo by number (vim-style)
+  [count]j               Move down by count (e.g., 5j moves down 5 lines)
+  [count]k               Move up by count (e.g., 3k moves up 3 lines)
   q or Esc               Quit
 
 Examples:

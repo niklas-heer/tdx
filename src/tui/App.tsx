@@ -268,24 +268,42 @@ export default function App() {
         return;
       }
 
-      // Handle number input for vim-style jumping
+      // Handle number input for vim-style relative jumping (e.g., 5j, 3k)
       if (key >= "1" && key <= "9") {
         numberBufferRef.current += key;
         return;
       }
 
-      // If we have a number buffer, check if it's a valid jump target
+      // If we have a number buffer, check for j/k to apply relative movement
       if (numberBufferRef.current) {
-        const targetIndex = parseInt(numberBufferRef.current, 10) - 1; // Convert to 0-based
+        const count = parseInt(numberBufferRef.current, 10);
         numberBufferRef.current = "";
 
-        if (targetIndex >= 0 && targetIndex < currentState.todos.length) {
-          setState((prev) => ({
-            ...prev,
-            selectedIndex: targetIndex,
-          }));
+        if (key === "j" || key === "J") {
+          // Move down by count
+          const newIndex = Math.min(
+            currentState.selectedIndex + count,
+            currentState.todos.length - 1,
+          );
+          if (newIndex !== currentState.selectedIndex) {
+            setState((prev) => ({
+              ...prev,
+              selectedIndex: newIndex,
+            }));
+          }
+          return;
+        } else if (key === "k" || key === "K") {
+          // Move up by count
+          const newIndex = Math.max(currentState.selectedIndex - count, 0);
+          if (newIndex !== currentState.selectedIndex) {
+            setState((prev) => ({
+              ...prev,
+              selectedIndex: newIndex,
+            }));
+          }
+          return;
         }
-        return;
+        // If it's not j or k, clear the buffer and continue processing this key
       }
 
       if (key === "n" || key === "N") {
@@ -486,9 +504,21 @@ export default function App() {
         const checkbox = todo.checked ? chalk.magenta("[✓]") : chalk.dim("[ ]");
         const arrow = isSelected ? chalk.cyan("➜") : " ";
         const text = isSelected ? chalk.bold.whiteBright(todo.text) : todo.text;
+        const relativeIndex = index - selectedIndex;
+        let relativeDisplay = "";
+        if (relativeIndex === 0) {
+          relativeDisplay = "";
+        } else if (relativeIndex > 0) {
+          relativeDisplay = `+${relativeIndex}`;
+        } else {
+          relativeDisplay = `${relativeIndex}`;
+        }
 
         return (
           <Box key={todo.lineNo}>
+            <Text color="gray" dimColor>
+              {relativeDisplay.padEnd(3)}
+            </Text>
             <Text>{arrow}</Text>
             <Text> </Text>
             <Text>{checkbox}</Text>
