@@ -10,6 +10,54 @@ import {
 } from "../fs/fileStore";
 import { Todo } from "../todos/model";
 
+// Render inline code blocks with styling
+function renderInlineCode(text: string, isSelected: boolean): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  const regex = /`([^`]+)`/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Add text before the code block
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index);
+      parts.push(
+        <Text key={key++}>
+          {isSelected ? chalk.bold.whiteBright(before) : before}
+        </Text>,
+      );
+    }
+
+    // Add the code block with styling (cyan background, bold)
+    const code = match[1];
+    parts.push(
+      <Text key={key++} backgroundColor="gray" color="white" bold>
+        {` ${code} `}
+      </Text>,
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text after the last code block
+  if (lastIndex < text.length) {
+    const after = text.slice(lastIndex);
+    parts.push(
+      <Text key={key++}>
+        {isSelected ? chalk.bold.whiteBright(after) : after}
+      </Text>,
+    );
+  }
+
+  // If no code blocks found, return the original styled text
+  if (parts.length === 0) {
+    return isSelected ? chalk.bold.whiteBright(text) : text;
+  }
+
+  return parts;
+}
+
 interface AppState {
   todos: Todo[];
   lines: string[];
@@ -20,6 +68,9 @@ interface AppState {
   displayInputBuffer: string;
   editMode: boolean;
   showHelp: boolean;
+  copyFeedback: boolean;
+  moveMode: boolean;
+  moveOriginalIndex: number;
 }
 
 interface AppProps {
@@ -37,11 +88,15 @@ export default function App({ debug = false }: AppProps) {
     displayInputBuffer: "",
     editMode: false,
     showHelp: debug,
+    copyFeedback: false,
+    moveMode: false,
+    moveOriginalIndex: 0,
   });
 
   // Use refs to track mutable state
   const pendingChangeRef = useRef<boolean>(false);
   const inputBufferRef = useRef<string>("");
+  const cursorPosRef = useRef<number>(0);
   const stateRef = useRef(state);
   const historyRef = useRef<{ todos: Todo[]; lines: string[] } | null>(null);
   const numberBufferRef = useRef<string>("");
@@ -141,6 +196,9 @@ export default function App({ debug = false }: AppProps) {
 
       // Handle Escape key - always available
       if (key === "\u001b") {
+        if (prev.showHelp) {
+          return { ...prev, showHelp: false };
+        }
         if (prev.inputMode) {
           inputBufferRef.current = "";
           return {
@@ -157,6 +215,19 @@ export default function App({ debug = false }: AppProps) {
             displayInputBuffer: "",
           };
         }
+        if (prev.moveMode) {
+          // Cancel move - restore original position
+          const todos = [...prev.todos];
+          const movedTodo = todos[prev.selectedIndex];
+          todos.splice(prev.selectedIndex, 1);
+          todos.splice(prev.moveOriginalIndex, 0, movedTodo);
+          return {
+            ...prev,
+            todos,
+            selectedIndex: prev.moveOriginalIndex,
+            moveMode: false,
+          };
+        }
         shouldExitRef.current = true;
         return { ...prev }; // Return new object to trigger re-render
       }
@@ -169,13 +240,61 @@ export default function App({ debug = false }: AppProps) {
         };
       }
 
-      // Help menu closes with q or Escape
-      if ((key === "q" || key === "Q") && prev.showHelp) {
-        return { ...prev, showHelp: false };
-      }
-
       // Don't process other keys if help is showing
       if (prev.showHelp) {
+        return prev;
+      }
+
+      // Move mode handling
+      if (prev.moveMode) {
+        if (key === "\r" || key === "\n") {
+          // Confirm move - update line numbers and save
+          const updatedTodos = prev.todos.map((todo, idx) => ({
+            ...todo,
+            lineNo: idx,
+            index: idx + 1,
+          }));
+          const updatedLines = updatedTodos.map(
+            (todo) => `- ${todo.checked ? "[x]" : "[ ]"} ${todo.text}`,
+          );
+          pendingChangeRef.current = true;
+          return {
+            ...prev,
+            todos: updatedTodos,
+            lines: updatedLines,
+            moveMode: false,
+          };
+        }
+        if (key === "j" || key === "J" || key === "\u001b[B") {
+          // Move down
+          if (prev.selectedIndex < prev.todos.length - 1) {
+            const todos = [...prev.todos];
+            const temp = todos[prev.selectedIndex];
+            todos[prev.selectedIndex] = todos[prev.selectedIndex + 1];
+            todos[prev.selectedIndex + 1] = temp;
+            return {
+              ...prev,
+              todos,
+              selectedIndex: prev.selectedIndex + 1,
+            };
+          }
+          return prev;
+        }
+        if (key === "k" || key === "K" || key === "\u001b[A") {
+          // Move up
+          if (prev.selectedIndex > 0) {
+            const todos = [...prev.todos];
+            const temp = todos[prev.selectedIndex];
+            todos[prev.selectedIndex] = todos[prev.selectedIndex - 1];
+            todos[prev.selectedIndex - 1] = temp;
+            return {
+              ...prev,
+              todos,
+              selectedIndex: prev.selectedIndex - 1,
+            };
+          }
+          return prev;
+        }
         return prev;
       }
 
@@ -265,15 +384,99 @@ export default function App({ debug = false }: AppProps) {
             };
           }
         } else if (key === "\u007f" || key === "\b") {
-          // Backspace
-          inputBufferRef.current = inputBufferRef.current.slice(0, -1);
+          // Backspace - delete character before cursor
+          if (cursorPosRef.current > 0) {
+            const before = inputBufferRef.current.slice(
+              0,
+              cursorPosRef.current - 1,
+            );
+            const after = inputBufferRef.current.slice(cursorPosRef.current);
+            inputBufferRef.current = before + after;
+            cursorPosRef.current--;
+          }
           return {
             ...prev,
             displayInputBuffer: inputBufferRef.current,
           };
+        } else if (key === "\u001b[3~") {
+          // Delete key - delete character at cursor
+          if (cursorPosRef.current < inputBufferRef.current.length) {
+            const before = inputBufferRef.current.slice(
+              0,
+              cursorPosRef.current,
+            );
+            const after = inputBufferRef.current.slice(
+              cursorPosRef.current + 1,
+            );
+            inputBufferRef.current = before + after;
+          }
+          return {
+            ...prev,
+            displayInputBuffer: inputBufferRef.current,
+          };
+        } else if (key === "\u001b[D") {
+          // Left arrow - move cursor left
+          if (cursorPosRef.current > 0) {
+            cursorPosRef.current--;
+          }
+          return { ...prev, displayInputBuffer: inputBufferRef.current };
+        } else if (key === "\u001b[C") {
+          // Right arrow - move cursor right
+          if (cursorPosRef.current < inputBufferRef.current.length) {
+            cursorPosRef.current++;
+          }
+          return { ...prev, displayInputBuffer: inputBufferRef.current };
+        } else if (
+          key === "\u001b[H" ||
+          key === "\u001b[1~" ||
+          key === "\u001bOH" ||
+          key === "\u0001"
+        ) {
+          // Home or Ctrl+A - move to start
+          cursorPosRef.current = 0;
+          return { ...prev, displayInputBuffer: inputBufferRef.current };
+        } else if (
+          key === "\u001b[F" ||
+          key === "\u001b[4~" ||
+          key === "\u001bOF" ||
+          key === "\u0005"
+        ) {
+          // End or Ctrl+E - move to end
+          cursorPosRef.current = inputBufferRef.current.length;
+          return { ...prev, displayInputBuffer: inputBufferRef.current };
+        } else if (key === "\u001bb" || key === "\u001b[1;3D") {
+          // Option+Left (Alt+Left) - move word left
+          let pos = cursorPosRef.current;
+          // Skip spaces
+          while (pos > 0 && inputBufferRef.current[pos - 1] === " ") pos--;
+          // Skip word
+          while (pos > 0 && inputBufferRef.current[pos - 1] !== " ") pos--;
+          cursorPosRef.current = pos;
+          return { ...prev, displayInputBuffer: inputBufferRef.current };
+        } else if (key === "\u001bf" || key === "\u001b[1;3C") {
+          // Option+Right (Alt+Right) - move word right
+          let pos = cursorPosRef.current;
+          const len = inputBufferRef.current.length;
+          // Skip word
+          while (pos < len && inputBufferRef.current[pos] !== " ") pos++;
+          // Skip spaces
+          while (pos < len && inputBufferRef.current[pos] === " ") pos++;
+          cursorPosRef.current = pos;
+          return { ...prev, displayInputBuffer: inputBufferRef.current };
+        } else if (key === "\u001b[1;2D") {
+          // Cmd+Left (Shift+Left in some terminals) - move to start of line
+          cursorPosRef.current = 0;
+          return { ...prev, displayInputBuffer: inputBufferRef.current };
+        } else if (key === "\u001b[1;2C") {
+          // Cmd+Right (Shift+Right in some terminals) - move to end of line
+          cursorPosRef.current = inputBufferRef.current.length;
+          return { ...prev, displayInputBuffer: inputBufferRef.current };
         } else if (key.length === 1 && key.charCodeAt(0) >= 32) {
-          // Regular printable character
-          inputBufferRef.current += key;
+          // Regular printable character - insert at cursor
+          const before = inputBufferRef.current.slice(0, cursorPosRef.current);
+          const after = inputBufferRef.current.slice(cursorPosRef.current);
+          inputBufferRef.current = before + key + after;
+          cursorPosRef.current++;
           return {
             ...prev,
             displayInputBuffer: inputBufferRef.current,
@@ -281,12 +484,6 @@ export default function App({ debug = false }: AppProps) {
         }
         // Ignore all other keys in input/edit mode
         return prev;
-      }
-
-      // Normal mode key handling (when not in input mode)
-      if (key === "q" || key === "Q") {
-        shouldExitRef.current = true;
-        return { ...prev }; // Return new object to trigger re-render
       }
 
       if (key === "\u0003") {
@@ -323,6 +520,7 @@ export default function App({ debug = false }: AppProps) {
           return prev;
         }
         inputBufferRef.current = prev.todos[prev.selectedIndex].text;
+        cursorPosRef.current = inputBufferRef.current.length; // Cursor at end
         // Save state for undo before entering edit mode (deep copy todos array)
         historyRef.current = {
           todos: prev.todos.map((todo) => ({ ...todo })),
@@ -332,6 +530,40 @@ export default function App({ debug = false }: AppProps) {
           ...prev,
           editMode: true,
           displayInputBuffer: inputBufferRef.current,
+        };
+      }
+
+      if (key === "c" || key === "C") {
+        // Copy todo text to clipboard
+        if (prev.todos.length === 0) {
+          return prev;
+        }
+        const textToCopy = prev.todos[prev.selectedIndex].text;
+        // Use pbcopy on macOS with printf to avoid newline
+        import("child_process").then(({ exec }) => {
+          exec(`printf %s ${JSON.stringify(textToCopy)} | pbcopy`);
+        });
+        // Show feedback and clear after timeout
+        setTimeout(() => {
+          setState((p) => ({ ...p, copyFeedback: false }));
+        }, 1500);
+        return { ...prev, copyFeedback: true };
+      }
+
+      if (key === "m" || key === "M") {
+        // Enter move mode
+        if (prev.todos.length === 0) {
+          return prev;
+        }
+        // Save state for undo before entering move mode
+        historyRef.current = {
+          todos: prev.todos.map((todo) => ({ ...todo })),
+          lines: [...prev.lines],
+        };
+        return {
+          ...prev,
+          moveMode: true,
+          moveOriginalIndex: prev.selectedIndex,
         };
       }
 
@@ -371,6 +603,7 @@ export default function App({ debug = false }: AppProps) {
         // Enter input mode
         // Use setState callback to get latest state
         inputBufferRef.current = "";
+        cursorPosRef.current = 0; // Cursor at start for new input
         numberBufferRef.current = "";
         // Save state for undo before entering input mode (deep copy todos array)
         historyRef.current = {
@@ -600,6 +833,8 @@ export default function App({ debug = false }: AppProps) {
     editMode,
     displayInputBuffer,
     showHelp,
+    copyFeedback,
+    moveMode,
   } = state;
 
   if (isLoading) {
@@ -624,10 +859,12 @@ export default function App({ debug = false }: AppProps) {
       {
         title: "EDITING",
         items: [
-          { shortcut: "space", description: "Toggle todo" },
+          { shortcut: "␣", description: "Toggle todo" },
           { shortcut: "n", description: "New todo" },
           { shortcut: "e", description: "Edit text" },
           { shortcut: "d", description: "Delete" },
+          { shortcut: "c", description: "Copy text" },
+          { shortcut: "m", description: "Move" },
         ],
       },
       {
@@ -635,27 +872,28 @@ export default function App({ debug = false }: AppProps) {
         items: [
           { shortcut: "u", description: "Undo" },
           { shortcut: "?", description: "Toggle help" },
-          { shortcut: "q / esc", description: "Quit" },
+          { shortcut: "esc", description: "Quit" },
         ],
       },
     ];
 
-    // Calculate column widths
-    const shortcutWidth =
-      Math.max(
-        ...helpSections.flatMap((section) =>
-          section.items.map((item) => item.shortcut.length),
-        ),
-      ) + 2;
+    // Calculate column widths per section
+    const sectionWidths = helpSections.map((section) => {
+      const shortcutWidth =
+        Math.max(...section.items.map((item) => item.shortcut.length)) + 1;
+      const descriptionWidth = Math.max(
+        ...section.items.map((item) => item.description.length),
+      );
+      return {
+        shortcut: shortcutWidth,
+        description: descriptionWidth,
+        total: shortcutWidth + descriptionWidth,
+      };
+    });
 
-    const descriptionWidth =
-      Math.max(
-        ...helpSections.flatMap((section) =>
-          section.items.map((item) => item.description.length),
-        ),
-      ) + 2;
-
-    const columnWidth = shortcutWidth + descriptionWidth + 2;
+    const totalWidth =
+      sectionWidths.reduce((sum, s) => sum + s.total, 0) +
+      (helpSections.length - 1) * 2;
 
     // Helper functions
     const pad = (text: string, width: number): string => {
@@ -669,22 +907,20 @@ export default function App({ debug = false }: AppProps) {
       return " ".repeat(left) + text + " ".repeat(right);
     };
 
-    const border = "─".repeat(columnWidth * 3 + 4);
+    const border = "─".repeat(totalWidth);
 
     return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text> </Text>
-
+      <Box flexDirection="column">
         {/* Title row */}
         <Box>
           {helpSections.map((section, idx) => (
             <Box
               key={section.title}
-              width={columnWidth}
+              width={sectionWidths[idx].total}
               marginRight={idx < helpSections.length - 1 ? 2 : 0}
             >
               <Text bold color="cyan">
-                {center(section.title, columnWidth)}
+                {center(section.title, sectionWidths[idx].total)}
               </Text>
             </Box>
           ))}
@@ -703,13 +939,13 @@ export default function App({ debug = false }: AppProps) {
               return (
                 <Box
                   key={`${section.title}-${rowIdx}`}
-                  width={columnWidth}
+                  width={sectionWidths[colIdx].total}
                   marginRight={colIdx < helpSections.length - 1 ? 2 : 0}
                 >
                   {item ? (
                     <Text>
                       <Text color="cyan">
-                        {pad(item.shortcut, shortcutWidth)}
+                        {pad(item.shortcut, sectionWidths[colIdx].shortcut)}
                       </Text>
                       <Text>{item.description}</Text>
                     </Text>
@@ -726,20 +962,24 @@ export default function App({ debug = false }: AppProps) {
         <Text color="gray">{border}</Text>
 
         {/* Footer */}
-        <Text color="gray">Press ? or q to close help</Text>
-        <Text> </Text>
+        <Text color="gray">Press ? or esc to close help</Text>
       </Box>
     );
   }
 
   if (inputMode) {
+    const beforeCursor = displayInputBuffer.slice(0, cursorPosRef.current);
+    const afterCursor = displayInputBuffer.slice(cursorPosRef.current);
     return (
       <Box flexDirection="column">
         <Box>
           <Text color="cyan">➜ </Text>
           <Text color="green">[ ] </Text>
-          <Text>{displayInputBuffer}</Text>
-          <Text color="gray">_</Text>
+          <Text>{beforeCursor}</Text>
+          <Text backgroundColor="white" color="black">
+            {afterCursor[0] || " "}
+          </Text>
+          <Text>{afterCursor.slice(1)}</Text>
         </Box>
         <Text color="gray">(Press Enter to confirm, Esc to cancel)</Text>
       </Box>
@@ -747,13 +987,18 @@ export default function App({ debug = false }: AppProps) {
   }
 
   if (editMode) {
+    const beforeCursor = displayInputBuffer.slice(0, cursorPosRef.current);
+    const afterCursor = displayInputBuffer.slice(cursorPosRef.current);
     return (
       <Box flexDirection="column">
         <Box>
           <Text color="cyan">➜ </Text>
           <Text color="green">[ ] </Text>
-          <Text>{displayInputBuffer}</Text>
-          <Text color="gray">_</Text>
+          <Text>{beforeCursor}</Text>
+          <Text backgroundColor="white" color="black">
+            {afterCursor[0] || " "}
+          </Text>
+          <Text>{afterCursor.slice(1)}</Text>
         </Box>
         <Text color="gray">(Press Enter to confirm, Esc to cancel)</Text>
       </Box>
@@ -775,8 +1020,12 @@ export default function App({ debug = false }: AppProps) {
       {todos.map((todo, index) => {
         const isSelected = index === selectedIndex;
         const checkbox = todo.checked ? chalk.magenta("[✓]") : chalk.dim("[ ]");
-        const arrow = isSelected ? chalk.cyan("➜") : " ";
-        const text = isSelected ? chalk.bold.whiteBright(todo.text) : todo.text;
+        const arrow = isSelected
+          ? moveMode
+            ? chalk.yellow("≡")
+            : chalk.cyan("➜")
+          : " ";
+        const renderedText = renderInlineCode(todo.text, isSelected);
         const relativeIndex = index - selectedIndex;
         let relativeDisplay = "";
         if (relativeIndex === 0) {
@@ -802,24 +1051,37 @@ export default function App({ debug = false }: AppProps) {
               <Text> </Text>
             </Box>
             <Box flexGrow={1}>
-              <Text wrap="wrap">{text}</Text>
+              <Text wrap="wrap">{renderedText}</Text>
             </Box>
           </Box>
         );
       })}
       <Box marginTop={1}>
-        <Text color="gray">
-          <Text color="cyan">?</Text>
-          {": help  |  "}
-          <Text color="cyan">j</Text>/<Text color="cyan">k</Text>
-          {": nav  |  "}
-          <Text color="cyan">n</Text>
-          {": new  |  "}
-          <Text color="cyan">space</Text>
-          {": toggle  |  "}
-          <Text color="cyan">q</Text>
-          {": quit"}
-        </Text>
+        {copyFeedback ? (
+          <Text color="green">Copied to clipboard!</Text>
+        ) : moveMode ? (
+          <Text color="yellow">
+            Moving: <Text color="cyan">j</Text>/<Text color="cyan">k</Text>
+            {" move  |  "}
+            <Text color="cyan">enter</Text>
+            {" confirm  |  "}
+            <Text color="cyan">esc</Text>
+            {" cancel"}
+          </Text>
+        ) : (
+          <Text color="gray">
+            <Text color="cyan">?</Text>
+            {" help  |  "}
+            <Text color="cyan">j</Text>/<Text color="cyan">k</Text>
+            {" nav  |  "}
+            <Text color="cyan">n</Text>
+            {" new  |  "}
+            <Text color="cyan">␣</Text>
+            {" toggle  |  "}
+            <Text color="cyan">esc</Text>
+            {" quit"}
+          </Text>
+        )}
       </Box>
     </Box>
   );

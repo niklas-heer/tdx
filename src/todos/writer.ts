@@ -22,11 +22,12 @@ export function writeMarkdown(model: FileModel): string {
     }
   }
 
-  // Clean up markdown: remove consecutive blank lines
+  // Clean up markdown: remove all blank lines between todo items
   const cleaned = result
     .join("\n")
-    .replace(/\n{3,}/g, "\n\n") // Replace 3+ newlines with 2
-    .replace(/\n\n$/g, "\n"); // Ensure single trailing newline
+    .replace(/\n{2,}/g, "\n") // Replace 2+ newlines with 1
+    .replace(/^\n+/, "") // Remove leading newlines
+    .replace(/\n*$/, "\n"); // Ensure single trailing newline
 
   return cleaned;
 }
