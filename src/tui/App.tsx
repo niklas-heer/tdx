@@ -18,6 +18,7 @@ interface AppState {
   error: string | null;
   inputMode: boolean;
   displayInputBuffer: string;
+  editMode: boolean;
 }
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
     error: null,
     inputMode: false,
     displayInputBuffer: "",
+    editMode: false,
   });
 
   // Use refs to track mutable state
@@ -56,6 +58,7 @@ export default function App() {
         error: null,
         inputMode: false,
         displayInputBuffer: "",
+        editMode: false,
       });
     } catch (error) {
       setState((prev) => ({
@@ -103,12 +106,21 @@ export default function App() {
           }));
           return;
         }
+        if (currentState.editMode) {
+          inputBufferRef.current = "";
+          setState((prev) => ({
+            ...prev,
+            editMode: false,
+            displayInputBuffer: "",
+          }));
+          return;
+        }
         process.exit(0);
         return;
       }
 
-      // In input mode, only handle Enter and Backspace
-      if (currentState.inputMode) {
+      // In input mode or edit mode, only handle Enter and Backspace
+      if (currentState.inputMode || currentState.editMode) {
         if (key === "\r" || key === "\n") {
           // Confirm new entry
           const trimmedText = inputBufferRef.current.trim();
@@ -162,8 +174,16 @@ export default function App() {
             displayInputBuffer: inputBufferRef.current,
           }));
           return;
+        } else if (key.length === 1 && key.charCodeAt(0) >= 32) {
+          // Regular printable character
+          inputBufferRef.current += key;
+          setState((prev) => ({
+            ...prev,
+            displayInputBuffer: inputBufferRef.current,
+          }));
+          return;
         }
-        // Ignore all other keys in input mode
+        // Ignore all other keys in input/edit mode
         return;
       }
 
@@ -196,6 +216,26 @@ export default function App() {
             ),
           }));
         }
+        return;
+      }
+
+      if (key === "e" || key === "E") {
+        // Enter edit mode
+        if (currentState.todos.length === 0) {
+          return;
+        }
+        inputBufferRef.current =
+          currentState.todos[currentState.selectedIndex].text;
+        // Save state for undo before entering edit mode (deep copy todos array)
+        historyRef.current = {
+          todos: currentState.todos.map((todo) => ({ ...todo })),
+          lines: [...currentState.lines],
+        };
+        setState((prev) => ({
+          ...prev,
+          editMode: true,
+          displayInputBuffer: inputBufferRef.current,
+        }));
         return;
       }
 
@@ -334,6 +374,7 @@ export default function App() {
     isLoading,
     error,
     inputMode,
+    editMode,
     displayInputBuffer,
   } = state;
 
@@ -346,6 +387,20 @@ export default function App() {
   }
 
   if (inputMode) {
+    return (
+      <Box flexDirection="column">
+        <Box>
+          <Text color="cyan">➜ </Text>
+          <Text color="green">[ ] </Text>
+          <Text>{displayInputBuffer}</Text>
+          <Text color="gray">_</Text>
+        </Box>
+        <Text color="gray">(Press Enter to confirm, Esc to cancel)</Text>
+      </Box>
+    );
+  }
+
+  if (editMode) {
     return (
       <Box flexDirection="column">
         <Box>
@@ -397,6 +452,8 @@ export default function App() {
           {": new  |  "}
           <Text color="cyan">d</Text>
           {": delete  |  "}
+          <Text color="cyan">e</Text>
+          {": edit  |  "}
           <Text color="cyan">u</Text>
           {": undo  |  "}
           <Text color="cyan">q</Text>

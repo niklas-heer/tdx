@@ -82,7 +82,10 @@ Interactive TUI Controls:
   j or Down              Move selection down
   k or Up                Move selection up
   Enter or Space         Toggle todo completion
+  n                      Create a new todo
+  e                      Edit selected todo text
   d                      Delete selected todo immediately
+  u                      Undo last action
   q or Esc               Quit
 
 Examples:

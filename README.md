@@ -46,6 +46,7 @@ tdx
 - `k` or **Up** - Move selection up
 - **Space** or **Enter** - Toggle todo completion
 - `n` - Create a new todo (opens input mode)
+- `e` - Edit selected todo text
 - `d` - Delete selected todo
 - `u` - Undo the last action
 - `q` or **Esc** - Exit
@@ -57,7 +58,7 @@ tdx
   [ ] Water the plants
   [ ] Organize the desk
 
-j/k: nav  |  space: toggle  |  n: new  |  d: delete  |  u: undo  |  q: quit
+j/k: nav  |  space: toggle  |  n: new  |  e: edit  |  d: delete  |  u: undo  |  q: quit
 ```
 
 - All todos: `  [✓]` or `  [ ]` (consistent indentation)

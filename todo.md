@@ -9,3 +9,6 @@
 - [x] add a short description at the bottom about the most important keyboard shortcuts
 - [x] add u for undo command it should undo the last action
 - [ ] maybe add numbers to jump to entries. maybe vim style
+- [ ] add a help menu with all the shortcuts even the advanced ones
+- [ ] add e for editing an entry
+- [ ] add bidirectional sync. if something in the file changes the list should too.
