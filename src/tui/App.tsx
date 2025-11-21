@@ -490,33 +490,53 @@ export default function App() {
   }
 
   if (showHelp) {
+    // Calculate column widths based on longest shortcut
+    const navShortcuts = ["j / ↓", "k / ↑", "5j / 3k"];
+    const editShortcuts = ["space", "n", "e", "d"];
+    const otherShortcuts = ["u", "?", "q"];
+
+    const navWidth = Math.max(...navShortcuts.map((s) => s.length)) + 1;
+    const editWidth = Math.max(...editShortcuts.map((s) => s.length)) + 1;
+    const otherWidth = Math.max(...otherShortcuts.map((s) => s.length)) + 1;
+
+    const navColWidth = navWidth + 12; // Add space for description alignment
+    const editColWidth = editWidth + 12;
+    const otherColWidth = otherWidth + 8;
+
+    const totalWidth = navColWidth + editColWidth + otherColWidth;
+
+    const centerText = (text: string, width: number): string => {
+      const padding = Math.max(0, width - text.length);
+      const leftPad = Math.floor(padding / 2);
+      const rightPad = padding - leftPad;
+      return " ".repeat(leftPad) + text + " ".repeat(rightPad);
+    };
+
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text></Text>
         <Box>
-          <Box width={24}>
+          <Box width={navColWidth}>
             <Text bold color="cyan">
-              NAVIGATION
+              {centerText("NAVIGATION", navColWidth)}
             </Text>
           </Box>
-          <Box width={24}>
+          <Box width={editColWidth}>
             <Text bold color="cyan">
-              EDITING
+              {centerText("EDITING", editColWidth)}
             </Text>
           </Box>
-          <Box width={16}>
+          <Box width={otherColWidth}>
             <Text bold color="cyan">
-              OTHER
+              {centerText("OTHER", otherColWidth)}
             </Text>
           </Box>
         </Box>
-        <Text color="gray">
-          ──────────────────────────────────────────────────────────────
-        </Text>
+        <Text color="gray">{"─".repeat(totalWidth)}</Text>
         <Box>
-          <Box flexDirection="column" width={24}>
-            <Box width={24}>
-              <Box width={8}>
+          <Box flexDirection="column" width={navColWidth}>
+            <Box width={navColWidth}>
+              <Box width={navWidth}>
                 <Text>
                   <Text color="cyan">j</Text>
                   <Text> / ↓</Text>
@@ -524,8 +544,8 @@ export default function App() {
               </Box>
               <Text>Move down</Text>
             </Box>
-            <Box width={24}>
-              <Box width={8}>
+            <Box width={navColWidth}>
+              <Box width={navWidth}>
                 <Text>
                   <Text color="cyan">k</Text>
                   <Text> / ↑</Text>
@@ -533,8 +553,8 @@ export default function App() {
               </Box>
               <Text>Move up</Text>
             </Box>
-            <Box width={24}>
-              <Box width={8}>
+            <Box width={navColWidth}>
+              <Box width={navWidth}>
                 <Text>
                   <Text color="cyan">5j</Text>
                   <Text> / </Text>
@@ -544,56 +564,54 @@ export default function App() {
               <Text>Jump by count</Text>
             </Box>
           </Box>
-          <Box flexDirection="column" width={24}>
-            <Box width={24}>
-              <Box width={8}>
+          <Box flexDirection="column" width={editColWidth}>
+            <Box width={editColWidth}>
+              <Box width={editWidth}>
                 <Text color="cyan">space</Text>
               </Box>
               <Text>Toggle</Text>
             </Box>
-            <Box width={24}>
-              <Box width={8}>
+            <Box width={editColWidth}>
+              <Box width={editWidth}>
                 <Text color="cyan">n</Text>
               </Box>
               <Text>New todo</Text>
             </Box>
-            <Box width={24}>
-              <Box width={8}>
+            <Box width={editColWidth}>
+              <Box width={editWidth}>
                 <Text color="cyan">e</Text>
               </Box>
               <Text>Edit text</Text>
             </Box>
-            <Box width={24}>
-              <Box width={8}>
+            <Box width={editColWidth}>
+              <Box width={editWidth}>
                 <Text color="cyan">d</Text>
               </Box>
               <Text>Delete</Text>
             </Box>
           </Box>
-          <Box flexDirection="column" width={16}>
-            <Box width={16}>
-              <Box width={8}>
+          <Box flexDirection="column" width={otherColWidth}>
+            <Box width={otherColWidth}>
+              <Box width={otherWidth}>
                 <Text color="cyan">u</Text>
               </Box>
               <Text>Undo</Text>
             </Box>
-            <Box width={16}>
-              <Box width={8}>
+            <Box width={otherColWidth}>
+              <Box width={otherWidth}>
                 <Text color="cyan">?</Text>
               </Box>
               <Text>Help</Text>
             </Box>
-            <Box width={16}>
-              <Box width={8}>
+            <Box width={otherColWidth}>
+              <Box width={otherWidth}>
                 <Text color="cyan">q</Text>
               </Box>
               <Text>Quit</Text>
             </Box>
           </Box>
         </Box>
-        <Text color="gray">
-          ──────────────────────────────────────────────────────────────
-        </Text>
+        <Text color="gray">{"─".repeat(totalWidth)}</Text>
         <Text color="gray">Press ? or q to exit</Text>
         <Text></Text>
       </Box>
