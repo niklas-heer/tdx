@@ -31,26 +31,21 @@ else
 fi
 
 echo "Detected: ${OS}-${ARCH}"
-echo "Downloading ${ARTIFACT}.zip..."
+echo "Downloading ${ARTIFACT}..."
 
 # Get latest release URL
-DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ARTIFACT}.zip"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ARTIFACT}"
 
-# Download and extract
-curl -fsSL "$DOWNLOAD_URL" -o tdx.zip
-unzip -q tdx.zip
-rm tdx.zip
-
-chmod +x "$ARTIFACT"
+# Download
+curl -fsSL "$DOWNLOAD_URL" -o "$BINARY"
+chmod +x "$BINARY"
 
 # Install
 if [ -w "$INSTALL_DIR" ]; then
-    mv "$ARTIFACT" "$INSTALL_DIR/$BINARY"
-    mv yoga.wasm "$INSTALL_DIR/yoga.wasm"
+    mv "$BINARY" "$INSTALL_DIR/$BINARY"
 else
     echo "Installing to $INSTALL_DIR (requires sudo)..."
-    sudo mv "$ARTIFACT" "$INSTALL_DIR/$BINARY"
-    sudo mv yoga.wasm "$INSTALL_DIR/yoga.wasm"
+    sudo mv "$BINARY" "$INSTALL_DIR/$BINARY"
 fi
 
 echo "Installed tdx to $INSTALL_DIR/$BINARY"
