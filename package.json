@@ -6,7 +6,8 @@
   "main": "src/cli.ts",
   "scripts": {
     "dev": "bun run src/cli.ts",
-    "build": "bun build --compile --minify src/cli.ts --outfile tdx"
+    "build": "bun build --compile --minify src/cli.ts --outfile tdx",
+    "test": "bun test"
   },
   "dependencies": {
     "ink": "^4.4.1",
