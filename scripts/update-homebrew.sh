@@ -18,18 +18,18 @@ echo "Updating Homebrew formula for v${VERSION}..."
 # Download binaries and calculate checksums
 BASE_URL="https://github.com/${REPO}/releases/download/v${VERSION}"
 
-echo "Downloading binaries and calculating checksums..."
+echo "Downloading archives and calculating checksums..."
 
-DARWIN_ARM64_SHA=$(curl -fsSL "${BASE_URL}/tdx-darwin-arm64" | shasum -a 256 | cut -d' ' -f1)
+DARWIN_ARM64_SHA=$(curl -fsSL "${BASE_URL}/tdx-darwin-arm64.zip" | shasum -a 256 | cut -d' ' -f1)
 echo "  darwin-arm64: $DARWIN_ARM64_SHA"
 
-DARWIN_X64_SHA=$(curl -fsSL "${BASE_URL}/tdx-darwin-x64" | shasum -a 256 | cut -d' ' -f1)
+DARWIN_X64_SHA=$(curl -fsSL "${BASE_URL}/tdx-darwin-x64.zip" | shasum -a 256 | cut -d' ' -f1)
 echo "  darwin-x64: $DARWIN_X64_SHA"
 
-LINUX_ARM64_SHA=$(curl -fsSL "${BASE_URL}/tdx-linux-arm64" | shasum -a 256 | cut -d' ' -f1)
+LINUX_ARM64_SHA=$(curl -fsSL "${BASE_URL}/tdx-linux-arm64.zip" | shasum -a 256 | cut -d' ' -f1)
 echo "  linux-arm64: $LINUX_ARM64_SHA"
 
-LINUX_X64_SHA=$(curl -fsSL "${BASE_URL}/tdx-linux-x64" | shasum -a 256 | cut -d' ' -f1)
+LINUX_X64_SHA=$(curl -fsSL "${BASE_URL}/tdx-linux-x64.zip" | shasum -a 256 | cut -d' ' -f1)
 echo "  linux-x64: $LINUX_X64_SHA"
 
 # Update formula

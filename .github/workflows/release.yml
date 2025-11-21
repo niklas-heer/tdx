@@ -44,13 +44,25 @@ jobs:
         run: bun install
 
       - name: Build binary
-        run: bun build --compile --minify --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
+        run: |
+          bun build --compile --minify --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
+          # Copy yoga.wasm alongside binary (required for Ink)
+          cp node_modules/yoga-wasm-web/dist/yoga.wasm .
+
+      - name: Create archive
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a ${{ matrix.artifact }}.zip ${{ matrix.artifact }} yoga.wasm
+          else
+            zip ${{ matrix.artifact }}.zip ${{ matrix.artifact }} yoga.wasm
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
 
   release:
     needs: build
