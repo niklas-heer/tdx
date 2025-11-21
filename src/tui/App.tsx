@@ -506,6 +506,10 @@ export default function App({ debug = false }: AppProps) {
     const editWidth = Math.max(...editShortcuts.map((s) => s.length)) + 1;
     const otherWidth = Math.max(...otherShortcuts.map((s) => s.length)) + 1;
 
+    const navDescWidth = Math.max(...navDescriptions.map((s) => s.length));
+    const editDescWidth = Math.max(...editDescriptions.map((s) => s.length));
+    const otherDescWidth = Math.max(...otherDescriptions.map((s) => s.length));
+
     const padRight = (text: string, width: number): string => {
       return text + " ".repeat(Math.max(0, width - text.length));
     };
@@ -517,10 +521,10 @@ export default function App({ debug = false }: AppProps) {
       return " ".repeat(leftPad) + text + " ".repeat(rightPad);
     };
 
-    const navColWidth = navWidth + 12;
-    const editColWidth = editWidth + 12;
-    const otherColWidth = otherWidth + 8;
-    const totalWidth = navColWidth + editColWidth + otherColWidth + 4; // +4 for spacing between columns
+    const navColWidth = Math.max(navWidth, navDescWidth) + 1 + 1;
+    const editColWidth = Math.max(editWidth, editDescWidth) + 1 + 1;
+    const otherColWidth = Math.max(otherWidth, otherDescWidth) + 1 + 1;
+    const totalWidth = navColWidth + 2 + editColWidth + 2 + otherColWidth;
 
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
