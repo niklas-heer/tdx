@@ -490,7 +490,7 @@ export default function App() {
   }
 
   if (showHelp) {
-    // Calculate column widths based on longest shortcut
+    // Calculate column widths based on longest shortcut + 1 space
     const navShortcuts = ["j / ↓", "k / ↑", "5j / 3k"];
     const editShortcuts = ["space", "n", "e", "d"];
     const otherShortcuts = ["u", "?", "q"];
@@ -499,11 +499,7 @@ export default function App() {
     const editWidth = Math.max(...editShortcuts.map((s) => s.length)) + 1;
     const otherWidth = Math.max(...otherShortcuts.map((s) => s.length)) + 1;
 
-    const navColWidth = navWidth + 12; // Add space for description alignment
-    const editColWidth = editWidth + 12;
-    const otherColWidth = otherWidth + 8;
-
-    const totalWidth = navColWidth + editColWidth + otherColWidth;
+    const totalWidth = navWidth + 2 + editWidth + 2 + otherWidth; // +2 for spaces between columns
 
     const centerText = (text: string, width: number): string => {
       const padding = Math.max(0, width - text.length);
@@ -512,103 +508,79 @@ export default function App() {
       return " ".repeat(leftPad) + text + " ".repeat(rightPad);
     };
 
+    const padRight = (text: string, width: number): string => {
+      return text + " ".repeat(Math.max(0, width - text.length));
+    };
+
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text></Text>
         <Box>
-          <Box width={navColWidth}>
-            <Text bold color="cyan">
-              {centerText("NAVIGATION", navColWidth)}
-            </Text>
-          </Box>
-          <Box width={editColWidth}>
-            <Text bold color="cyan">
-              {centerText("EDITING", editColWidth)}
-            </Text>
-          </Box>
-          <Box width={otherColWidth}>
-            <Text bold color="cyan">
-              {centerText("OTHER", otherColWidth)}
-            </Text>
-          </Box>
+          <Text bold color="cyan">
+            {centerText("NAVIGATION", navWidth)}
+          </Text>
+          <Text> </Text>
+          <Text bold color="cyan">
+            {centerText("EDITING", editWidth)}
+          </Text>
+          <Text> </Text>
+          <Text bold color="cyan">
+            {centerText("OTHER", otherWidth)}
+          </Text>
         </Box>
         <Text color="gray">{"─".repeat(totalWidth)}</Text>
-        <Box>
-          <Box flexDirection="column" width={navColWidth}>
-            <Box width={navColWidth}>
-              <Box width={navWidth}>
-                <Text>
-                  <Text color="cyan">j</Text>
-                  <Text> / ↓</Text>
-                </Text>
-              </Box>
-              <Text>Move down</Text>
-            </Box>
-            <Box width={navColWidth}>
-              <Box width={navWidth}>
-                <Text>
-                  <Text color="cyan">k</Text>
-                  <Text> / ↑</Text>
-                </Text>
-              </Box>
-              <Text>Move up</Text>
-            </Box>
-            <Box width={navColWidth}>
-              <Box width={navWidth}>
-                <Text>
-                  <Text color="cyan">5j</Text>
-                  <Text> / </Text>
-                  <Text color="cyan">3k</Text>
-                </Text>
-              </Box>
-              <Text>Jump by count</Text>
-            </Box>
+        <Box flexDirection="column">
+          <Box>
+            <Text>{padRight(navShortcuts[0], navWidth)}</Text>
+            <Text> </Text>
+            <Text>{padRight(editShortcuts[0], editWidth)}</Text>
+            <Text> </Text>
+            <Text>{otherShortcuts[0]}</Text>
           </Box>
-          <Box flexDirection="column" width={editColWidth}>
-            <Box width={editColWidth}>
-              <Box width={editWidth}>
-                <Text color="cyan">space</Text>
-              </Box>
-              <Text>Toggle</Text>
-            </Box>
-            <Box width={editColWidth}>
-              <Box width={editWidth}>
-                <Text color="cyan">n</Text>
-              </Box>
-              <Text>New todo</Text>
-            </Box>
-            <Box width={editColWidth}>
-              <Box width={editWidth}>
-                <Text color="cyan">e</Text>
-              </Box>
-              <Text>Edit text</Text>
-            </Box>
-            <Box width={editColWidth}>
-              <Box width={editWidth}>
-                <Text color="cyan">d</Text>
-              </Box>
-              <Text>Delete</Text>
-            </Box>
+          <Box>
+            <Text>Move down</Text>
+            <Text> </Text>
+            <Text>Toggle</Text>
+            <Text> </Text>
+            <Text>Undo</Text>
           </Box>
-          <Box flexDirection="column" width={otherColWidth}>
-            <Box width={otherColWidth}>
-              <Box width={otherWidth}>
-                <Text color="cyan">u</Text>
-              </Box>
-              <Text>Undo</Text>
-            </Box>
-            <Box width={otherColWidth}>
-              <Box width={otherWidth}>
-                <Text color="cyan">?</Text>
-              </Box>
-              <Text>Help</Text>
-            </Box>
-            <Box width={otherColWidth}>
-              <Box width={otherWidth}>
-                <Text color="cyan">q</Text>
-              </Box>
-              <Text>Quit</Text>
-            </Box>
+          <Box marginTop={1}>
+            <Text>{padRight(navShortcuts[1], navWidth)}</Text>
+            <Text> </Text>
+            <Text>{padRight(editShortcuts[1], editWidth)}</Text>
+            <Text> </Text>
+            <Text>{otherShortcuts[1]}</Text>
+          </Box>
+          <Box>
+            <Text>Move up</Text>
+            <Text> </Text>
+            <Text>New todo</Text>
+            <Text> </Text>
+            <Text>Help</Text>
+          </Box>
+          <Box marginTop={1}>
+            <Text>{padRight(navShortcuts[2], navWidth)}</Text>
+            <Text> </Text>
+            <Text>{padRight(editShortcuts[2], editWidth)}</Text>
+            <Text> </Text>
+            <Text>{otherShortcuts[2]}</Text>
+          </Box>
+          <Box>
+            <Text>Jump by count</Text>
+            <Text> </Text>
+            <Text>Edit text</Text>
+            <Text> </Text>
+            <Text>Quit</Text>
+          </Box>
+          <Box marginTop={1}>
+            <Text></Text>
+            <Text> </Text>
+            <Text>{padRight(editShortcuts[3], editWidth)}</Text>
+          </Box>
+          <Box>
+            <Text></Text>
+            <Text> </Text>
+            <Text>Delete</Text>
           </Box>
         </Box>
         <Text color="gray">{"─".repeat(totalWidth)}</Text>
