@@ -1,8 +1,8 @@
 # tdx
 
-**Your todos, in markdown, at terminal speed.**
+**Your todos, in markdown, done fast.**
 
-A fast, single-binary CLI tool for managing todos in markdown files. Features vim-style navigation, an interactive TUI, and scriptable commands.
+A fast, single-binary CLI todo manager focused on developer experience. Features vim-style navigation, an interactive TUI, and scriptable commands—all stored in plain markdown you can version control.
 
 ## Features
 
