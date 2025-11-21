@@ -1,7 +1,7 @@
-- [ ] add m to move things up or down until you press enter or cancel with Esc
-- [ ] add ci/cd
+- [x] add m to move things up or down until you press enter or cancel with Esc
+- [x] add ci/cd
 - [ ] test out `tdx` okay
-- [ ] version check if up to date
+- [x] version check if up to date
 - [x] make code formatting render
 - [x] make navigation work in edit and creation mode via arrows and mac keys
 - [x] add c for copying the text of a task

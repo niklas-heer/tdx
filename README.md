@@ -1,15 +1,18 @@
-# tdx - A Fast Markdown Todo Manager
+# tdx
 
-A lightweight, single-binary CLI tool for managing todos in a `todo.md` file using Bun and TypeScript. Features an interactive TUI built with Ink and minimal non-interactive commands for scripting.
+**Your todos, in markdown, at terminal speed.**
+
+A fast, single-binary CLI tool for managing todos in markdown files. Features vim-style navigation, an interactive TUI, and scriptable commands.
 
 ## Features
 
-- ⚡ **Fast & Lightweight** - Built with Bun, compiles to a single binary
-- 📝 **Markdown-based** - Todos stored in a simple `todo.md` file
-- 🎨 **Interactive TUI** - Navigate, create, delete, toggle, and undo with keyboard shortcuts
-- 🔒 **Atomic writes** - Safe file operations, no corruption
-- 📦 **Zero dependencies** - Minimal custom parser, no heavy libraries
-- 🛠️ **CLI commands** - `list`, `add`, `toggle`, `edit` for automation
+- **Fast** - Single binary, instant startup
+- **Markdown-native** - Todos live in `todo.md`, version control friendly
+- **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
+- **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
+- **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
+- **Auto-updates** - Notifies when new versions are available
+- **Cross-platform** - macOS, Linux, Windows
 
 ## Installation
 
@@ -57,14 +60,25 @@ tdx
 ```
 
 **Keyboard Shortcuts:**
-- `j` or **Down** - Move selection down
-- `k` or **Up** - Move selection up
-- **Space** or **Enter** - Toggle todo completion
-- `n` - Create a new todo (opens input mode)
-- `e` - Edit selected todo text
-- `d` - Delete selected todo
-- `u` - Undo the last action
-- `q` or **Esc** - Exit
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Move down |
+| `k` / `↑` | Move up |
+| `Space` / `Enter` | Toggle completion |
+| `n` | New todo |
+| `e` | Edit todo |
+| `d` | Delete todo |
+| `u` | Undo |
+| `y` | Copy todo |
+| `m` | Move mode |
+| `?` | Help menu |
+| `q` / `Esc` | Quit |
+
+**Vim-style jumps:**
+- `5j` - Move down 5 lines
+- `3k` - Move up 3 lines
+- `1-9` - Jump to todo by number
 
 **Display Format:**
 ```
@@ -256,14 +270,24 @@ $ chmod 000 todo.md && tdx list
 Error: Failed to read todo.md: Permission denied
 ```
 
+## Configuration
+
+**Environment variables:**
+- `TDX_NO_UPDATE_CHECK=1` - Disable automatic update checks
+
+**Custom file path:**
+```bash
+tdx ~/notes/work.md           # Use specific file
+tdx project.md add "Task"     # Commands work with custom files too
+```
+
 ## Notes
 
-- The `todo.md` file is created automatically on first use with a simple header
+- The `todo.md` file is created automatically on first use
 - File modifications are atomic - no risk of corruption
-- Only todo lines are rewritten; all other content is preserved byte-for-byte
-- The tool works with any `todo.md` file in your current working directory
-- No configuration files or environment variables needed
+- Non-todo content (headers, paragraphs) is preserved exactly
+- Version check results are cached in `~/.tdx/` for 24 hours
 
 ## License
 
-MIT
+MIT - see [LICENSE](LICENSE)
