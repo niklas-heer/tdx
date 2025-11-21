@@ -35,11 +35,19 @@ export function deleteTodo(indexStr: string): void {
     }
 
     const todo = model.todos[index - 1];
+    const deletedLineNo = todo.lineNo;
 
-    // Remove the todo entry and re-index remaining todos.
+    // Remove the line from lines array
+    model.lines.splice(deletedLineNo, 1);
+
+    // Remove the todo entry and re-index remaining todos
     model.todos.splice(index - 1, 1);
     for (let i = 0; i < model.todos.length; i++) {
       model.todos[i].index = i + 1;
+      // Update lineNo for todos after the deleted line
+      if (model.todos[i].lineNo > deletedLineNo) {
+        model.todos[i].lineNo--;
+      }
     }
 
     const updatedContent = writeMarkdown(model);
