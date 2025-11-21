@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -74,58 +74,81 @@ jobs:
 
       - name: Generate changelog
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v4
-        with:
-          configuration: |
-            {
-              "categories": [
-                {
-                  "title": "## Features",
-                  "labels": []
-                },
-                {
-                  "title": "## Bug Fixes",
-                  "labels": []
-                },
-                {
-                  "title": "## Documentation",
-                  "labels": []
-                },
-                {
-                  "title": "## Other Changes",
-                  "labels": []
-                }
-              ],
-              "template": "#{{CHANGELOG}}\n\n**Full Changelog**: https://github.com/${{ github.repository }}/compare/#{{FROM_TAG}}...#{{TO_TAG}}",
-              "pr_template": "- #{{TITLE}} (#{{NUMBER}})",
-              "empty_template": "No changes",
-              "transformers": [
-                {
-                  "pattern": "^feat(\\(.+\\))?:",
-                  "target": "## Features"
-                },
-                {
-                  "pattern": "^fix(\\(.+\\))?:",
-                  "target": "## Bug Fixes"
-                },
-                {
-                  "pattern": "^docs(\\(.+\\))?:",
-                  "target": "## Documentation"
-                }
-              ],
-              "sort": {
-                "order": "ASC",
-                "on_property": "mergedAt"
-              },
-              "max_tags_to_fetch": 200,
-              "max_pull_requests": 200,
-              "max_back_track_time_days": 365,
-              "base_branches": ["main"]
-            }
-          commitMode: true
-          toTag: ${{ github.ref_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          CURRENT_TAG="${{ github.ref_name }}"
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release - get all commits
+            COMMITS=$(git log --pretty=format:"%s" $CURRENT_TAG)
+          else
+            # Get commits between tags
+            COMMITS=$(git log --pretty=format:"%s" ${PREV_TAG}..${CURRENT_TAG})
+          fi
+
+          # Build changelog sections
+          FEATURES=""
+          FIXES=""
+          DOCS=""
+          CHORES=""
+          OTHER=""
+
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+
+            if [[ "$line" =~ ^feat ]]; then
+              FEATURES="${FEATURES}- ${line}\n"
+            elif [[ "$line" =~ ^fix ]]; then
+              FIXES="${FIXES}- ${line}\n"
+            elif [[ "$line" =~ ^docs ]]; then
+              DOCS="${DOCS}- ${line}\n"
+            elif [[ "$line" =~ ^chore ]]; then
+              CHORES="${CHORES}- ${line}\n"
+            elif [[ "$line" =~ ^Merge ]]; then
+              # Skip merge commits
+              continue
+            else
+              OTHER="${OTHER}- ${line}\n"
+            fi
+          done <<< "$COMMITS"
+
+          # Build final changelog
+          CHANGELOG=""
+
+          if [ -n "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}## Features\n\n${FEATURES}\n"
+          fi
+
+          if [ -n "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}## Bug Fixes\n\n${FIXES}\n"
+          fi
+
+          if [ -n "$DOCS" ]; then
+            CHANGELOG="${CHANGELOG}## Documentation\n\n${DOCS}\n"
+          fi
+
+          if [ -n "$CHORES" ]; then
+            CHANGELOG="${CHANGELOG}## Maintenance\n\n${CHORES}\n"
+          fi
+
+          if [ -n "$OTHER" ]; then
+            CHANGELOG="${CHANGELOG}## Other\n\n${OTHER}\n"
+          fi
+
+          # Add compare link
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG="${CHANGELOG}\n**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${CURRENT_TAG}"
+          fi
+
+          # Write to file for the release action
+          echo -e "$CHANGELOG" > changelog.md
+          cat changelog.md
+
+          # Set output
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
