@@ -492,14 +492,15 @@ export default function App() {
   if (showHelp) {
     // Calculate column widths based on longest shortcut + 1 space
     const navShortcuts = ["j / ↓", "k / ↑", "5j / 3k"];
+    const navDescriptions = ["Move down", "Move up", "Jump by count"];
     const editShortcuts = ["space", "n", "e", "d"];
+    const editDescriptions = ["Toggle", "New todo", "Edit text", "Delete"];
     const otherShortcuts = ["u", "?", "q"];
+    const otherDescriptions = ["Undo", "Help", "Quit"];
 
     const navWidth = Math.max(...navShortcuts.map((s) => s.length)) + 1;
     const editWidth = Math.max(...editShortcuts.map((s) => s.length)) + 1;
     const otherWidth = Math.max(...otherShortcuts.map((s) => s.length)) + 1;
-
-    const totalWidth = navWidth + 2 + editWidth + 2 + otherWidth; // +2 for spaces between columns
 
     const centerText = (text: string, width: number): string => {
       const padding = Math.max(0, width - text.length);
@@ -512,76 +513,83 @@ export default function App() {
       return text + " ".repeat(Math.max(0, width - text.length));
     };
 
+    const navColWidth = navWidth + 11;
+    const editColWidth = editWidth + 10;
+    const otherColWidth = otherWidth + 6;
+    const totalWidth = navColWidth + 2 + editColWidth + 2 + otherColWidth;
+
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text></Text>
         <Box>
           <Text bold color="cyan">
-            {centerText("NAVIGATION", navWidth)}
+            {centerText("NAVIGATION", navColWidth)}
           </Text>
           <Text> </Text>
           <Text bold color="cyan">
-            {centerText("EDITING", editWidth)}
+            {centerText("EDITING", editColWidth)}
           </Text>
           <Text> </Text>
           <Text bold color="cyan">
-            {centerText("OTHER", otherWidth)}
+            {centerText("OTHER", otherColWidth)}
           </Text>
         </Box>
         <Text color="gray">{"─".repeat(totalWidth)}</Text>
-        <Box flexDirection="column">
-          <Box>
-            <Text>{padRight(navShortcuts[0], navWidth)}</Text>
-            <Text> </Text>
-            <Text>{padRight(editShortcuts[0], editWidth)}</Text>
-            <Text> </Text>
-            <Text>{otherShortcuts[0]}</Text>
-          </Box>
-          <Box>
-            <Text>Move down</Text>
-            <Text> </Text>
-            <Text>Toggle</Text>
-            <Text> </Text>
-            <Text>Undo</Text>
-          </Box>
-          <Box marginTop={1}>
-            <Text>{padRight(navShortcuts[1], navWidth)}</Text>
-            <Text> </Text>
-            <Text>{padRight(editShortcuts[1], editWidth)}</Text>
-            <Text> </Text>
-            <Text>{otherShortcuts[1]}</Text>
-          </Box>
-          <Box>
-            <Text>Move up</Text>
-            <Text> </Text>
-            <Text>New todo</Text>
-            <Text> </Text>
-            <Text>Help</Text>
-          </Box>
-          <Box marginTop={1}>
-            <Text>{padRight(navShortcuts[2], navWidth)}</Text>
-            <Text> </Text>
-            <Text>{padRight(editShortcuts[2], editWidth)}</Text>
-            <Text> </Text>
-            <Text>{otherShortcuts[2]}</Text>
-          </Box>
-          <Box>
-            <Text>Jump by count</Text>
-            <Text> </Text>
-            <Text>Edit text</Text>
-            <Text> </Text>
-            <Text>Quit</Text>
-          </Box>
-          <Box marginTop={1}>
-            <Text></Text>
-            <Text> </Text>
-            <Text>{padRight(editShortcuts[3], editWidth)}</Text>
-          </Box>
-          <Box>
-            <Text></Text>
-            <Text> </Text>
-            <Text>Delete</Text>
-          </Box>
+        <Box>
+          <Text>
+            <Text color="cyan">{padRight(navShortcuts[0], navWidth)}</Text>
+            {navDescriptions[0]}
+          </Text>
+          <Text> </Text>
+          <Text>
+            <Text color="cyan">{padRight(editShortcuts[0], editWidth)}</Text>
+            {editDescriptions[0]}
+          </Text>
+          <Text> </Text>
+          <Text>
+            <Text color="cyan">{otherShortcuts[0]}</Text>
+            {" " + otherDescriptions[0]}
+          </Text>
+        </Box>
+        <Box>
+          <Text>
+            <Text color="cyan">{padRight(navShortcuts[1], navWidth)}</Text>
+            {navDescriptions[1]}
+          </Text>
+          <Text> </Text>
+          <Text>
+            <Text color="cyan">{padRight(editShortcuts[1], editWidth)}</Text>
+            {editDescriptions[1]}
+          </Text>
+          <Text> </Text>
+          <Text>
+            <Text color="cyan">{otherShortcuts[1]}</Text>
+            {" " + otherDescriptions[1]}
+          </Text>
+        </Box>
+        <Box>
+          <Text>
+            <Text color="cyan">{padRight(navShortcuts[2], navWidth)}</Text>
+            {navDescriptions[2]}
+          </Text>
+          <Text> </Text>
+          <Text>
+            <Text color="cyan">{padRight(editShortcuts[2], editWidth)}</Text>
+            {editDescriptions[2]}
+          </Text>
+          <Text> </Text>
+          <Text>
+            <Text color="cyan">{otherShortcuts[2]}</Text>
+            {" " + otherDescriptions[2]}
+          </Text>
+        </Box>
+        <Box>
+          <Text></Text>
+          <Text> </Text>
+          <Text>
+            <Text color="cyan">{padRight(editShortcuts[3], editWidth)}</Text>
+            {editDescriptions[3]}
+          </Text>
         </Box>
         <Text color="gray">{"─".repeat(totalWidth)}</Text>
         <Text color="gray">Press ? or q to exit</Text>
