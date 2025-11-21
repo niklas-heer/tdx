@@ -6,7 +6,7 @@ A lightweight, single-binary CLI tool for managing todos in a `todo.md` file usi
 
 - ⚡ **Fast & Lightweight** - Built with Bun, compiles to a single binary
 - 📝 **Markdown-based** - Todos stored in a simple `todo.md` file
-- 🎨 **Interactive TUI** - Navigate with `j`/`k`, toggle with Enter
+- 🎨 **Interactive TUI** - Navigate, create, delete, toggle, and undo with keyboard shortcuts
 - 🔒 **Atomic writes** - Safe file operations, no corruption
 - 📦 **Zero dependencies** - Minimal custom parser, no heavy libraries
 - 🛠️ **CLI commands** - `list`, `add`, `toggle`, `edit` for automation
@@ -44,7 +44,10 @@ tdx
 **Keyboard Shortcuts:**
 - `j` or **Down** - Move selection down
 - `k` or **Up** - Move selection up
-- **Enter** or **Space** - Toggle todo completion
+- **Space** or **Enter** - Toggle todo completion
+- `n` - Create a new todo (opens input mode)
+- `d` - Delete selected todo
+- `u` - Undo the last action
 - `q` or **Esc** - Exit
 
 **Display Format:**
@@ -53,6 +56,8 @@ tdx
 ➜ [ ] Bake cookies
   [ ] Water the plants
   [ ] Organize the desk
+
+j/k: nav  |  space: toggle  |  n: new  |  d: delete  |  u: undo  |  q: quit
 ```
 
 - All todos: `  [✓]` or `  [ ]` (consistent indentation)
