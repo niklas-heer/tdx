@@ -1,14 +1,21 @@
 # Todos
 
-- [ ] add ci/cd
-- [x] add n for creating a new entry
-- [x] fix intentation so it's always the same
-- [x] archive spec
-- [ ] add version check
+- [ ] piped entryn entry testn entryn entry success
 - [x] add d for deleting a todo
 - [x] add a short description at the bottom about the most important keyboard shortcuts
 - [x] add u for undo command it should undo the last action
 - [x] maybe add numbers to jump to entries. maybe vim style
 - [ ] add a help menu with all the shortcuts even the advanced ones
 - [x] add e for editing an entry.
-- [ ] add bidirectional sync. if something in the file changes the list should too.
+- [ ] add bidirectional sync. if something in the file changes the list should too. 
+- [ ] echo pipe should work to send keypresses to the tui.
+- [ ] add markdown formatting to remove not needed new lines.
+- [ ] add m to move things up or down until you press enter or cancel with Esc
+- [ ] edit arrow keys should work to go left and right. as well as mac keys like cmd arrow or option arrow.
+- [ ] add ci/cd
+- [ ] make it so you can specify a file/path after the command to use a specific file for the tool otherwise it will use todo.md in the current dir or create it. it should ask before creating.
+- [ ] fix long entries
+- [ ] make arrow keys work again
+- [ ] implement tests with the `echo -e "n\rNew test entry\r" | bun run dev` behaviour
+- [ ] fix e behaviour while editing 
+- [ ] make code formatting render
