@@ -151,6 +151,10 @@ status:
 commit MESSAGE:
     git add -A && git commit -m "{{MESSAGE}}"
 
+# Create a new release (interactive version bump, tag, and push)
+release:
+    @./scripts/release.sh
+
 # ============================================================================
 # WORKFLOWS & DEMOS
 # ============================================================================

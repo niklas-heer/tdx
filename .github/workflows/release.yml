@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            artifact: tdx-linux-x64
+          - os: ubuntu-latest
+            target: bun-linux-arm64
+            artifact: tdx-linux-arm64
+          - os: macos-latest
+            target: bun-darwin-x64
+            artifact: tdx-darwin-x64
+          - os: macos-latest
+            target: bun-darwin-arm64
+            artifact: tdx-darwin-arm64
+          - os: windows-latest
+            target: bun-windows-x64
+            artifact: tdx-windows-x64.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build binary
+        run: bun build --compile --minify --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec mv {} release/ \;
+          cd release && ls -la
+
+      - name: Generate changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v4
+        with:
+          configuration: |
+            {
+              "categories": [
+                {
+                  "title": "## Features",
+                  "labels": []
+                },
+                {
+                  "title": "## Bug Fixes",
+                  "labels": []
+                },
+                {
+                  "title": "## Documentation",
+                  "labels": []
+                },
+                {
+                  "title": "## Other Changes",
+                  "labels": []
+                }
+              ],
+              "template": "#{{CHANGELOG}}\n\n**Full Changelog**: https://github.com/${{ github.repository }}/compare/#{{FROM_TAG}}...#{{TO_TAG}}",
+              "pr_template": "- #{{TITLE}} (#{{NUMBER}})",
+              "empty_template": "No changes",
+              "transformers": [
+                {
+                  "pattern": "^feat(\\(.+\\))?:",
+                  "target": "## Features"
+                },
+                {
+                  "pattern": "^fix(\\(.+\\))?:",
+                  "target": "## Bug Fixes"
+                },
+                {
+                  "pattern": "^docs(\\(.+\\))?:",
+                  "target": "## Documentation"
+                }
+              ],
+              "sort": {
+                "order": "ASC",
+                "on_property": "mergedAt"
+              },
+              "max_tags_to_fetch": 200,
+              "max_pull_requests": 200,
+              "max_back_track_time_days": 365,
+              "base_branches": ["main"]
+            }
+          commitMode: true
+          toTag: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: release/*
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
