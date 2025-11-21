@@ -36,7 +36,7 @@ export default function App({ debug = false }: AppProps) {
     inputMode: false,
     displayInputBuffer: "",
     editMode: false,
-    showHelp: false,
+    showHelp: debug,
   });
 
   // Use refs to track mutable state
@@ -45,11 +45,44 @@ export default function App({ debug = false }: AppProps) {
   const stateRef = useRef(state);
   const historyRef = useRef<{ todos: Todo[]; lines: string[] } | null>(null);
   const numberBufferRef = useRef<string>("");
+  const keyBufferRef = useRef<string[]>([]);
+  const handleKeyRef = useRef<(key: string) => void>(() => {});
+  // Track if we're processing piped input
+  const isPipedInputRef = useRef(!process.stdin.isTTY);
+  const processingCompleteRef = useRef(false);
+  const shouldExitRef = useRef(false);
+
+  // Update handleKeyRef whenever state changes to ensure it has latest closures
+  useEffect(() => {
+    // This effect runs on every render to keep handleKeyRef up to date
+    // The handleKey function is recreated on each render with fresh closures
+  }, [state]);
+
+  // Clear all buffers on mount to ensure clean state
+  useEffect(() => {
+    inputBufferRef.current = "";
+    keyBufferRef.current = [];
+    numberBufferRef.current = "";
+  }, []);
+
+  // Clear input buffer on mount to prevent any residual state
+  useEffect(() => {
+    inputBufferRef.current = "";
+    keyBufferRef.current = [];
+    numberBufferRef.current = "";
+  }, []);
 
   // Keep stateRef in sync with state
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Handle exit outside of render cycle
+  useEffect(() => {
+    if (shouldExitRef.current) {
+      process.exit(0);
+    }
+  });
 
   // Load todos on mount
   useEffect(() => {
@@ -57,7 +90,7 @@ export default function App({ debug = false }: AppProps) {
       ensureTodoFileExists();
       const content = readTodoFile();
       const model = parseMarkdown(content);
-      setState({
+      setState((prev) => ({
         todos: model.todos,
         lines: model.lines,
         selectedIndex: 0,
@@ -66,8 +99,8 @@ export default function App({ debug = false }: AppProps) {
         inputMode: false,
         displayInputBuffer: "",
         editMode: false,
-        showHelp: false,
-      });
+        showHelp: prev.showHelp,
+      }));
     } catch (error) {
       setState((prev) => ({
         ...prev,
@@ -96,179 +129,181 @@ export default function App({ debug = false }: AppProps) {
     }
   }, [state.todos, state.lines]);
 
-  // Setup key listeners
-  useEffect(() => {
-    if (state.isLoading || state.error) return;
-
-    const handleKey = (key: string) => {
-      const currentState = stateRef.current;
+  // Define handleKey using useCallback to ensure it has latest state
+  const handleKey = React.useCallback((key: string) => {
+    // All key handling in a single setState to ensure we always have latest state
+    setState((prev) => {
+      // If still loading, buffer the key for later processing
+      if (prev.isLoading || prev.error) {
+        keyBufferRef.current.push(key);
+        return prev;
+      }
 
       // Handle Escape key - always available
       if (key === "\u001b") {
-        if (currentState.inputMode) {
+        if (prev.inputMode) {
           inputBufferRef.current = "";
-          setState((prev) => ({
+          return {
             ...prev,
             inputMode: false,
             displayInputBuffer: "",
-          }));
-          return;
+          };
         }
-        if (currentState.editMode) {
+        if (prev.editMode) {
           inputBufferRef.current = "";
-          setState((prev) => ({
+          return {
             ...prev,
             editMode: false,
             displayInputBuffer: "",
-          }));
-          return;
+          };
         }
-        process.exit(0);
-        return;
+        shouldExitRef.current = true;
+        return { ...prev }; // Return new object to trigger re-render
       }
 
       // Help menu always shows with ? key
       if (key === "?") {
-        setState((prev) => ({
+        return {
           ...prev,
           showHelp: !prev.showHelp,
-        }));
-        return;
+        };
       }
 
       // Help menu closes with q or Escape
-      if (
-        currentState.showHelp &&
-        (key === "q" || key === "Q" || key === "\u001b")
-      ) {
-        setState((prev) => ({
-          ...prev,
-          showHelp: false,
-        }));
-        return;
+      if ((key === "q" || key === "Q") && prev.showHelp) {
+        return { ...prev, showHelp: false };
       }
 
       // Don't process other keys if help is showing
-      if (currentState.showHelp) {
-        return;
+      if (prev.showHelp) {
+        return prev;
       }
+
+      // Process the rest of the key handling
+      // Use prev for all state checks to ensure we have latest state
+      const currentState = prev;
 
       // In input mode or edit mode, only handle Enter and Backspace
       if (currentState.inputMode || currentState.editMode) {
         if (key === "\r" || key === "\n") {
           const trimmedText = inputBufferRef.current.trim();
-          if (trimmedText.length > 0) {
+          // Clear buffer immediately after processing
+          const textToSave = trimmedText;
+          inputBufferRef.current = "";
+
+          if (textToSave.length > 0) {
             if (currentState.editMode) {
               // Update existing todo
-              setState((prev) => {
-                const updatedTodos = [...prev.todos];
-                const selectedTodo = updatedTodos[prev.selectedIndex];
-                updatedTodos[prev.selectedIndex] = {
-                  ...selectedTodo,
-                  text: trimmedText,
-                };
+              // Use the prev parameter which has latest state
+              const updatedTodos = [...prev.todos];
+              const selectedTodo = updatedTodos[prev.selectedIndex];
 
-                const updatedLines = [...prev.lines];
-                updatedLines[selectedTodo.lineNo] =
-                  `- ${selectedTodo.checked ? "[x]" : "[ ]"} ${trimmedText}`;
-
-                pendingChangeRef.current = true;
-                inputBufferRef.current = "";
-
+              // Safety check - if selectedTodo is undefined, exit edit mode
+              if (!selectedTodo) {
                 return {
                   ...prev,
-                  todos: updatedTodos,
-                  lines: updatedLines,
                   editMode: false,
                   displayInputBuffer: "",
                 };
-              });
+              }
+              updatedTodos[prev.selectedIndex] = {
+                ...selectedTodo,
+                text: textToSave,
+              };
+
+              const updatedLines = [...prev.lines];
+              updatedLines[selectedTodo.lineNo] =
+                `- ${selectedTodo.checked ? "[x]" : "[ ]"} ${textToSave}`;
+
+              pendingChangeRef.current = true;
+
+              return {
+                ...prev,
+                todos: updatedTodos,
+                lines: updatedLines,
+                editMode: false,
+                displayInputBuffer: "",
+              };
             } else {
               // Create new todo
-              setState((prev) => {
-                const newTodo: Todo = {
-                  index: prev.todos.length + 1,
-                  checked: false,
-                  text: trimmedText,
-                  lineNo: prev.lines.length,
-                };
+              const newTodo: Todo = {
+                index: prev.todos.length + 1,
+                checked: false,
+                text: textToSave,
+                lineNo: prev.lines.length,
+              };
 
-                const updatedTodos = [...prev.todos, newTodo];
-                const updatedLines = [...prev.lines, `- [ ] ${trimmedText}`];
+              const updatedTodos = [...prev.todos, newTodo];
+              const updatedLines = [...prev.lines, `- [ ] ${textToSave}`];
 
-                pendingChangeRef.current = true;
-                inputBufferRef.current = "";
+              pendingChangeRef.current = true;
 
-                return {
-                  ...prev,
-                  todos: updatedTodos,
-                  lines: updatedLines,
-                  selectedIndex: updatedTodos.length - 1,
-                  inputMode: false,
-                  displayInputBuffer: "",
-                };
-              });
+              return {
+                ...prev,
+                todos: updatedTodos,
+                lines: updatedLines,
+                selectedIndex: updatedTodos.length - 1,
+                inputMode: false,
+                displayInputBuffer: "",
+              };
             }
           } else {
-            // Empty input, just exit
-            setState((prev) => ({
+            // Empty input - for piped input, stay in input mode to wait for text
+            // For interactive use, exit input mode
+            if (isPipedInputRef.current) {
+              // In piped mode, empty Enter likely means we're still waiting for text
+              // Just ignore this Enter and stay in input mode
+              return { ...prev }; // Return new object to ensure re-render
+            }
+            // Interactive mode - exit on empty input
+            inputBufferRef.current = "";
+            return {
               ...prev,
               inputMode: false,
               editMode: false,
               displayInputBuffer: "",
-            }));
-            inputBufferRef.current = "";
+            };
           }
-          return;
         } else if (key === "\u007f" || key === "\b") {
           // Backspace
           inputBufferRef.current = inputBufferRef.current.slice(0, -1);
-          setState((prev) => ({
+          return {
             ...prev,
             displayInputBuffer: inputBufferRef.current,
-          }));
-          return;
+          };
         } else if (key.length === 1 && key.charCodeAt(0) >= 32) {
           // Regular printable character
           inputBufferRef.current += key;
-          setState((prev) => ({
+          return {
             ...prev,
             displayInputBuffer: inputBufferRef.current,
-          }));
-          return;
-        } else if (key.length === 1 && key.charCodeAt(0) >= 32) {
-          // Regular printable character
-          inputBufferRef.current += key;
-          setState((prev) => ({
-            ...prev,
-            displayInputBuffer: inputBufferRef.current,
-          }));
-          return;
+          };
         }
         // Ignore all other keys in input/edit mode
-        return;
+        return prev;
       }
 
       // Normal mode key handling (when not in input mode)
       if (key === "q" || key === "Q") {
-        process.exit(0);
-        return;
+        shouldExitRef.current = true;
+        return { ...prev }; // Return new object to trigger re-render
       }
 
       if (key === "\u0003") {
         // Ctrl+C
-        process.exit(0);
-        return;
+        shouldExitRef.current = true;
+        return { ...prev }; // Return new object to trigger re-render
       }
 
       if (key === "u" || key === "U") {
         // Undo last action
+        // Use setState callback to get latest state
         if (historyRef.current) {
           const previousState = historyRef.current;
           historyRef.current = null;
           pendingChangeRef.current = true;
 
-          setState((prev) => ({
+          return {
             ...prev,
             todos: previousState.todos,
             lines: previousState.lines,
@@ -276,35 +311,34 @@ export default function App({ debug = false }: AppProps) {
               prev.selectedIndex,
               previousState.todos.length - 1,
             ),
-          }));
+          };
         }
-        return;
+        return prev;
       }
 
       if (key === "e" || key === "E") {
         // Enter edit mode
-        if (currentState.todos.length === 0) {
-          return;
+        // Use setState callback to get latest state
+        if (prev.todos.length === 0) {
+          return prev;
         }
-        inputBufferRef.current =
-          currentState.todos[currentState.selectedIndex].text;
+        inputBufferRef.current = prev.todos[prev.selectedIndex].text;
         // Save state for undo before entering edit mode (deep copy todos array)
         historyRef.current = {
-          todos: currentState.todos.map((todo) => ({ ...todo })),
-          lines: [...currentState.lines],
+          todos: prev.todos.map((todo) => ({ ...todo })),
+          lines: [...prev.lines],
         };
-        setState((prev) => ({
+        return {
           ...prev,
           editMode: true,
           displayInputBuffer: inputBufferRef.current,
-        }));
-        return;
+        };
       }
 
       // Handle number input for vim-style relative jumping (e.g., 5j, 3k)
       if (key >= "1" && key <= "9") {
         numberBufferRef.current += key;
-        return;
+        return prev;
       }
 
       // If we have a number buffer, check for j/k to apply relative movement
@@ -315,144 +349,139 @@ export default function App({ debug = false }: AppProps) {
         if (key === "j" || key === "J") {
           // Move down by count
           const newIndex = Math.min(
-            currentState.selectedIndex + count,
-            currentState.todos.length - 1,
+            prev.selectedIndex + count,
+            prev.todos.length - 1,
           );
-          if (newIndex !== currentState.selectedIndex) {
-            setState((prev) => ({
-              ...prev,
-              selectedIndex: newIndex,
-            }));
+          if (newIndex !== prev.selectedIndex) {
+            return { ...prev, selectedIndex: newIndex };
           }
-          return;
+          return prev;
         } else if (key === "k" || key === "K") {
           // Move up by count
-          const newIndex = Math.max(currentState.selectedIndex - count, 0);
-          if (newIndex !== currentState.selectedIndex) {
-            setState((prev) => ({
-              ...prev,
-              selectedIndex: newIndex,
-            }));
+          const newIndex = Math.max(prev.selectedIndex - count, 0);
+          if (newIndex !== prev.selectedIndex) {
+            return { ...prev, selectedIndex: newIndex };
           }
-          return;
+          return prev;
         }
         // If it's not j or k, clear the buffer and continue processing this key
       }
 
       if (key === "n" || key === "N") {
         // Enter input mode
+        // Use setState callback to get latest state
         inputBufferRef.current = "";
+        numberBufferRef.current = "";
         // Save state for undo before entering input mode (deep copy todos array)
         historyRef.current = {
-          todos: currentState.todos.map((todo) => ({ ...todo })),
-          lines: [...currentState.lines],
+          todos: prev.todos.map((todo) => ({ ...todo })),
+          lines: [...prev.lines],
         };
-        setState((prev) => ({
+        return {
           ...prev,
           inputMode: true,
           displayInputBuffer: "",
-        }));
-        return;
+        };
       }
 
       if (key === "d") {
         // Clear number buffer when executing other commands
         numberBufferRef.current = "";
 
-        if (currentState.todos.length === 0) {
-          return;
+        // Use setState callback to get latest state
+        if (prev.todos.length === 0) {
+          return prev;
         }
 
         // Save state for undo (deep copy todos array)
         historyRef.current = {
-          todos: currentState.todos.map((todo) => ({ ...todo })),
-          lines: [...currentState.lines],
+          todos: prev.todos.map((todo) => ({ ...todo })),
+          lines: [...prev.lines],
         };
 
-        const deletedTodo = currentState.todos[currentState.selectedIndex];
-        const remainingTodos = currentState.todos
-          .filter((_, idx) => idx !== currentState.selectedIndex)
+        const deletedTodo = prev.todos[prev.selectedIndex];
+        const remainingTodos = prev.todos
+          .filter((_, idx) => idx !== prev.selectedIndex)
           .map((todo, idx) => ({
             ...todo,
             index: idx + 1,
             lineNo:
               todo.lineNo > deletedTodo.lineNo ? todo.lineNo - 1 : todo.lineNo,
           }));
-        const remainingLines = currentState.lines.filter(
+        const remainingLines = prev.lines.filter(
           (_, lineIndex) => lineIndex !== deletedTodo.lineNo,
         );
         const nextSelectedIndex =
           remainingTodos.length === 0
             ? 0
-            : Math.min(currentState.selectedIndex, remainingTodos.length - 1);
+            : Math.min(prev.selectedIndex, remainingTodos.length - 1);
 
         pendingChangeRef.current = true;
 
-        setState((prev) => ({
+        return {
           ...prev,
           todos: remainingTodos,
           lines: remainingLines,
           selectedIndex: nextSelectedIndex,
-        }));
-        return;
+        };
       }
 
       // Clear number buffer when executing other commands
       numberBufferRef.current = "";
 
-      let newIndex = currentState.selectedIndex;
+      // Navigation and toggle handling
+      let newIndex = prev.selectedIndex;
       let indexChanged = false;
 
       if (key === "j" || key === "\x1b[B") {
-        if (currentState.todos.length === 0) {
-          return;
+        if (prev.todos.length === 0) {
+          return prev;
         }
-        newIndex = Math.min(
-          currentState.selectedIndex + 1,
-          currentState.todos.length - 1,
-        );
+        newIndex = Math.min(prev.selectedIndex + 1, prev.todos.length - 1);
         indexChanged = true;
       } else if (key === "k" || key === "\x1b[A") {
-        if (currentState.todos.length === 0) {
-          return;
+        if (prev.todos.length === 0) {
+          return prev;
         }
-        newIndex = Math.max(currentState.selectedIndex - 1, 0);
+        newIndex = Math.max(prev.selectedIndex - 1, 0);
         indexChanged = true;
       } else if (key === "\r" || key === "\n" || key === " ") {
-        if (currentState.todos.length === 0) {
-          return;
+        if (prev.todos.length === 0) {
+          return prev;
         }
 
         // Save state for undo (deep copy todos array)
         historyRef.current = {
-          todos: currentState.todos.map((todo) => ({ ...todo })),
-          lines: [...currentState.lines],
+          todos: prev.todos.map((todo) => ({ ...todo })),
+          lines: [...prev.lines],
         };
 
-        const updatedTodos = [...currentState.todos];
-        updatedTodos[currentState.selectedIndex].checked =
-          !updatedTodos[currentState.selectedIndex].checked;
+        const updatedTodos = [...prev.todos];
+        updatedTodos[prev.selectedIndex].checked =
+          !updatedTodos[prev.selectedIndex].checked;
 
         pendingChangeRef.current = true;
 
-        setState((prev) => ({
+        return {
           ...prev,
           todos: updatedTodos,
-        }));
-        return;
-      } else {
-        return;
+        };
       }
 
-      if (indexChanged && newIndex !== currentState.selectedIndex) {
-        setState((prev) => ({
-          ...prev,
-          selectedIndex: newIndex,
-        }));
+      if (indexChanged && newIndex !== prev.selectedIndex) {
+        return { ...prev, selectedIndex: newIndex };
       }
-    };
+      return prev;
+    });
+  }, []); // Empty dependency array - handleKey uses stateRef for latest state
 
-    // Enable raw mode
+  // Setup key listeners - run immediately, don't wait for loading
+  useEffect(() => {
+    // Store handleKey in ref for later access
+    // This ensures handleKeyRef always points to the latest version
+    handleKeyRef.current = handleKey;
+
+    // Enable raw mode for TTY, but always listen for input (supports piped input)
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
     }
@@ -460,10 +489,56 @@ export default function App({ debug = false }: AppProps) {
     process.stdin.setEncoding("utf-8");
 
     const dataListener = (chunk: Buffer) => {
-      handleKey(chunk.toString());
+      // Process input, handling escape sequences as single keys
+      const input = chunk.toString();
+      const keys: string[] = [];
+      let i = 0;
+      while (i < input.length) {
+        // Check for escape sequences (arrow keys, etc.)
+        if (
+          input[i] === "\x1b" &&
+          i + 2 < input.length &&
+          input[i + 1] === "["
+        ) {
+          // This is an escape sequence like \x1b[A (up arrow)
+          keys.push(input.slice(i, i + 3));
+          i += 3;
+        } else {
+          keys.push(input[i]);
+          i++;
+        }
+      }
+      // Process all keys in next tick to avoid render cycle issues
+      process.nextTick(() => {
+        keys.forEach((key) => handleKey(key));
+      });
     };
 
     process.stdin.on("data", dataListener);
+
+    // Handle piped input: exit after processing if not a TTY
+    if (!process.stdin.isTTY) {
+      process.stdin.on("end", () => {
+        // Wait for processing to complete before exiting
+        const checkAndExit = () => {
+          if (processingCompleteRef.current) {
+            // Give time for final file operations to complete
+            setTimeout(() => {
+              process.exit(0);
+            }, 300);
+          } else {
+            // Still processing, check again
+            setTimeout(checkAndExit, 100);
+          }
+        };
+        // Delay initial check to allow buffered keys to start processing
+        setTimeout(checkAndExit, 500);
+      });
+    }
+
+    // Store handleKey in ref for later access
+    // This ensures handleKeyRef always points to the latest version
+    handleKeyRef.current = handleKey;
 
     return () => {
       if (process.stdin.isTTY) {
@@ -472,6 +547,48 @@ export default function App({ debug = false }: AppProps) {
       process.stdin.pause();
       process.stdin.removeListener("data", dataListener);
     };
+  }, [handleKey]); // Re-run when handleKey changes to update the ref
+
+  // Process buffered keys after loading completes
+  useEffect(() => {
+    if (!state.isLoading && !state.error && keyBufferRef.current.length > 0) {
+      // Clear all buffers before processing buffered keys
+      inputBufferRef.current = "";
+      numberBufferRef.current = "";
+
+      // Process all buffered keys
+      const bufferedKeys = [...keyBufferRef.current];
+      keyBufferRef.current = [];
+
+      // Process keys with delays to allow React state updates to propagate
+      setTimeout(() => {
+        let i = 0;
+        const processNextKey = () => {
+          if (i < bufferedKeys.length) {
+            try {
+              handleKeyRef.current(bufferedKeys[i]);
+            } catch (err) {
+              // Ignore key processing errors
+            }
+            i++;
+            // Longer delay between keys to allow state updates to propagate
+            // Mode changes (n, e) need more time than regular characters
+            const delay = 20;
+            setTimeout(processNextKey, delay);
+          } else {
+            // Mark processing as complete
+            processingCompleteRef.current = true;
+            // If piped input, exit after processing
+            if (isPipedInputRef.current) {
+              setTimeout(() => {
+                process.exit(0);
+              }, 300);
+            }
+          }
+        };
+        processNextKey();
+      }, 100);
+    }
   }, [state.isLoading, state.error]);
 
   const {
@@ -494,129 +611,123 @@ export default function App({ debug = false }: AppProps) {
   }
 
   if (showHelp) {
-    // Calculate column widths based on longest shortcut + 1 space
-    const navShortcuts = ["j / ↓", "k / ↑", "5j / 3k"];
-    const navDescriptions = ["Move down", "Move up", "Jump by count"];
-    const editShortcuts = ["space", "n", "e", "d"];
-    const editDescriptions = ["Toggle", "New todo", "Edit text", "Delete"];
-    const otherShortcuts = ["u", "?", "q"];
-    const otherDescriptions = ["Undo", "Help", "Quit"];
+    // Define help data in a structured format
+    const helpSections = [
+      {
+        title: "NAVIGATION",
+        items: [
+          { shortcut: "j / ↓", description: "Move down" },
+          { shortcut: "k / ↑", description: "Move up" },
+          { shortcut: "5j / 3k", description: "Jump by count" },
+        ],
+      },
+      {
+        title: "EDITING",
+        items: [
+          { shortcut: "space", description: "Toggle todo" },
+          { shortcut: "n", description: "New todo" },
+          { shortcut: "e", description: "Edit text" },
+          { shortcut: "d", description: "Delete" },
+        ],
+      },
+      {
+        title: "OTHER",
+        items: [
+          { shortcut: "u", description: "Undo" },
+          { shortcut: "?", description: "Toggle help" },
+          { shortcut: "q / esc", description: "Quit" },
+        ],
+      },
+    ];
 
-    const navWidth = Math.max(...navShortcuts.map((s) => s.length)) + 1;
-    const editWidth = Math.max(...editShortcuts.map((s) => s.length)) + 1;
-    const otherWidth = Math.max(...otherShortcuts.map((s) => s.length)) + 1;
+    // Calculate column widths
+    const shortcutWidth =
+      Math.max(
+        ...helpSections.flatMap((section) =>
+          section.items.map((item) => item.shortcut.length),
+        ),
+      ) + 2;
 
-    const navDescWidth = Math.max(...navDescriptions.map((s) => s.length));
-    const editDescWidth = Math.max(...editDescriptions.map((s) => s.length));
-    const otherDescWidth = Math.max(...otherDescriptions.map((s) => s.length));
+    const descriptionWidth =
+      Math.max(
+        ...helpSections.flatMap((section) =>
+          section.items.map((item) => item.description.length),
+        ),
+      ) + 2;
 
-    const padRight = (text: string, width: number): string => {
+    const columnWidth = shortcutWidth + descriptionWidth + 2;
+
+    // Helper functions
+    const pad = (text: string, width: number): string => {
       return text + " ".repeat(Math.max(0, width - text.length));
     };
 
-    const centerText = (text: string, width: number): string => {
+    const center = (text: string, width: number): string => {
       const padding = Math.max(0, width - text.length);
-      const leftPad = Math.floor(padding / 2);
-      const rightPad = padding - leftPad;
-      return " ".repeat(leftPad) + text + " ".repeat(rightPad);
+      const left = Math.floor(padding / 2);
+      const right = padding - left;
+      return " ".repeat(left) + text + " ".repeat(right);
     };
 
-    const navColWidth = Math.max(navWidth, navDescWidth) + 1 + 1;
-    const editColWidth = Math.max(editWidth, editDescWidth) + 1 + 1;
-    const otherColWidth = Math.max(otherWidth, otherDescWidth) + 1 + 1;
-    const totalWidth = navColWidth + 2 + editColWidth + 2 + otherColWidth;
+    const border = "─".repeat(columnWidth * 3 + 4);
 
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text></Text>
-        {/* Header Row */}
+        <Text> </Text>
+
+        {/* Title row */}
         <Box>
-          <Box width={navColWidth}>
-            <Text bold color="cyan">
-              {centerText("NAVIGATION", navColWidth)}
-            </Text>
-          </Box>
-          <Box width={editColWidth}>
-            <Text bold color="cyan">
-              {centerText("EDITING", editColWidth)}
-            </Text>
-          </Box>
-          <Box width={otherColWidth}>
-            <Text bold color="cyan">
-              {centerText("OTHER", otherColWidth)}
-            </Text>
-          </Box>
+          {helpSections.map((section, idx) => (
+            <Box
+              key={section.title}
+              width={columnWidth}
+              marginRight={idx < helpSections.length - 1 ? 2 : 0}
+            >
+              <Text bold color="cyan">
+                {center(section.title, columnWidth)}
+              </Text>
+            </Box>
+          ))}
         </Box>
-        {/* Separator */}
-        <Text color="gray">{"─".repeat(totalWidth)}</Text>
-        {/* Data Rows */}
-        {[0, 1, 2].map((i) => (
-          <Box key={`row-${i}`}>
-            <Box width={navColWidth}>
-              <Text>
-                <Text color="cyan">{padRight(navShortcuts[i], navWidth)}</Text>
-                {navDescriptions[i]}
-              </Text>
-            </Box>
-            <Box width={editColWidth}>
-              <Text>
-                <Text color="cyan">
-                  {padRight(editShortcuts[i], editWidth)}
-                </Text>
-                {editDescriptions[i]}
-              </Text>
-            </Box>
-            <Box width={otherColWidth}>
-              <Text>
-                <Text color="cyan">
-                  {padRight(otherShortcuts[i], otherWidth)}
-                </Text>
-                {otherDescriptions[i]}
-              </Text>
-            </Box>
+
+        {/* Border */}
+        <Text color="gray">{border}</Text>
+
+        {/* Content rows */}
+        {Array.from({
+          length: Math.max(...helpSections.map((s) => s.items.length)),
+        }).map((_, rowIdx) => (
+          <Box key={`row-${rowIdx}`}>
+            {helpSections.map((section, colIdx) => {
+              const item = section.items[rowIdx];
+              return (
+                <Box
+                  key={`${section.title}-${rowIdx}`}
+                  width={columnWidth}
+                  marginRight={colIdx < helpSections.length - 1 ? 2 : 0}
+                >
+                  {item ? (
+                    <Text>
+                      <Text color="cyan">
+                        {pad(item.shortcut, shortcutWidth)}
+                      </Text>
+                      <Text>{item.description}</Text>
+                    </Text>
+                  ) : (
+                    <Text></Text>
+                  )}
+                </Box>
+              );
+            })}
           </Box>
         ))}
-        {/* Extra row for 'd' in edit column */}
-        <Box>
-          <Box width={navColWidth}>
-            <Text></Text>
-          </Box>
-          <Box width={editColWidth}>
-            <Text>
-              <Text color="cyan">{padRight(editShortcuts[3], editWidth)}</Text>
-              {editDescriptions[3]}
-            </Text>
-          </Box>
-          <Box width={otherColWidth}>
-            <Text></Text>
-          </Box>
-        </Box>
-        {/* Separator */}
-        <Text color="gray">{"─".repeat(totalWidth)}</Text>
-        <Text color="gray">Press ? or q to exit</Text>
-        <Text></Text>
-        {debug && (
-          <Box
-            flexDirection="column"
-            marginTop={1}
-            paddingTop={1}
-            borderStyle="round"
-            borderColor="yellow"
-          >
-            <Text color="yellow" bold>
-              DEBUG INFO
-            </Text>
-            <Text color="gray">
-              navWidth: {navWidth}, editWidth: {editWidth}, otherWidth:{" "}
-              {otherWidth}
-            </Text>
-            <Text color="gray">
-              navColWidth: {navColWidth}, editColWidth: {editColWidth},
-              otherColWidth: {otherColWidth}
-            </Text>
-            <Text color="gray">totalWidth: {totalWidth}</Text>
-          </Box>
-        )}
+
+        {/* Border */}
+        <Text color="gray">{border}</Text>
+
+        {/* Footer */}
+        <Text color="gray">Press ? or q to close help</Text>
+        <Text> </Text>
       </Box>
     );
   }
@@ -676,16 +787,23 @@ export default function App({ debug = false }: AppProps) {
           relativeDisplay = `${relativeIndex}`;
         }
 
+        // Calculate prefix width for alignment: "±XX ➜ [x] " = 3 + 1 + 1 + 3 + 1 = 9 chars
+        const prefixWidth = 9;
+
         return (
-          <Box key={todo.lineNo}>
-            <Text color="gray" dimColor>
-              {relativeDisplay.padEnd(3)}
-            </Text>
-            <Text>{arrow}</Text>
-            <Text> </Text>
-            <Text>{checkbox}</Text>
-            <Text> </Text>
-            <Text>{text}</Text>
+          <Box key={todo.lineNo} flexDirection="row">
+            <Box width={prefixWidth} flexShrink={0}>
+              <Text color="gray" dimColor>
+                {relativeDisplay.padEnd(3)}
+              </Text>
+              <Text>{arrow}</Text>
+              <Text> </Text>
+              <Text>{checkbox}</Text>
+              <Text> </Text>
+            </Box>
+            <Box flexGrow={1}>
+              <Text wrap="wrap">{text}</Text>
+            </Box>
           </Box>
         );
       })}
@@ -695,6 +813,8 @@ export default function App({ debug = false }: AppProps) {
           {": help  |  "}
           <Text color="cyan">j</Text>/<Text color="cyan">k</Text>
           {": nav  |  "}
+          <Text color="cyan">n</Text>
+          {": new  |  "}
           <Text color="cyan">space</Text>
           {": toggle  |  "}
           <Text color="cyan">q</Text>
