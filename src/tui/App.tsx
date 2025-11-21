@@ -122,37 +122,65 @@ export default function App() {
       // In input mode or edit mode, only handle Enter and Backspace
       if (currentState.inputMode || currentState.editMode) {
         if (key === "\r" || key === "\n") {
-          // Confirm new entry
           const trimmedText = inputBufferRef.current.trim();
           if (trimmedText.length > 0) {
-            setState((prev) => {
-              const newTodo: Todo = {
-                index: prev.todos.length + 1,
-                checked: false,
-                text: trimmedText,
-                lineNo: prev.lines.length,
-              };
+            if (currentState.editMode) {
+              // Update existing todo
+              setState((prev) => {
+                const updatedTodos = [...prev.todos];
+                const selectedTodo = updatedTodos[prev.selectedIndex];
+                updatedTodos[prev.selectedIndex] = {
+                  ...selectedTodo,
+                  text: trimmedText,
+                };
 
-              const updatedTodos = [...prev.todos, newTodo];
-              const updatedLines = [...prev.lines, `- [ ] ${trimmedText}`];
+                const updatedLines = [...prev.lines];
+                updatedLines[selectedTodo.lineNo] =
+                  `- ${selectedTodo.checked ? "[x]" : "[ ]"} ${trimmedText}`;
 
-              pendingChangeRef.current = true;
-              inputBufferRef.current = "";
+                pendingChangeRef.current = true;
+                inputBufferRef.current = "";
 
-              return {
-                ...prev,
-                todos: updatedTodos,
-                lines: updatedLines,
-                selectedIndex: updatedTodos.length - 1,
-                inputMode: false,
-                displayInputBuffer: "",
-              };
-            });
+                return {
+                  ...prev,
+                  todos: updatedTodos,
+                  lines: updatedLines,
+                  editMode: false,
+                  displayInputBuffer: "",
+                };
+              });
+            } else {
+              // Create new todo
+              setState((prev) => {
+                const newTodo: Todo = {
+                  index: prev.todos.length + 1,
+                  checked: false,
+                  text: trimmedText,
+                  lineNo: prev.lines.length,
+                };
+
+                const updatedTodos = [...prev.todos, newTodo];
+                const updatedLines = [...prev.lines, `- [ ] ${trimmedText}`];
+
+                pendingChangeRef.current = true;
+                inputBufferRef.current = "";
+
+                return {
+                  ...prev,
+                  todos: updatedTodos,
+                  lines: updatedLines,
+                  selectedIndex: updatedTodos.length - 1,
+                  inputMode: false,
+                  displayInputBuffer: "",
+                };
+              });
+            }
           } else {
             // Empty input, just exit
             setState((prev) => ({
               ...prev,
               inputMode: false,
+              editMode: false,
               displayInputBuffer: "",
             }));
             inputBufferRef.current = "";
