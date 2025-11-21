@@ -6,13 +6,13 @@ A fast, single-binary CLI tool for managing todos in markdown files. Features vi
 
 ## Features
 
-- **Fast** - Single binary, instant startup
-- **Markdown-native** - Todos live in `todo.md`, version control friendly
-- **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
-- **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
-- **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
-- **Auto-updates** - Notifies when new versions are available
-- **Cross-platform** - macOS, Linux, Windows
+- ⚡ **Fast** - Single binary, instant startup
+- 📝 **Markdown-native** - Todos live in `todo.md`, version control friendly
+- ⌨️ **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
+- 🎨 **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
+- 🔧 **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
+- 🔄 **Auto-updates** - Notifies when new versions are available
+- 🌍 **Cross-platform** - macOS, Linux, Windows
 
 ## Installation
 
