@@ -9,9 +9,12 @@ import { launchTUI } from "./tui/index";
 
 const args = process.argv.slice(2);
 
+// Check for debug flag
+const DEBUG = process.env.TDX_DEBUG === "1" || args.includes("--debug");
+
 if (args.length === 0) {
   // No arguments - launch TUI
-  launchTUI();
+  launchTUI(DEBUG);
 } else {
   const command = args[0];
 

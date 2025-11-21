@@ -22,7 +22,11 @@ interface AppState {
   showHelp: boolean;
 }
 
-export default function App() {
+interface AppProps {
+  debug?: boolean;
+}
+
+export default function App({ debug = false }: AppProps) {
   const [state, setState] = useState<AppState>({
     todos: [],
     lines: [],
@@ -502,6 +506,10 @@ export default function App() {
     const editWidth = Math.max(...editShortcuts.map((s) => s.length)) + 1;
     const otherWidth = Math.max(...otherShortcuts.map((s) => s.length)) + 1;
 
+    const padRight = (text: string, width: number): string => {
+      return text + " ".repeat(Math.max(0, width - text.length));
+    };
+
     const centerText = (text: string, width: number): string => {
       const padding = Math.max(0, width - text.length);
       const leftPad = Math.floor(padding / 2);
@@ -509,91 +517,102 @@ export default function App() {
       return " ".repeat(leftPad) + text + " ".repeat(rightPad);
     };
 
-    const padRight = (text: string, width: number): string => {
-      return text + " ".repeat(Math.max(0, width - text.length));
-    };
-
-    const navColWidth = navWidth + 11;
-    const editColWidth = editWidth + 10;
-    const otherColWidth = otherWidth + 6;
-    const totalWidth = navColWidth + 2 + editColWidth + 2 + otherColWidth;
+    const navColWidth = navWidth + 12;
+    const editColWidth = editWidth + 12;
+    const otherColWidth = otherWidth + 8;
+    const totalWidth = navColWidth + editColWidth + otherColWidth + 4; // +4 for spacing between columns
 
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text></Text>
+        {/* Header Row */}
         <Box>
-          <Text bold color="cyan">
-            {centerText("NAVIGATION", navColWidth)}
-          </Text>
-          <Text> </Text>
-          <Text bold color="cyan">
-            {centerText("EDITING", editColWidth)}
-          </Text>
-          <Text> </Text>
-          <Text bold color="cyan">
-            {centerText("OTHER", otherColWidth)}
-          </Text>
+          <Box width={navColWidth}>
+            <Text bold color="cyan">
+              {centerText("NAVIGATION", navColWidth)}
+            </Text>
+          </Box>
+          <Box width={editColWidth}>
+            <Text bold color="cyan">
+              {centerText("EDITING", editColWidth)}
+            </Text>
+          </Box>
+          <Box width={otherColWidth}>
+            <Text bold color="cyan">
+              {centerText("OTHER", otherColWidth)}
+            </Text>
+          </Box>
         </Box>
+        {/* Separator */}
         <Text color="gray">{"─".repeat(totalWidth)}</Text>
+        {/* Data Rows */}
+        {[0, 1, 2].map((i) => (
+          <Box key={`row-${i}`}>
+            <Box width={navColWidth}>
+              <Text>
+                <Text color="cyan">{padRight(navShortcuts[i], navWidth)}</Text>
+                {navDescriptions[i]}
+              </Text>
+            </Box>
+            <Box width={editColWidth}>
+              <Text>
+                <Text color="cyan">
+                  {padRight(editShortcuts[i], editWidth)}
+                </Text>
+                {editDescriptions[i]}
+              </Text>
+            </Box>
+            <Box width={otherColWidth}>
+              <Text>
+                <Text color="cyan">
+                  {padRight(otherShortcuts[i], otherWidth)}
+                </Text>
+                {otherDescriptions[i]}
+              </Text>
+            </Box>
+          </Box>
+        ))}
+        {/* Extra row for 'd' in edit column */}
         <Box>
-          <Text>
-            <Text color="cyan">{padRight(navShortcuts[0], navWidth)}</Text>
-            {navDescriptions[0]}
-          </Text>
-          <Text> </Text>
-          <Text>
-            <Text color="cyan">{padRight(editShortcuts[0], editWidth)}</Text>
-            {editDescriptions[0]}
-          </Text>
-          <Text> </Text>
-          <Text>
-            <Text color="cyan">{otherShortcuts[0]}</Text>
-            {" " + otherDescriptions[0]}
-          </Text>
+          <Box width={navColWidth}>
+            <Text></Text>
+          </Box>
+          <Box width={editColWidth}>
+            <Text>
+              <Text color="cyan">{padRight(editShortcuts[3], editWidth)}</Text>
+              {editDescriptions[3]}
+            </Text>
+          </Box>
+          <Box width={otherColWidth}>
+            <Text></Text>
+          </Box>
         </Box>
-        <Box>
-          <Text>
-            <Text color="cyan">{padRight(navShortcuts[1], navWidth)}</Text>
-            {navDescriptions[1]}
-          </Text>
-          <Text> </Text>
-          <Text>
-            <Text color="cyan">{padRight(editShortcuts[1], editWidth)}</Text>
-            {editDescriptions[1]}
-          </Text>
-          <Text> </Text>
-          <Text>
-            <Text color="cyan">{otherShortcuts[1]}</Text>
-            {" " + otherDescriptions[1]}
-          </Text>
-        </Box>
-        <Box>
-          <Text>
-            <Text color="cyan">{padRight(navShortcuts[2], navWidth)}</Text>
-            {navDescriptions[2]}
-          </Text>
-          <Text> </Text>
-          <Text>
-            <Text color="cyan">{padRight(editShortcuts[2], editWidth)}</Text>
-            {editDescriptions[2]}
-          </Text>
-          <Text> </Text>
-          <Text>
-            <Text color="cyan">{otherShortcuts[2]}</Text>
-            {" " + otherDescriptions[2]}
-          </Text>
-        </Box>
-        <Box>
-          <Text></Text>
-          <Text> </Text>
-          <Text>
-            <Text color="cyan">{padRight(editShortcuts[3], editWidth)}</Text>
-            {editDescriptions[3]}
-          </Text>
-        </Box>
+        {/* Separator */}
         <Text color="gray">{"─".repeat(totalWidth)}</Text>
         <Text color="gray">Press ? or q to exit</Text>
         <Text></Text>
+        {debug && (
+          <Box
+            flexDirection="column"
+            marginTop={1}
+            paddingTop={1}
+            borderStyle="round"
+            borderColor="yellow"
+          >
+            <Text color="yellow" bold>
+              DEBUG INFO
+            </Text>
+            <Text color="gray">
+              navWidth: {navWidth}, editWidth: {editWidth}, otherWidth:{" "}
+              {otherWidth}
+            </Text>
+            <Text color="gray">
+              navColWidth: {navColWidth}, editColWidth: {editColWidth},
+              otherColWidth: {otherColWidth}
+            </Text>
+            <Text color="gray">totalWidth: {totalWidth}</Text>
+          </Box>
+        )}
       </Box>
     );
   }
