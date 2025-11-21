@@ -4,6 +4,7 @@ import { list } from "./commands/list";
 import { add } from "./commands/add";
 import { toggle } from "./commands/toggle";
 import { edit } from "./commands/edit";
+import { deleteTodo } from "./commands/delete";
 import { launchTUI } from "./tui/index";
 
 const args = process.argv.slice(2);
@@ -43,6 +44,14 @@ if (args.length === 0) {
       edit(args[1], args.slice(2).join(" "));
       break;
 
+    case "delete":
+      if (args.length < 2) {
+        console.error("Usage: tdx delete <index>");
+        process.exit(1);
+      }
+      deleteTodo(args[1]);
+      break;
+
     case "help":
     case "-h":
     case "--help":
@@ -66,12 +75,14 @@ Usage:
   tdx add "Text"         Add a new todo
   tdx toggle <index>     Toggle a todo (1-based index)
   tdx edit <index> "Text" Edit a todo's text
+  tdx delete <index>     Delete a todo (1-based index)
   tdx help               Show this help message
 
 Interactive TUI Controls:
   j or Down              Move selection down
   k or Up                Move selection up
   Enter or Space         Toggle todo completion
+  d                      Delete selected todo immediately
   q or Esc               Quit
 
 Examples:

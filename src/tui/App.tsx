@@ -95,29 +95,71 @@ export default function App() {
       }
 
       setState((prev) => {
+        if (key === "d") {
+          if (prev.todos.length === 0) {
+            return prev;
+          }
+
+          const deletedTodo = prev.todos[prev.selectedIndex];
+          const remainingTodos = prev.todos
+            .filter((_, idx) => idx !== prev.selectedIndex)
+            .map((todo, idx) => ({
+              ...todo,
+              index: idx + 1,
+              lineNo:
+                todo.lineNo > deletedTodo.lineNo
+                  ? todo.lineNo - 1
+                  : todo.lineNo,
+            }));
+          const remainingLines = prev.lines.filter(
+            (_, lineIndex) => lineIndex !== deletedTodo.lineNo,
+          );
+          const nextSelectedIndex =
+            remainingTodos.length === 0
+              ? 0
+              : Math.min(prev.selectedIndex, remainingTodos.length - 1);
+
+          pendingChangeRef.current = true;
+
+          return {
+            ...prev,
+            todos: remainingTodos,
+            lines: remainingLines,
+            selectedIndex: nextSelectedIndex,
+          };
+        }
         let newIndex = prev.selectedIndex;
 
         if (key === "j" || key === "\x1b[B") {
-          // j or Down arrow
+          if (prev.todos.length === 0) {
+            return prev;
+          }
           newIndex = Math.min(prev.selectedIndex + 1, prev.todos.length - 1);
         } else if (key === "k" || key === "\x1b[A") {
-          // k or Up arrow
+          if (prev.todos.length === 0) {
+            return prev;
+          }
           newIndex = Math.max(prev.selectedIndex - 1, 0);
         } else if (key === "\r" || key === "\n" || key === " ") {
-          // Enter, space key - toggle todo
-          if (prev.todos.length > 0) {
-            const updatedTodos = [...prev.todos];
-            updatedTodos[prev.selectedIndex].checked =
-              !updatedTodos[prev.selectedIndex].checked;
-
-            // Mark that we need to persist
-            pendingChangeRef.current = true;
-
-            return {
-              ...prev,
-              todos: updatedTodos,
-            };
+          if (prev.todos.length === 0) {
+            return prev;
           }
+
+          const updatedTodos = [...prev.todos];
+          updatedTodos[prev.selectedIndex].checked =
+            !updatedTodos[prev.selectedIndex].checked;
+
+          pendingChangeRef.current = true;
+
+          return {
+            ...prev,
+            todos: updatedTodos,
+          };
+        } else {
+          return prev;
+        }
+
+        if (newIndex === prev.selectedIndex) {
           return prev;
         }
 
