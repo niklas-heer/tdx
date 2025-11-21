@@ -13,22 +13,37 @@ A lightweight, single-binary CLI tool for managing todos in a `todo.md` file usi
 
 ## Installation
 
-### From Source
-
-Clone the repository and build:
+### Homebrew (macOS/Linux)
 
 ```bash
-git clone <repository>
-cd tdx
-bun install
-bun build --compile --minify src/cli.ts --outfile tdx
-sudo mv tdx /usr/local/bin/  # Optional: add to PATH
+brew tap niklas-heer/tap
+brew install tdx
 ```
 
-### Development Mode
+### Quick Install Script
 
 ```bash
-bun run src/cli.ts
+curl -fsSL https://raw.githubusercontent.com/niklas-heer/tdx/main/scripts/install.sh | bash
+```
+
+### Download Binary
+
+Download the latest binary for your platform from [Releases](https://github.com/niklas-heer/tdx/releases):
+
+- `tdx-darwin-arm64` - macOS Apple Silicon
+- `tdx-darwin-x64` - macOS Intel
+- `tdx-linux-x64` - Linux x64
+- `tdx-linux-arm64` - Linux ARM64
+- `tdx-windows-x64.exe` - Windows x64
+
+### From Source
+
+```bash
+git clone https://github.com/niklas-heer/tdx.git
+cd tdx
+bun install
+just build
+just install-bin
 ```
 
 ## Usage

@@ -155,6 +155,10 @@ commit MESSAGE:
 release:
     @./scripts/release.sh
 
+# Update Homebrew formula after release - usage: just update-homebrew 0.2.0
+update-homebrew VERSION:
+    @./scripts/update-homebrew.sh {{VERSION}}
+
 # ============================================================================
 # WORKFLOWS & DEMOS
 # ============================================================================
