@@ -1,6 +1,6 @@
 {
   "name": "tdx",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A fast, Bun-based CLI tool for managing todos in markdown",
   "type": "module",
   "main": "src/cli.ts",
