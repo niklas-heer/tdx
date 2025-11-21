@@ -494,75 +494,101 @@ export default function App() {
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text></Text>
         <Box>
-          <Box width={24}>
+          <Box width={28}>
             <Text bold color="cyan">
               NAVIGATION
             </Text>
           </Box>
-          <Box width={24}>
+          <Box width={28}>
             <Text bold color="cyan">
               EDITING
             </Text>
           </Box>
-          <Box width={16}>
+          <Box width={18}>
             <Text bold color="cyan">
               OTHER
             </Text>
           </Box>
         </Box>
         <Text color="gray">
-          ─────────────────────────────────────────────────────────────
+          ──────────────────────────────────────────────────────────────────
         </Text>
         <Box>
-          <Box flexDirection="column" width={24}>
-            <Text>
-              <Text color="cyan">j</Text>
-              <Text> / ↓</Text>
-              <Text> Move down</Text>
-            </Text>
-            <Text>
-              <Text color="cyan">k</Text>
-              <Text> / ↑</Text>
-              <Text> Move up</Text>
-            </Text>
-            <Text>
-              <Text color="cyan">5j</Text>
-              <Text> / </Text>
-              <Text color="cyan">3k</Text>
-              <Text> Jump by count</Text>
-            </Text>
+          <Box flexDirection="column" width={28}>
+            <Box width={28}>
+              <Box width={10}>
+                <Text>
+                  <Text color="cyan">j</Text>
+                  <Text> / ↓</Text>
+                </Text>
+              </Box>
+              <Text>Move down</Text>
+            </Box>
+            <Box width={28}>
+              <Box width={10}>
+                <Text>
+                  <Text color="cyan">k</Text>
+                  <Text> / ↑</Text>
+                </Text>
+              </Box>
+              <Text>Move up</Text>
+            </Box>
+            <Box width={28}>
+              <Box width={10}>
+                <Text>
+                  <Text color="cyan">5j</Text>
+                  <Text> / </Text>
+                  <Text color="cyan">3k</Text>
+                </Text>
+              </Box>
+              <Text>Jump by count</Text>
+            </Box>
           </Box>
-          <Box flexDirection="column" width={24}>
-            <Text>
-              <Text color="cyan">space</Text>
-              <Text> Toggle</Text>
-            </Text>
-            <Text>
-              <Text color="cyan">n</Text>
-              <Text> New todo</Text>
-            </Text>
-            <Text>
-              <Text color="cyan">e</Text>
-              <Text> Edit text</Text>
-            </Text>
-            <Text>
-              <Text color="cyan">d</Text>
-              <Text> Delete</Text>
-            </Text>
+          <Box flexDirection="column" width={28}>
+            <Box width={28}>
+              <Box width={10}>
+                <Text color="cyan">space</Text>
+              </Box>
+              <Text>Toggle</Text>
+            </Box>
+            <Box width={28}>
+              <Box width={10}>
+                <Text color="cyan">n</Text>
+              </Box>
+              <Text>New todo</Text>
+            </Box>
+            <Box width={28}>
+              <Box width={10}>
+                <Text color="cyan">e</Text>
+              </Box>
+              <Text>Edit text</Text>
+            </Box>
+            <Box width={28}>
+              <Box width={10}>
+                <Text color="cyan">d</Text>
+              </Box>
+              <Text>Delete</Text>
+            </Box>
           </Box>
-          <Box flexDirection="column" width={16}>
-            <Text>
-              <Text color="cyan">u</Text>
-              <Text> Undo</Text>
-            </Text>
-            <Text>
-              <Text color="cyan">?</Text>
-              <Text> Help</Text>
-            </Text>
-            <Text>
-              <Text color="cyan">q</Text>
-              <Text> Quit</Text>
-            </Text>
+          <Box flexDirection="column" width={18}>
+            <Box width={18}>
+              <Box width={10}>
+                <Text color="cyan">u</Text>
+              </Box>
+              <Text>Undo</Text>
+            </Box>
+            <Box width={18}>
+              <Box width={10}>
+                <Text color="cyan">?</Text>
+              </Box>
+              <Text>Help</Text>
+            </Box>
+            <Box width={18}>
+              <Box width={10}>
+                <Text color="cyan">q</Text>
+              </Box>
+              <Text>Quit</Text>
+            </Box>
           </Box>
         </Box>
         <Text color="gray">
