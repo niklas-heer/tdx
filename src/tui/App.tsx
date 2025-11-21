@@ -38,6 +38,7 @@ export default function App() {
   const inputBufferRef = useRef<string>("");
   const stateRef = useRef(state);
   const historyRef = useRef<{ todos: Todo[]; lines: string[] } | null>(null);
+  const numberBufferRef = useRef<string>("");
 
   // Keep stateRef in sync with state
   useEffect(() => {
@@ -267,6 +268,26 @@ export default function App() {
         return;
       }
 
+      // Handle number input for vim-style jumping
+      if (key >= "1" && key <= "9") {
+        numberBufferRef.current += key;
+        return;
+      }
+
+      // If we have a number buffer, check if it's a valid jump target
+      if (numberBufferRef.current) {
+        const targetIndex = parseInt(numberBufferRef.current, 10) - 1; // Convert to 0-based
+        numberBufferRef.current = "";
+
+        if (targetIndex >= 0 && targetIndex < currentState.todos.length) {
+          setState((prev) => ({
+            ...prev,
+            selectedIndex: targetIndex,
+          }));
+        }
+        return;
+      }
+
       if (key === "n" || key === "N") {
         // Enter input mode
         inputBufferRef.current = "";
@@ -284,6 +305,9 @@ export default function App() {
       }
 
       if (key === "d") {
+        // Clear number buffer when executing other commands
+        numberBufferRef.current = "";
+
         if (currentState.todos.length === 0) {
           return;
         }
@@ -321,6 +345,9 @@ export default function App() {
         }));
         return;
       }
+
+      // Clear number buffer when executing other commands
+      numberBufferRef.current = "";
 
       let newIndex = currentState.selectedIndex;
       let indexChanged = false;
