@@ -1,6 +1,6 @@
 {
   "name": "tdx",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Your todos, in markdown, at terminal speed",
   "type": "module",
   "main": "src/cli.ts",
