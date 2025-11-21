@@ -492,28 +492,67 @@ export default function App() {
   if (showHelp) {
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Text bold color="cyan">
-          TDX - Keyboard Shortcuts
+        <Text></Text>
+        <Box>
+          <Text bold color="cyan">
+            NAVIGATION
+          </Text>
+          <Text> │ </Text>
+          <Text bold color="cyan">
+            EDITING
+          </Text>
+          <Text> │ </Text>
+          <Text bold color="cyan">
+            OTHER
+          </Text>
+        </Box>
+        <Text color="gray">
+          ────────────────────────────────────────────────────
+        </Text>
+        <Box>
+          <Box flexDirection="column" width={18} marginRight={3}>
+            <Text>
+              <Text color="cyan">j</Text> <Text color="dim">/ ↓</Text> Move down
+            </Text>
+            <Text>
+              <Text color="cyan">k</Text> <Text color="dim">/ ↑</Text> Move up
+            </Text>
+            <Text>
+              <Text color="cyan">5j</Text> <Text color="dim">/ </Text>
+              <Text color="cyan">3k</Text> Jump by count
+            </Text>
+          </Box>
+          <Box flexDirection="column" width={20} marginRight={3}>
+            <Text>
+              <Text color="cyan">space</Text> <Text color="dim">/ enter</Text>{" "}
+              Toggle
+            </Text>
+            <Text>
+              <Text color="cyan">n</Text> New todo
+            </Text>
+            <Text>
+              <Text color="cyan">e</Text> Edit text
+            </Text>
+            <Text>
+              <Text color="cyan">d</Text> Delete
+            </Text>
+          </Box>
+          <Box flexDirection="column">
+            <Text>
+              <Text color="cyan">u</Text> Undo
+            </Text>
+            <Text>
+              <Text color="cyan">?</Text> Help
+            </Text>
+            <Text>
+              <Text color="cyan">q</Text> <Text color="dim">/ esc</Text> Quit
+            </Text>
+          </Box>
+        </Box>
+        <Text color="gray">
+          ────────────────────────────────────────────────────
         </Text>
         <Text></Text>
-        <Text bold>Navigation:</Text>
-        <Text> j / Down arrow Move down one item</Text>
-        <Text> k / Up arrow Move up one item</Text>
-        <Text> [count]j Move down by count (e.g., 5j)</Text>
-        <Text> [count]k Move up by count (e.g., 3k)</Text>
-        <Text></Text>
-        <Text bold>Editing:</Text>
-        <Text> Space / Enter Toggle todo completion</Text>
-        <Text> n Create a new todo</Text>
-        <Text> e Edit selected todo text</Text>
-        <Text> d Delete selected todo</Text>
-        <Text></Text>
-        <Text bold>Other:</Text>
-        <Text> u Undo last action</Text>
-        <Text> ? Toggle this help menu</Text>
-        <Text> q / Esc Exit (or close help)</Text>
-        <Text></Text>
-        <Text color="gray">Press ? or q to close this help menu</Text>
       </Box>
     );
   }
