@@ -1,18 +1,34 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-const TODO_FILE = 'todo.md';
-const DEFAULT_HEADER = '# Todos\n';
+const DEFAULT_TODO_FILE = "todo.md";
+const DEFAULT_HEADER = "# Todos\n";
+
+// Global custom path - can be set before operations
+let customTodoFilePath: string | null = null;
 
 /**
- * Gets the path to todo.md in the current working directory
+ * Sets a custom path for the todo file
  */
-export function getTodoFilePath(): string {
-  return path.join(process.cwd(), TODO_FILE);
+export function setTodoFilePath(filePath: string): void {
+  // Resolve to absolute path
+  customTodoFilePath = path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(process.cwd(), filePath);
 }
 
 /**
- * Checks if todo.md exists
+ * Gets the path to the todo file
+ */
+export function getTodoFilePath(): string {
+  if (customTodoFilePath) {
+    return customTodoFilePath;
+  }
+  return path.join(process.cwd(), DEFAULT_TODO_FILE);
+}
+
+/**
+ * Checks if the todo file exists
  */
 export function todoFileExists(): boolean {
   try {
@@ -24,7 +40,7 @@ export function todoFileExists(): boolean {
 }
 
 /**
- * Creates todo.md with default header if it doesn't exist
+ * Creates the todo file with default header if it doesn't exist
  */
 export function ensureTodoFileExists(): void {
   const filePath = getTodoFilePath();
@@ -34,19 +50,19 @@ export function ensureTodoFileExists(): void {
 }
 
 /**
- * Reads todo.md content synchronously
+ * Reads todo file content synchronously
  */
 export function readTodoFile(): string {
   const filePath = getTodoFilePath();
   try {
-    return fs.readFileSync(filePath, 'utf-8');
+    return fs.readFileSync(filePath, "utf-8");
   } catch (error) {
-    throw new Error(`Failed to read ${TODO_FILE}: ${(error as Error).message}`);
+    throw new Error(`Failed to read ${filePath}: ${(error as Error).message}`);
   }
 }
 
 /**
- * Writes content to todo.md atomically
+ * Writes content to todo file atomically
  */
 export function writeTodoFile(content: string): void {
   const filePath = getTodoFilePath();
@@ -65,6 +81,6 @@ export function writeTodoFile(content: string): void {
     } catch {
       // Ignore cleanup errors
     }
-    throw new Error(`Failed to write ${TODO_FILE}: ${(error as Error).message}`);
+    throw new Error(`Failed to write ${filePath}: ${(error as Error).message}`);
   }
 }

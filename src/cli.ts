@@ -6,65 +6,138 @@ import { toggle } from "./commands/toggle";
 import { edit } from "./commands/edit";
 import { deleteTodo } from "./commands/delete";
 import { launchTUI } from "./tui/index";
+import {
+  setTodoFilePath,
+  todoFileExists,
+  getTodoFilePath,
+} from "./fs/fileStore";
+import * as readline from "readline";
 
 const args = process.argv.slice(2);
 
-// Check for debug flag
-const DEBUG = process.env.TDX_DEBUG === "1" || args.includes("--debug");
+// Check for file path argument (first arg that's not a command)
+let filePath: string | undefined;
+let commandArgs = args;
 
-if (args.length === 0) {
-  // No arguments - launch TUI
-  launchTUI(DEBUG);
-} else {
-  const command = args[0];
+// Check if first argument is a file path (not a known command)
+const knownCommands = [
+  "list",
+  "add",
+  "toggle",
+  "edit",
+  "delete",
+  "help",
+  "help-debug",
+  "-h",
+  "--help",
+];
+if (args.length > 0 && !knownCommands.includes(args[0])) {
+  // First arg might be a file path
+  if (
+    args[0].endsWith(".md") ||
+    args[0].includes("/") ||
+    args[0].includes("\\")
+  ) {
+    filePath = args[0];
+    commandArgs = args.slice(1);
+  }
+}
 
-  switch (command) {
-    case "list":
-      list();
-      break;
+// Set custom file path if provided
+if (filePath) {
+  setTodoFilePath(filePath);
+}
 
-    case "add":
-      if (args.length < 2) {
-        console.error('Usage: tdx add "Text"');
+async function confirmCreate(path: string): Promise<boolean> {
+  // If stdin is not a TTY (piped input), auto-confirm
+  if (!process.stdin.isTTY) {
+    return true;
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(
+      `File '${path}' does not exist. Create it? [y/N] `,
+      (answer) => {
+        rl.close();
+        resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
+      },
+    );
+  });
+}
+
+async function main() {
+  // If custom file path is set and file doesn't exist, ask for confirmation
+  if (filePath && !todoFileExists()) {
+    const confirmed = await confirmCreate(getTodoFilePath());
+    if (!confirmed) {
+      console.log("Aborted.");
+      process.exit(0);
+    }
+  }
+
+  if (commandArgs.length === 0) {
+    // No arguments - launch TUI
+    launchTUI();
+  } else {
+    const command = commandArgs[0];
+
+    switch (command) {
+      case "list":
+        list();
+        break;
+
+      case "add":
+        if (commandArgs.length < 2) {
+          console.error('Usage: tdx [file] add "Text"');
+          process.exit(1);
+        }
+        add(commandArgs.slice(1).join(" "));
+        break;
+
+      case "toggle":
+        if (commandArgs.length < 2) {
+          console.error("Usage: tdx [file] toggle <index>");
+          process.exit(1);
+        }
+        toggle(commandArgs[1]);
+        break;
+
+      case "edit":
+        if (commandArgs.length < 3) {
+          console.error('Usage: tdx [file] edit <index> "New text"');
+          process.exit(1);
+        }
+        edit(commandArgs[1], commandArgs.slice(2).join(" "));
+        break;
+
+      case "delete":
+        if (commandArgs.length < 2) {
+          console.error("Usage: tdx [file] delete <index>");
+          process.exit(1);
+        }
+        deleteTodo(commandArgs[1]);
+        break;
+
+      case "help-debug":
+        launchTUI(true);
+        break;
+
+      case "help":
+      case "-h":
+      case "--help":
+        showHelp();
+        break;
+
+      default:
+        console.error(`Unknown command: ${command}`);
+        console.error('Use "tdx help" for usage information');
         process.exit(1);
-      }
-      add(args.slice(1).join(" "));
-      break;
-
-    case "toggle":
-      if (args.length < 2) {
-        console.error("Usage: tdx toggle <index>");
-        process.exit(1);
-      }
-      toggle(args[1]);
-      break;
-
-    case "edit":
-      if (args.length < 3) {
-        console.error('Usage: tdx edit <index> "New text"');
-        process.exit(1);
-      }
-      edit(args[1], args.slice(2).join(" "));
-      break;
-
-    case "delete":
-      if (args.length < 2) {
-        console.error("Usage: tdx delete <index>");
-        process.exit(1);
-      }
-      deleteTodo(args[1]);
-      break;
-
-    case "help":
-    case "-h":
-    case "--help":
-      showHelp();
-      break;
-
-    default:
-      console.error(`Unknown command: ${command}`);
-      console.error('Use "tdx help" for usage information');
-      process.exit(1);
+    }
   }
 }
 
@@ -73,13 +146,17 @@ function showHelp() {
 tdx - A fast, lightweight todo manager
 
 Usage:
-  tdx                    Launch interactive TUI
-  tdx list               List all todos
-  tdx add "Text"         Add a new todo
-  tdx toggle <index>     Toggle a todo (1-based index)
-  tdx edit <index> "Text" Edit a todo's text
-  tdx delete <index>     Delete a todo (1-based index)
-  tdx help               Show this help message
+  tdx [file]                    Launch interactive TUI
+  tdx [file] list               List all todos
+  tdx [file] add "Text"         Add a new todo
+  tdx [file] toggle <index>     Toggle a todo (1-based index)
+  tdx [file] edit <index> "Text" Edit a todo's text
+  tdx [file] delete <index>     Delete a todo (1-based index)
+  tdx help                      Show this help message
+
+File Path:
+  If [file] is specified, use that file instead of todo.md in current directory.
+  Will prompt for confirmation before creating a new file.
 
 Interactive TUI Controls:
   j or Down              Move selection down
@@ -94,9 +171,17 @@ Interactive TUI Controls:
   q or Esc               Quit
 
 Examples:
-  tdx add "Buy milk"
+  tdx                          Use todo.md in current directory
+  tdx project.md               Use project.md file
+  tdx ~/notes/tasks.md         Use absolute path
+  tdx test.md add "Buy milk"   Add to specific file
   tdx toggle 1
   tdx edit 2 "Buy cheese"
   tdx list
 `);
 }
+
+main().catch((error) => {
+  console.error("Error:", error.message);
+  process.exit(1);
+});
