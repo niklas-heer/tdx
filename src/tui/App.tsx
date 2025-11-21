@@ -494,29 +494,29 @@ export default function App() {
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text></Text>
         <Box>
-          <Box width={28}>
+          <Box width={24}>
             <Text bold color="cyan">
               NAVIGATION
             </Text>
           </Box>
-          <Box width={28}>
+          <Box width={24}>
             <Text bold color="cyan">
               EDITING
             </Text>
           </Box>
-          <Box width={18}>
+          <Box width={16}>
             <Text bold color="cyan">
               OTHER
             </Text>
           </Box>
         </Box>
         <Text color="gray">
-          ──────────────────────────────────────────────────────────────────
+          ──────────────────────────────────────────────────────────────
         </Text>
         <Box>
-          <Box flexDirection="column" width={28}>
-            <Box width={28}>
-              <Box width={10}>
+          <Box flexDirection="column" width={24}>
+            <Box width={24}>
+              <Box width={8}>
                 <Text>
                   <Text color="cyan">j</Text>
                   <Text> / ↓</Text>
@@ -524,8 +524,8 @@ export default function App() {
               </Box>
               <Text>Move down</Text>
             </Box>
-            <Box width={28}>
-              <Box width={10}>
+            <Box width={24}>
+              <Box width={8}>
                 <Text>
                   <Text color="cyan">k</Text>
                   <Text> / ↑</Text>
@@ -533,8 +533,8 @@ export default function App() {
               </Box>
               <Text>Move up</Text>
             </Box>
-            <Box width={28}>
-              <Box width={10}>
+            <Box width={24}>
+              <Box width={8}>
                 <Text>
                   <Text color="cyan">5j</Text>
                   <Text> / </Text>
@@ -544,47 +544,47 @@ export default function App() {
               <Text>Jump by count</Text>
             </Box>
           </Box>
-          <Box flexDirection="column" width={28}>
-            <Box width={28}>
-              <Box width={10}>
+          <Box flexDirection="column" width={24}>
+            <Box width={24}>
+              <Box width={8}>
                 <Text color="cyan">space</Text>
               </Box>
               <Text>Toggle</Text>
             </Box>
-            <Box width={28}>
-              <Box width={10}>
+            <Box width={24}>
+              <Box width={8}>
                 <Text color="cyan">n</Text>
               </Box>
               <Text>New todo</Text>
             </Box>
-            <Box width={28}>
-              <Box width={10}>
+            <Box width={24}>
+              <Box width={8}>
                 <Text color="cyan">e</Text>
               </Box>
               <Text>Edit text</Text>
             </Box>
-            <Box width={28}>
-              <Box width={10}>
+            <Box width={24}>
+              <Box width={8}>
                 <Text color="cyan">d</Text>
               </Box>
               <Text>Delete</Text>
             </Box>
           </Box>
-          <Box flexDirection="column" width={18}>
-            <Box width={18}>
-              <Box width={10}>
+          <Box flexDirection="column" width={16}>
+            <Box width={16}>
+              <Box width={8}>
                 <Text color="cyan">u</Text>
               </Box>
               <Text>Undo</Text>
             </Box>
-            <Box width={18}>
-              <Box width={10}>
+            <Box width={16}>
+              <Box width={8}>
                 <Text color="cyan">?</Text>
               </Box>
               <Text>Help</Text>
             </Box>
-            <Box width={18}>
-              <Box width={10}>
+            <Box width={16}>
+              <Box width={8}>
                 <Text color="cyan">q</Text>
               </Box>
               <Text>Quit</Text>
@@ -592,7 +592,7 @@ export default function App() {
           </Box>
         </Box>
         <Text color="gray">
-          ─────────────────────────────────────────────────────────────
+          ──────────────────────────────────────────────────────────────
         </Text>
         <Text color="gray">Press ? or q to exit</Text>
         <Text></Text>
