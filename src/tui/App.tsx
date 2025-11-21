@@ -494,64 +494,81 @@ export default function App() {
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text></Text>
         <Box>
-          <Text bold color="cyan">
-            NAVIGATION
-          </Text>
-          <Text> │ </Text>
-          <Text bold color="cyan">
-            EDITING
-          </Text>
-          <Text> │ </Text>
-          <Text bold color="cyan">
-            OTHER
-          </Text>
+          <Box width={24}>
+            <Text bold color="cyan">
+              NAVIGATION
+            </Text>
+          </Box>
+          <Box width={24}>
+            <Text bold color="cyan">
+              EDITING
+            </Text>
+          </Box>
+          <Box width={16}>
+            <Text bold color="cyan">
+              OTHER
+            </Text>
+          </Box>
         </Box>
         <Text color="gray">
-          ────────────────────────────────────────────────────
+          ─────────────────────────────────────────────────────────────
         </Text>
         <Box>
-          <Box flexDirection="column" width={18} marginRight={3}>
+          <Box flexDirection="column" width={24}>
             <Text>
-              <Text color="cyan">j</Text> <Text color="dim">/ ↓</Text> Move down
+              <Text color="cyan">j</Text>
+              <Text> / ↓</Text>
+              <Text> Move down</Text>
             </Text>
             <Text>
-              <Text color="cyan">k</Text> <Text color="dim">/ ↑</Text> Move up
+              <Text color="cyan">k</Text>
+              <Text> / ↑</Text>
+              <Text> Move up</Text>
             </Text>
             <Text>
-              <Text color="cyan">5j</Text> <Text color="dim">/ </Text>
-              <Text color="cyan">3k</Text> Jump by count
-            </Text>
-          </Box>
-          <Box flexDirection="column" width={20} marginRight={3}>
-            <Text>
-              <Text color="cyan">space</Text> <Text color="dim">/ enter</Text>{" "}
-              Toggle
-            </Text>
-            <Text>
-              <Text color="cyan">n</Text> New todo
-            </Text>
-            <Text>
-              <Text color="cyan">e</Text> Edit text
-            </Text>
-            <Text>
-              <Text color="cyan">d</Text> Delete
+              <Text color="cyan">5j</Text>
+              <Text> / </Text>
+              <Text color="cyan">3k</Text>
+              <Text> Jump by count</Text>
             </Text>
           </Box>
-          <Box flexDirection="column">
+          <Box flexDirection="column" width={24}>
             <Text>
-              <Text color="cyan">u</Text> Undo
+              <Text color="cyan">space</Text>
+              <Text> Toggle</Text>
             </Text>
             <Text>
-              <Text color="cyan">?</Text> Help
+              <Text color="cyan">n</Text>
+              <Text> New todo</Text>
             </Text>
             <Text>
-              <Text color="cyan">q</Text> <Text color="dim">/ esc</Text> Quit
+              <Text color="cyan">e</Text>
+              <Text> Edit text</Text>
+            </Text>
+            <Text>
+              <Text color="cyan">d</Text>
+              <Text> Delete</Text>
+            </Text>
+          </Box>
+          <Box flexDirection="column" width={16}>
+            <Text>
+              <Text color="cyan">u</Text>
+              <Text> Undo</Text>
+            </Text>
+            <Text>
+              <Text color="cyan">?</Text>
+              <Text> Help</Text>
+            </Text>
+            <Text>
+              <Text color="cyan">q</Text>
+              <Text> Quit</Text>
             </Text>
           </Box>
         </Box>
         <Text color="gray">
-          ────────────────────────────────────────────────────
+          ─────────────────────────────────────────────────────────────
         </Text>
+        <Text color="gray">Press ? or q to exit</Text>
         <Text></Text>
       </Box>
     );
