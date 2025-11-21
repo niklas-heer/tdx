@@ -22,7 +22,13 @@ export function writeMarkdown(model: FileModel): string {
     }
   }
 
-  return result.join("\n");
+  // Clean up markdown: remove consecutive blank lines
+  const cleaned = result
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n") // Replace 3+ newlines with 2
+    .replace(/\n\n$/g, "\n"); // Ensure single trailing newline
+
+  return cleaned;
 }
 
 /**
