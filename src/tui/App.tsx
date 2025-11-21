@@ -19,6 +19,7 @@ interface AppState {
   inputMode: boolean;
   displayInputBuffer: string;
   editMode: boolean;
+  showHelp: boolean;
 }
 
 export default function App() {
@@ -31,6 +32,7 @@ export default function App() {
     inputMode: false,
     displayInputBuffer: "",
     editMode: false,
+    showHelp: false,
   });
 
   // Use refs to track mutable state
@@ -60,6 +62,7 @@ export default function App() {
         inputMode: false,
         displayInputBuffer: "",
         editMode: false,
+        showHelp: false,
       });
     } catch (error) {
       setState((prev) => ({
@@ -117,6 +120,32 @@ export default function App() {
           return;
         }
         process.exit(0);
+        return;
+      }
+
+      // Help menu always shows with ? key
+      if (key === "?") {
+        setState((prev) => ({
+          ...prev,
+          showHelp: !prev.showHelp,
+        }));
+        return;
+      }
+
+      // Help menu closes with q or Escape
+      if (
+        currentState.showHelp &&
+        (key === "q" || key === "Q" || key === "\u001b")
+      ) {
+        setState((prev) => ({
+          ...prev,
+          showHelp: false,
+        }));
+        return;
+      }
+
+      // Don't process other keys if help is showing
+      if (currentState.showHelp) {
         return;
       }
 
@@ -449,6 +478,7 @@ export default function App() {
     inputMode,
     editMode,
     displayInputBuffer,
+    showHelp,
   } = state;
 
   if (isLoading) {
@@ -457,6 +487,35 @@ export default function App() {
 
   if (error) {
     return <Text color="red">Error: {error}</Text>;
+  }
+
+  if (showHelp) {
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text bold color="cyan">
+          TDX - Keyboard Shortcuts
+        </Text>
+        <Text></Text>
+        <Text bold>Navigation:</Text>
+        <Text> j / Down arrow Move down one item</Text>
+        <Text> k / Up arrow Move up one item</Text>
+        <Text> [count]j Move down by count (e.g., 5j)</Text>
+        <Text> [count]k Move up by count (e.g., 3k)</Text>
+        <Text></Text>
+        <Text bold>Editing:</Text>
+        <Text> Space / Enter Toggle todo completion</Text>
+        <Text> n Create a new todo</Text>
+        <Text> e Edit selected todo text</Text>
+        <Text> d Delete selected todo</Text>
+        <Text></Text>
+        <Text bold>Other:</Text>
+        <Text> u Undo last action</Text>
+        <Text> ? Toggle this help menu</Text>
+        <Text> q / Esc Exit (or close help)</Text>
+        <Text></Text>
+        <Text color="gray">Press ? or q to close this help menu</Text>
+      </Box>
+    );
   }
 
   if (inputMode) {
@@ -529,18 +588,12 @@ export default function App() {
       })}
       <Box marginTop={1}>
         <Text color="gray">
+          <Text color="cyan">?</Text>
+          {": help  |  "}
           <Text color="cyan">j</Text>/<Text color="cyan">k</Text>
-          {" nav  |  "}
+          {": nav  |  "}
           <Text color="cyan">space</Text>
           {": toggle  |  "}
-          <Text color="cyan">n</Text>
-          {": new  |  "}
-          <Text color="cyan">d</Text>
-          {": delete  |  "}
-          <Text color="cyan">e</Text>
-          {": edit  |  "}
-          <Text color="cyan">u</Text>
-          {": undo  |  "}
           <Text color="cyan">q</Text>
           {": quit"}
         </Text>
