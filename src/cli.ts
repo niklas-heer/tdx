@@ -11,6 +11,7 @@ import {
   todoFileExists,
   getTodoFilePath,
 } from "./fs/fileStore";
+import { checkForUpdates, showVersion, VERSION } from "./version";
 import * as readline from "readline";
 
 const args = process.argv.slice(2);
@@ -30,6 +31,8 @@ const knownCommands = [
   "help-debug",
   "-h",
   "--help",
+  "-v",
+  "--version",
 ];
 if (args.length > 0 && !knownCommands.includes(args[0])) {
   // First arg might be a file path
@@ -71,6 +74,9 @@ async function confirmCreate(path: string): Promise<boolean> {
 }
 
 async function main() {
+  // Check for updates (non-blocking, cached)
+  await checkForUpdates();
+
   // If custom file path is set and file doesn't exist, ask for confirmation
   if (filePath && !todoFileExists()) {
     const confirmed = await confirmCreate(getTodoFilePath());
@@ -133,6 +139,11 @@ async function main() {
         showHelp();
         break;
 
+      case "-v":
+      case "--version":
+        showVersion();
+        break;
+
       default:
         console.error(`Unknown command: ${command}`);
         console.error('Use "tdx help" for usage information');
@@ -153,6 +164,7 @@ Usage:
   tdx [file] edit <index> "Text" Edit a todo's text
   tdx [file] delete <index>     Delete a todo (1-based index)
   tdx help                      Show this help message
+  tdx --version                 Show version information
 
 File Path:
   If [file] is specified, use that file instead of todo.md in current directory.
