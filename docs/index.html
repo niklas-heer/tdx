@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>tdx - Your todos, in markdown, done fast</title>
+    <meta name="description" content="A fast, single-binary CLI todo manager with vim-style navigation and interactive TUI. Store todos in plain markdown.">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --bg-secondary: #161b22;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --accent: #58a6ff;
+            --accent-hover: #79b8ff;
+            --green: #3fb950;
+            --border: #30363d;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Hero */
+        .hero {
+            text-align: center;
+            padding: 80px 0 60px;
+        }
+
+        .hero h1 {
+            font-size: 4rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--accent), var(--green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero .tagline {
+            font-size: 1.5rem;
+            color: var(--text-muted);
+            margin-bottom: 40px;
+        }
+
+        /* Demo */
+        .demo {
+            margin: 0 auto 60px;
+            max-width: 700px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border);
+        }
+
+        .demo img {
+            width: 100%;
+            display: block;
+        }
+
+        /* Install */
+        .install {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 40px;
+            margin-bottom: 60px;
+            border: 1px solid var(--border);
+        }
+
+        .install h2 {
+            font-size: 1.5rem;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .install-methods {
+            display: grid;
+            gap: 20px;
+        }
+
+        .install-method {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .install-method h3 {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .code-block {
+            position: relative;
+            background: #0d1117;
+            border-radius: 6px;
+            padding: 16px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+        }
+
+        .code-block code {
+            color: var(--text);
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            color: var(--text);
+            border-color: var(--accent);
+        }
+
+        .copy-btn.copied {
+            color: var(--green);
+            border-color: var(--green);
+        }
+
+        /* Features */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+            margin-bottom: 60px;
+        }
+
+        .feature {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid var(--border);
+        }
+
+        .feature-icon {
+            font-size: 1.5rem;
+            margin-bottom: 12px;
+        }
+
+        .feature h3 {
+            font-size: 1.125rem;
+            margin-bottom: 8px;
+        }
+
+        .feature p {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        /* Shortcuts */
+        .shortcuts {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 40px;
+            margin-bottom: 60px;
+            border: 1px solid var(--border);
+        }
+
+        .shortcuts h2 {
+            font-size: 1.5rem;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .shortcuts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+        }
+
+        .shortcut {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+        }
+
+        .shortcut kbd {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'SF Mono', monospace;
+            font-size: 0.75rem;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .shortcut span {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px 0;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero .tagline {
+                font-size: 1.125rem;
+            }
+
+            .install, .shortcuts {
+                padding: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <section class="hero">
+            <h1>tdx</h1>
+            <p class="tagline">Your todos, in markdown, done fast.</p>
+        </section>
+
+        <div class="demo">
+            <img src="https://raw.githubusercontent.com/niklas-heer/tdx/main/assets/demo.gif" alt="tdx demo">
+        </div>
+
+        <section class="install">
+            <h2>Installation</h2>
+            <div class="install-methods">
+                <div class="install-method">
+                    <h3>Homebrew (macOS/Linux)</h3>
+                    <div class="code-block">
+                        <code>brew install niklas-heer/tap/tdx</code>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                </div>
+                <div class="install-method">
+                    <h3>Quick Install Script</h3>
+                    <div class="code-block">
+                        <code>curl -fsSL https://niklas-heer.github.io/tdx/install.sh | bash</code>
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="features">
+            <div class="feature">
+                <div class="feature-icon">⚡</div>
+                <h3>Fast</h3>
+                <p>Single 4MB binary with instant startup. 30-40x faster than alternatives.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📝</div>
+                <h3>Markdown-native</h3>
+                <p>Todos live in todo.md. Version control friendly, human readable.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">⌨️</div>
+                <h3>Vim-style</h3>
+                <p>Navigate with j/k, relative jumps (5j), and number keys.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🖥️</div>
+                <h3>Interactive TUI</h3>
+                <p>Toggle, create, edit, delete, undo, move, and copy todos.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔧</div>
+                <h3>Scriptable</h3>
+                <p>CLI commands: list, add, toggle, edit, delete for automation.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🌍</div>
+                <h3>Cross-platform</h3>
+                <p>Works on macOS, Linux, and Windows.</p>
+            </div>
+        </section>
+
+        <section class="shortcuts">
+            <h2>Keyboard Shortcuts</h2>
+            <div class="shortcuts-grid">
+                <div class="shortcut">
+                    <kbd>j / k</kbd>
+                    <span>Move down / up</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>Space</kbd>
+                    <span>Toggle completion</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>n</kbd>
+                    <span>New todo</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>e</kbd>
+                    <span>Edit todo</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>d</kbd>
+                    <span>Delete todo</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>c</kbd>
+                    <span>Copy to clipboard</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>m</kbd>
+                    <span>Move mode</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>u</kbd>
+                    <span>Undo</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>?</kbd>
+                    <span>Help menu</span>
+                </div>
+                <div class="shortcut">
+                    <kbd>Esc</kbd>
+                    <span>Quit</span>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <p>
+                <a href="https://github.com/niklas-heer/tdx">GitHub</a> ·
+                <a href="https://github.com/niklas-heer/tdx/releases">Releases</a> ·
+                MIT License
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        function copyCode(btn) {
+            const code = btn.previousElementSibling.textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
