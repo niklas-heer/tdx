@@ -574,7 +574,7 @@ func (m *model) getCount() int {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return tea.EnableBracketedPaste
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -586,6 +586,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle EOF from piped input
 		if msg.Type == tea.KeyCtrlD {
 			return m, tea.Quit
+		}
+		// Handle bracketed paste (cmd+v on macOS)
+		if msg.Paste && (m.inputMode || m.editMode) {
+			text := string(msg.Runes)
+			// Take only first line
+			if idx := strings.Index(text, "\n"); idx != -1 {
+				text = text[:idx]
+			}
+			m.inputBuffer = m.inputBuffer[:m.cursorPos] + text + m.inputBuffer[m.cursorPos:]
+			m.cursorPos += len(text)
+			return m, nil
 		}
 		return m.handleKey(msg)
 	}
