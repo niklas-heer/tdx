@@ -984,7 +984,7 @@ func (m model) renderHelp() string {
 		{
 			header: "EDITING",
 			entries: []entry{
-				{"space", "Toggle"},
+				{"␣", "Toggle"},
 				{"n", "New"},
 				{"e", "Edit"},
 				{"d", "Delete"},
