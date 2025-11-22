@@ -76,7 +76,8 @@ tdx
 | `m` | Move mode |
 | `u` | Undo |
 | `?` | Help menu |
-| `Esc` / `q` | Quit |
+| `Esc` | Quit |
+| `Cmd+V` / `Ctrl+Y` | Paste (in edit mode) |
 
 **Vim-style jumps:**
 - `5j` - Move down 5 lines
@@ -175,8 +176,8 @@ tdx project.md add "Task"     # All commands work
 
 **Build configuration** in `tdx.toml`:
 ```toml
-version = "0.2.4"
-description = "A fast, lightweight todo manager"
+version = "0.4.0"
+description = "your todos, in markdown, done fast"
 ```
 
 ## License
