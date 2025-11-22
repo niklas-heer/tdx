@@ -82,24 +82,29 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - Don't commit the implementation before the spec change is reviewed and approved.
 - Each package change should have its own descriptive conventional commit.
 
-## TypeScript and Bun development
-- Use Bun as the default runtime and task runner for TypeScript code in this repository.
-- Prefer running scripts with `bun run <script>` instead of `node` or `ts-node`.
-- Run tests with `bun test` where possible, and co-locate tests next to the implementation file (e.g., `foo.test.ts` or `foo.spec.ts`).
-- Write modern, ESM-first TypeScript:
-  - Use `import`/`export` syntax.
-  - Avoid new CommonJS entrypoints unless interacting with legacy tooling.
-- Keep TypeScript configurations strict:
-  - Enable `strict` mode and related options such as `noImplicitAny`, `strictNullChecks`, and `noUnusedLocals`.
-  - Fix type errors instead of relying on `any`, `unknown` without narrowing, or `// @ts-ignore`.
-  - If you must suppress an error, use `// @ts-expect-error` with a short justification comment.
-- Be explicit about runtime assumptions:
-  - Prefer Web-standard APIs that Bun supports (`fetch`, `URL`, `Request`, `Response`, etc.).
-  - Only use Node-specific APIs when the code is clearly documented as Node-only.
-- Dependencies and tooling:
-  - Prefer libraries that are runtime-agnostic or documented as working with Bun.
-  - Avoid adding dependencies that rely heavily on Node core modules unless necessary.
-  - Use `bunx` instead of `npx` when running CLIs.
-- Performance and build pipeline:
-  - Let Bun handle TypeScript transpilation; do not add redundant build steps if Bun already supports the workflow.
-  - Do not commit compiled `.js` outputs for Bun-run TypeScript; treat `.ts` files as the source of truth.
+## Go development
+- This project is written in Go (1.21+).
+- Use `just` as the task runner for common operations:
+  - `just build` - Build the binary
+  - `just test` - Run tests
+  - `just install` - Install to /usr/local/bin
+  - `just release` - Create a new release
+- Run tests with `go test -v ./...` or `just test`.
+- Code structure:
+  - `main.go` - Main application code
+  - `config.go` - Build-time variables (version, description)
+  - `main_test.go` - All tests (e2e and unit)
+  - `tdx.toml` - Build configuration (version, description)
+- Dependencies:
+  - Use `go mod tidy` to clean up dependencies
+  - Key libraries: bubbletea (TUI), lipgloss (styling)
+- Build configuration:
+  - Version and description are set via ldflags from `tdx.toml`
+  - Cross-platform builds are handled by GitHub Actions
+- Testing:
+  - E2E tests run the binary as subprocess
+  - Unit tests cover core functions (parseMarkdown, serializeMarkdown, etc.)
+  - Run `go test -cover ./...` to check coverage
+- Code style:
+  - Use `go fmt` and `go vet` before committing
+  - Follow standard Go conventions and idioms
