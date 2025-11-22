@@ -752,8 +752,8 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "end", "ctrl+e":
 		m.cursorPos = len(m.inputBuffer)
 
-	case "ctrl+v":
-		// Paste from clipboard
+	case "ctrl+v", "ctrl+shift+v", "ctrl+y":
+		// Paste from clipboard (ctrl+y is more reliable in terminals)
 		text := pasteFromClipboard()
 		if text != "" {
 			m.inputBuffer = m.inputBuffer[:m.cursorPos] + text + m.inputBuffer[m.cursorPos:]
