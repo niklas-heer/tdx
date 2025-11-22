@@ -1066,14 +1066,16 @@ func copyToClipboard(text string) {
 
 // renderInlineCode renders text with backtick-enclosed code and markdown links highlighted
 func renderInlineCode(text string, isChecked bool) string {
-	// First pass: replace markdown links [text](url) with just the text, underlined
-	linkRe := regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+	// First pass: replace markdown links [text](url) with clickable hyperlinks
+	linkRe := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 	text = linkRe.ReplaceAllStringFunc(text, func(match string) string {
-		// Extract link text
+		// Extract link text and URL
 		submatch := linkRe.FindStringSubmatch(match)
-		if len(submatch) > 1 {
+		if len(submatch) > 2 {
 			linkText := submatch[1]
-			return cyanStyle.Render(linkText)
+			url := submatch[2]
+			// OSC 8 hyperlink: \e]8;;URL\e\\TEXT\e]8;;\e\\
+			return fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", url, cyanStyle.Render(linkText))
 		}
 		return match
 	})
