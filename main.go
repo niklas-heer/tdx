@@ -57,6 +57,10 @@ var (
 	greenStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	yellowStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	codeStyle    = lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+
+	// Pre-compiled regexes for inline code rendering (performance optimization)
+	linkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+	codeRe = regexp.MustCompile("`([^`]+)`")
 )
 
 // Message to clear copy feedback
@@ -1129,9 +1133,7 @@ func renderInlineCode(text string, isChecked bool) string {
 	var segments []segment
 	remaining := text
 
-	// Pattern to find links and code blocks
-	linkRe := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
-	codeRe := regexp.MustCompile("`([^`]+)`")
+	// Use pre-compiled regexes from package level
 
 	for len(remaining) > 0 {
 		linkMatch := linkRe.FindStringSubmatchIndex(remaining)
