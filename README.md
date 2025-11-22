@@ -22,8 +22,7 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew tap niklas-heer/tap
-brew install tdx
+brew install niklas-heer/tap/tdx
 ```
 
 ### Quick Install Script
