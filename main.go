@@ -1064,10 +1064,23 @@ func copyToClipboard(text string) {
 	cmd.Run()
 }
 
-// renderInlineCode renders text with backtick-enclosed code highlighted
+// renderInlineCode renders text with backtick-enclosed code and markdown links highlighted
 func renderInlineCode(text string, isChecked bool) string {
-	re := regexp.MustCompile("`([^`]+)`")
-	matches := re.FindAllStringSubmatchIndex(text, -1)
+	// First pass: replace markdown links [text](url) with just the text, underlined
+	linkRe := regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+	text = linkRe.ReplaceAllStringFunc(text, func(match string) string {
+		// Extract link text
+		submatch := linkRe.FindStringSubmatch(match)
+		if len(submatch) > 1 {
+			linkText := submatch[1]
+			return cyanStyle.Render(linkText)
+		}
+		return match
+	})
+
+	// Second pass: handle inline code
+	codeRe := regexp.MustCompile("`([^`]+)`")
+	matches := codeRe.FindAllStringSubmatchIndex(text, -1)
 
 	if len(matches) == 0 {
 		if isChecked {
