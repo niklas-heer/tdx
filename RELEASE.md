@@ -2,32 +2,28 @@
 
 ## Creating a Release
 
-### 1. Update version
-
-Edit `tdx.toml` and update the version:
-
-```toml
-version = "0.3.0"
-description = "A fast, lightweight todo manager"
-```
-
-### 2. Commit and tag
+### 1. Run the release script
 
 ```bash
-git add tdx.toml
-git commit -m "chore: bump version to v0.3.0"
-git tag v0.3.0
-git push origin main --tags
+just release
 ```
 
-### 3. Wait for GitHub Actions
+This interactive script will:
+- Show current version from `tdx.toml`
+- Ask you to choose: Major, Minor, or Patch
+- Calculate the next version number
+- Update `tdx.toml`
+- Commit and tag the release
+- Push to GitHub
+
+### 2. Wait for GitHub Actions
 
 The release workflow will automatically:
 - Build binaries for all platforms (macOS, Linux, Windows)
 - Generate changelog from conventional commits
 - Create GitHub Release with all binaries attached
 
-### 4. Update Homebrew formula
+### 3. Update Homebrew formula
 
 After the GitHub Actions workflow completes:
 
@@ -37,7 +33,7 @@ just update-homebrew 0.3.0
 
 This downloads all binaries and updates the formula with correct SHA256 checksums.
 
-### 5. Commit and push the tap repo
+### 4. Commit and push the tap repo
 
 ```bash
 cd /path/to/homebrew-tap
