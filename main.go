@@ -607,7 +607,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Handle help mode
 	if m.helpMode {
-		if key == "?" || key == "q" || key == "esc" {
+		if key == "?" || key == "esc" {
 			m.helpMode = false
 		}
 		return m, nil
@@ -1078,7 +1078,7 @@ func (m model) renderHelp() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  Press ") + cyanStyle.Render("?") + dimStyle.Render(" or ") + cyanStyle.Render("q") + dimStyle.Render(" to close help"))
+	b.WriteString(dimStyle.Render("  Press ") + cyanStyle.Render("?") + dimStyle.Render(" or ") + cyanStyle.Render("esc") + dimStyle.Render(" to close help"))
 
 	return b.String()
 }
