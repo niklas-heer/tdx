@@ -1075,18 +1075,34 @@ func renderInlineCode(text string, isChecked bool) string {
 			linkText := submatch[1]
 			url := submatch[2]
 			// OSC 8 hyperlink: \e]8;;URL\e\\TEXT\e]8;;\e\\
+			// Use a marker that we'll replace later based on checked state
 			return fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", url, cyanStyle.Render(linkText))
 		}
 		return match
 	})
 
-	// Second pass: handle inline code
+	// If no code blocks and checked, apply magenta to whole text
+	// But we need to handle the link escape sequences specially
 	codeRe := regexp.MustCompile("`([^`]+)`")
 	matches := codeRe.FindAllStringSubmatchIndex(text, -1)
 
 	if len(matches) == 0 {
 		if isChecked {
-			return magentaStyle.Render(text)
+			// Apply magenta but preserve any existing escape sequences
+			// Split on the OSC 8 sequences and colorize non-link parts
+			parts := regexp.MustCompile(`(\x1b]8;;[^\x1b]*\x1b\\[^\x1b]*\x1b]8;;\x1b\\)`).Split(text, -1)
+			links := regexp.MustCompile(`(\x1b]8;;[^\x1b]*\x1b\\[^\x1b]*\x1b]8;;\x1b\\)`).FindAllString(text, -1)
+
+			var result strings.Builder
+			for i, part := range parts {
+				if part != "" {
+					result.WriteString(magentaStyle.Render(part))
+				}
+				if i < len(links) {
+					result.WriteString(links[i])
+				}
+			}
+			return result.String()
 		}
 		return text
 	}
