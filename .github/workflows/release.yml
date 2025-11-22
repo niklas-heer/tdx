@@ -46,6 +46,7 @@ jobs:
           go-version: "1.21"
 
       - name: Build binary
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
