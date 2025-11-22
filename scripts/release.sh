@@ -7,8 +7,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Get current version from package.json
-CURRENT_VERSION=$(grep '"version"' package.json | sed 's/.*"version": "\([^"]*\)".*/\1/')
+# Get current version from tdx.toml
+CURRENT_VERSION=$(grep '^version' tdx.toml | cut -d'"' -f2)
 
 echo -e "${GREEN}Current version: v${CURRENT_VERSION}${NC}"
 echo ""
@@ -48,14 +48,14 @@ if [[ ! $confirm =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-# Update version in package.json
-echo "Updating package.json..."
-sed -i.bak "s/\"version\": \"${CURRENT_VERSION}\"/\"version\": \"${NEW_VERSION}\"/" package.json
-rm -f package.json.bak
+# Update version in tdx.toml
+echo "Updating tdx.toml..."
+sed -i.bak "s/^version = \"${CURRENT_VERSION}\"/version = \"${NEW_VERSION}\"/" tdx.toml
+rm -f tdx.toml.bak
 
 # Commit the version bump
 echo "Committing version bump..."
-git add package.json
+git add tdx.toml
 git commit -m "chore: bump version to v${NEW_VERSION}"
 
 # Create and push tag
