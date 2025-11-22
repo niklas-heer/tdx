@@ -14,20 +14,25 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: bun-linux-x64
-            artifact: tdx-linux-x64
+            goos: linux
+            goarch: amd64
+            artifact: tdx-linux-amd64
           - os: ubuntu-latest
-            target: bun-linux-arm64
+            goos: linux
+            goarch: arm64
             artifact: tdx-linux-arm64
           - os: macos-latest
-            target: bun-darwin-x64
-            artifact: tdx-darwin-x64
+            goos: darwin
+            goarch: amd64
+            artifact: tdx-darwin-amd64
           - os: macos-latest
-            target: bun-darwin-arm64
+            goos: darwin
+            goarch: arm64
             artifact: tdx-darwin-arm64
           - os: windows-latest
-            target: bun-windows-x64
-            artifact: tdx-windows-x64.exe
+            goos: windows
+            goarch: amd64
+            artifact: tdx-windows-amd64.exe
 
     runs-on: ${{ matrix.os }}
 
@@ -36,15 +41,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-go@v5
         with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install
+          go-version: "1.21"
 
       - name: Build binary
-        run: bun build --compile --minify --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION=$(grep '^version' tdx.toml | cut -d'"' -f2)
+          DESCRIPTION=$(grep '^description' tdx.toml | cut -d'"' -f2)
+          go build -ldflags "-X main.Version=$VERSION -X 'main.Description=$DESCRIPTION'" -o ${{ matrix.artifact }} .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

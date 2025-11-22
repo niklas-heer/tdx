@@ -6,3 +6,4 @@
 - [x] make navigation work in edit and creation mode via arrows and mac keys
 - [x] add c for copying the text of a task
 - [x] not needed new lines should be removed on save from the markdown file
+- [ ] render links [txt](link) correctly

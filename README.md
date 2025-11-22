@@ -10,13 +10,12 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 
 ## Features
 
-- ⚡ **Fast** - Single binary, instant startup
-- 📝 **Markdown-native** - Todos live in `todo.md`, version control friendly
-- ⌨️ **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
-- 🎨 **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
-- 🔧 **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
-- 🔄 **Auto-updates** - Notifies when new versions are available
-- 🌍 **Cross-platform** - macOS, Linux, Windows
+- **Fast** - Single binary (4MB), instant startup, 30-40x faster than alternatives
+- **Markdown-native** - Todos live in `todo.md`, version control friendly
+- **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
+- **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
+- **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
+- **Cross-platform** - macOS, Linux, Windows
 
 ## Installation
 
@@ -38,19 +37,20 @@ curl -fsSL https://raw.githubusercontent.com/niklas-heer/tdx/main/scripts/instal
 Download the latest binary for your platform from [Releases](https://github.com/niklas-heer/tdx/releases):
 
 - `tdx-darwin-arm64` - macOS Apple Silicon
-- `tdx-darwin-x64` - macOS Intel
-- `tdx-linux-x64` - Linux x64
+- `tdx-darwin-amd64` - macOS Intel
+- `tdx-linux-amd64` - Linux x64
 - `tdx-linux-arm64` - Linux ARM64
-- `tdx-windows-x64.exe` - Windows x64
+- `tdx-windows-amd64.exe` - Windows x64
 
 ### From Source
+
+Requires Go 1.21+:
 
 ```bash
 git clone https://github.com/niklas-heer/tdx.git
 cd tdx
-bun install
 just build
-just install-bin
+just install
 ```
 
 ## Usage
@@ -67,230 +67,117 @@ tdx
 
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Move down |
-| `k` / `↑` | Move up |
+| `j` / `k` | Move down / up |
 | `Space` / `Enter` | Toggle completion |
 | `n` | New todo |
 | `e` | Edit todo |
 | `d` | Delete todo |
-| `u` | Undo |
-| `y` | Copy todo |
+| `c` | Copy to clipboard |
 | `m` | Move mode |
+| `u` | Undo |
 | `?` | Help menu |
-| `q` / `Esc` | Quit |
+| `Esc` / `q` | Quit |
 
 **Vim-style jumps:**
 - `5j` - Move down 5 lines
 - `3k` - Move up 3 lines
-- `1-9` - Jump to todo by number
 
-**Display Format:**
-```
-  [✓] Feed the kitten
-➜ [ ] Bake cookies
-  [ ] Water the plants
-  [ ] Organize the desk
-
-j/k: nav  |  space: toggle  |  n: new  |  e: edit  |  d: delete  |  u: undo  |  q: quit
-```
-
-- All todos: `  [✓]` or `  [ ]` (consistent indentation)
-- Selected todo: `➜ [✓]` or `➜ [ ]` (arrow indicates selection)
-- Checked items: magenta color
-- Unchecked items: dim white
-- Selected text: bold and bright (color highlighting)
-- Arrow and color are sufficient to show which item is selected
-
-### List Todos
-
-Display all todos without entering interactive mode:
+### CLI Commands
 
 ```bash
+# List all todos
 tdx list
-```
 
-Output:
-```
-  1. [✓] Feed the kitten
-  2. [ ] Bake cookies
-  3. [ ] Water the plants
-```
-
-### Add a Todo
-
-Add a new unchecked todo:
-
-```bash
+# Add a new todo
 tdx add "Buy milk"
-tdx add "Call the dentist"
-```
 
-### Toggle a Todo
-
-Toggle the completion status of a todo by index (1-based):
-
-```bash
+# Toggle completion (1-based index)
 tdx toggle 1
-tdx toggle 3
-```
 
-### Edit a Todo
+# Edit a todo
+tdx edit 2 "Updated text"
 
-Modify the text of an existing todo:
+# Delete a todo
+tdx delete 3
 
-```bash
-tdx edit 2 "Bake chocolate chip cookies"
-tdx edit 1 "Feed all the kittens"
+# Use custom file
+tdx ~/notes/work.md list
+tdx project.md add "Task"
 ```
 
 ## File Format
 
-Todos are stored in `todo.md` in your current working directory. The file uses standard Markdown:
+Todos are stored in `todo.md` using standard Markdown:
 
 ```markdown
 # Todos
 
 - [x] Completed task
 - [ ] Incomplete task
-- [ ] Another task to do
+- [ ] Another task
 
-You can have other markdown content here too.
-It will be preserved exactly when you modify todos.
-
-- [x] Even with mixed content
+Other markdown content is preserved.
 ```
 
-**Format Rules:**
-- Todo lines start with `- [ ] ` (unchecked) or `- [x] ` (checked)
-- Everything after the checkbox is the todo text
-- Non-todo content (headers, paragraphs, etc.) is preserved exactly
-- All modifications use atomic writes (temp file → rename)
-
 ## Development
+
+### Prerequisites
+
+- Go 1.21+
+- [just](https://github.com/casey/just) (command runner)
+
+### Building
+
+```bash
+# Build binary
+just build
+
+# Build for all platforms
+just build-all
+
+# Install to /usr/local/bin
+just install
+```
 
 ### Project Structure
 
 ```
 tdx/
-├── src/
-│   ├── cli.ts              # Main entry point
-│   ├── commands/           # CLI commands (list, add, toggle, edit)
-│   ├── todos/              # Todo model, parser, and writer
-│   ├── tui/                # Ink-based TUI component
-│   └── fs/                 # File store utilities
-├── package.json            # Dependencies
-├── tsconfig.json           # TypeScript configuration
-├── README.md               # This file
-└── todo.md                 # Your todos (created on first run)
+├── main.go          # Main application
+├── config.go        # Version/description variables
+├── tdx.toml         # Build configuration
+├── go.mod           # Go modules
+├── justfile         # Build commands
+└── todo.md          # Your todos
 ```
 
-### Building
-
-**Development:**
-```bash
-bun run src/cli.ts
-```
-
-**Compiled Binary:**
-```bash
-bun build --compile --minify src/cli.ts --outfile tdx
-./tdx list
-```
-
-### Testing
-
-Round-trip consistency (read → write with no changes):
+### Commands
 
 ```bash
-bun run src/cli.ts list
-# Edit a todo
-bun run src/cli.ts toggle 1
-# Verify file is still valid
-bun run src/cli.ts list
-```
-
-## Examples
-
-### Daily Workflow
-
-```bash
-# Start the day - check what's on your plate
-tdx list
-
-# Add new tasks
-tdx add "Review PR #42"
-tdx add "Update documentation"
-
-# Work through the day with interactive mode
-tdx
-
-# From another terminal, add urgent items
-tdx add "URGENT: Fix production bug"
-
-# Mark items as complete from command line
-tdx toggle 3
-```
-
-### Scripting
-
-```bash
-#!/bin/bash
-# Add daily standup tasks
-tdx add "Daily standup at 10am"
-tdx add "Send standup notes to Slack"
-
-# Toggle them when done
-tdx toggle 1
-tdx toggle 2
-```
-
-### Integration with Other Tools
-
-```bash
-# Export todos for reporting
-tdx list | grep "^\[x\]" > completed.txt
-
-# Get todo count
-PENDING=$(tdx list | grep "\[ \]" | wc -l)
-echo "You have $PENDING pending todos"
-```
-
-## Error Handling
-
-All commands exit with status `0` on success, non-zero on error.
-
-**Example error cases:**
-```bash
-# Invalid index
-$ tdx toggle 999
-Error: Todo index 999 out of range (1-5)
-
-# Empty text
-$ tdx add ""
-Error: Todo text cannot be empty
-
-# File permission issues
-$ chmod 000 todo.md && tdx list
-Error: Failed to read todo.md: Permission denied
+just build      # Build binary
+just install    # Install to PATH
+just tui        # Run TUI
+just list       # List todos
+just add "X"    # Add todo
+just toggle 1   # Toggle todo
+just check      # Run go vet
+just fmt        # Format code
+just clean      # Clean artifacts
 ```
 
 ## Configuration
 
-**Environment variables:**
-- `TDX_NO_UPDATE_CHECK=1` - Disable automatic update checks
-
 **Custom file path:**
 ```bash
 tdx ~/notes/work.md           # Use specific file
-tdx project.md add "Task"     # Commands work with custom files too
+tdx project.md add "Task"     # All commands work
 ```
 
-## Notes
-
-- The `todo.md` file is created automatically on first use
-- File modifications are atomic - no risk of corruption
-- Non-todo content (headers, paragraphs) is preserved exactly
-- Version check results are cached in `~/.tdx/` for 24 hours
+**Build configuration** in `tdx.toml`:
+```toml
+version = "0.2.4"
+description = "A fast, lightweight todo manager"
+```
 
 ## License
 
