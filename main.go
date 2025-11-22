@@ -171,7 +171,7 @@ TUI Controls:
   m                   Move todo
   u                   Undo
   ?                   Toggle help
-  q, Esc              Quit`, Description)
+  Esc                 Quit`, Description)
 	fmt.Println(help)
 }
 
@@ -238,18 +238,36 @@ func parseMarkdown(content string) *FileModel {
 }
 
 func serializeMarkdown(fm *FileModel) string {
-	lines := make([]string, len(fm.Lines))
-	copy(lines, fm.Lines)
+	// Build clean output with header and todos only
+	var result []string
 
+	// Add header if present, otherwise create one
+	hasHeader := false
+	for _, line := range fm.Lines {
+		if strings.HasPrefix(line, "# ") {
+			result = append(result, line)
+			hasHeader = true
+			break
+		}
+	}
+	if !hasHeader {
+		result = append(result, "# Todos")
+	}
+
+	// Add blank line after header
+	result = append(result, "")
+
+	// Add all todos
 	for _, todo := range fm.Todos {
 		if todo.Checked {
-			lines[todo.LineNo] = fmt.Sprintf("- [x] %s", todo.Text)
+			result = append(result, fmt.Sprintf("- [x] %s", todo.Text))
 		} else {
-			lines[todo.LineNo] = fmt.Sprintf("- [ ] %s", todo.Text)
+			result = append(result, fmt.Sprintf("- [ ] %s", todo.Text))
 		}
 	}
 
-	return strings.Join(lines, "\n")
+	// Ensure trailing newline
+	return strings.Join(result, "\n") + "\n"
 }
 
 // CLI commands
@@ -609,7 +627,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch key {
-	case "q", "esc", "ctrl+c":
+	case "esc", "ctrl+c":
 		return m, tea.Quit
 
 	case "j", "down":
@@ -733,6 +751,14 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "end", "ctrl+e":
 		m.cursorPos = len(m.inputBuffer)
+
+	case "ctrl+v":
+		// Paste from clipboard
+		text := pasteFromClipboard()
+		if text != "" {
+			m.inputBuffer = m.inputBuffer[:m.cursorPos] + text + m.inputBuffer[m.cursorPos:]
+			m.cursorPos += len(text)
+		}
 
 	default:
 		// Insert character
@@ -1062,6 +1088,21 @@ func copyToClipboard(text string) {
 	cmd := exec.Command("pbcopy")
 	cmd.Stdin = strings.NewReader(text)
 	cmd.Run()
+}
+
+func pasteFromClipboard() string {
+	// Use pbpaste on macOS
+	cmd := exec.Command("pbpaste")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// Remove trailing newline and return first line only
+	text := strings.TrimRight(string(out), "\n\r")
+	if idx := strings.Index(text, "\n"); idx != -1 {
+		text = text[:idx]
+	}
+	return text
 }
 
 // renderInlineCode renders text with backtick-enclosed code and markdown links highlighted
