@@ -29,7 +29,7 @@ brew install tdx
 ### Quick Install Script
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/niklas-heer/tdx/main/scripts/install.sh | bash
+curl -fsSL https://niklas-heer.github.io/tdx/install.sh | bash
 ```
 
 ### Download Binary
