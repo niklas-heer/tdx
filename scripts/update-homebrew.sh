@@ -35,19 +35,26 @@ echo "  linux-amd64: $LINUX_AMD64_SHA"
 # Update formula
 echo "Updating formula..."
 
-sed -i.bak "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
-sed -i.bak "s/PLACEHOLDER_DARWIN_ARM64/${DARWIN_ARM64_SHA}/" "$FORMULA"
-sed -i.bak "s/PLACEHOLDER_DARWIN_AMD64/${DARWIN_AMD64_SHA}/" "$FORMULA"
-sed -i.bak "s/PLACEHOLDER_LINUX_ARM64/${LINUX_ARM64_SHA}/" "$FORMULA"
-sed -i.bak "s/PLACEHOLDER_LINUX_AMD64/${LINUX_AMD64_SHA}/" "$FORMULA"
-
-# Also update existing sha256 values for subsequent releases
-sed -i.bak -E "s/sha256 \"[a-f0-9]{64}\"  # darwin-arm64/sha256 \"${DARWIN_ARM64_SHA}\"  # darwin-arm64/" "$FORMULA"
-sed -i.bak -E "s/sha256 \"[a-f0-9]{64}\"  # darwin-amd64/sha256 \"${DARWIN_AMD64_SHA}\"  # darwin-amd64/" "$FORMULA"
-sed -i.bak -E "s/sha256 \"[a-f0-9]{64}\"  # linux-arm64/sha256 \"${LINUX_ARM64_SHA}\"  # linux-arm64/" "$FORMULA"
-sed -i.bak -E "s/sha256 \"[a-f0-9]{64}\"  # linux-amd64/sha256 \"${LINUX_AMD64_SHA}\"  # linux-amd64/" "$FORMULA"
-
-rm -f "$FORMULA.bak"
+# Create updated formula using awk for reliable multi-line updates
+awk -v version="$VERSION" \
+    -v darwin_arm64="$DARWIN_ARM64_SHA" \
+    -v darwin_amd64="$DARWIN_AMD64_SHA" \
+    -v linux_arm64="$LINUX_ARM64_SHA" \
+    -v linux_amd64="$LINUX_AMD64_SHA" '
+/version "/ { gsub(/"[0-9]+\.[0-9]+\.[0-9]+"/, "\"" version "\"") }
+/tdx-darwin-arm64/ { next_sha = "darwin_arm64" }
+/tdx-darwin-amd64/ { next_sha = "darwin_amd64" }
+/tdx-linux-arm64/ { next_sha = "linux_arm64" }
+/tdx-linux-amd64/ { next_sha = "linux_amd64" }
+/sha256/ && next_sha != "" {
+    if (next_sha == "darwin_arm64") gsub(/"[a-f0-9]{64}"/, "\"" darwin_arm64 "\"")
+    else if (next_sha == "darwin_amd64") gsub(/"[a-f0-9]{64}"/, "\"" darwin_amd64 "\"")
+    else if (next_sha == "linux_arm64") gsub(/"[a-f0-9]{64}"/, "\"" linux_arm64 "\"")
+    else if (next_sha == "linux_amd64") gsub(/"[a-f0-9]{64}"/, "\"" linux_amd64 "\"")
+    next_sha = ""
+}
+{ print }
+' "$FORMULA" > "$FORMULA.tmp" && mv "$FORMULA.tmp" "$FORMULA"
 
 echo "Formula updated!"
 echo ""
