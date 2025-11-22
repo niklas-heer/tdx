@@ -2,41 +2,46 @@
 
 ## Creating a Release
 
-### 1. Create the release
+### 1. Update version
 
-```bash
-just release
+Edit `tdx.toml` and update the version:
+
+```toml
+version = "0.3.0"
+description = "A fast, lightweight todo manager"
 ```
 
-This will:
-- Show current version from `package.json`
-- Prompt to select major/minor/patch
-- Update `package.json` with new version
-- Commit the version bump
-- Create and push the git tag
+### 2. Commit and tag
 
-### 2. Wait for GitHub Actions
+```bash
+git add tdx.toml
+git commit -m "chore: bump version to v0.3.0"
+git tag v0.3.0
+git push origin main --tags
+```
+
+### 3. Wait for GitHub Actions
 
 The release workflow will automatically:
 - Build binaries for all platforms (macOS, Linux, Windows)
 - Generate changelog from conventional commits
 - Create GitHub Release with all binaries attached
 
-### 3. Update Homebrew formula
+### 4. Update Homebrew formula
 
 After the GitHub Actions workflow completes:
 
 ```bash
-just update-homebrew 0.2.0
+just update-homebrew 0.3.0
 ```
 
 This downloads all binaries and updates the formula with correct SHA256 checksums.
 
-### 4. Commit and push the tap repo
+### 5. Commit and push the tap repo
 
 ```bash
-cd /Users/nheer/Projects/github.com/niklas-heer/homebrew-tap
-git add -A && git commit -m "tdx 0.2.0"
+cd /path/to/homebrew-tap
+git add -A && git commit -m "tdx 0.3.0"
 git push
 ```
 
@@ -64,7 +69,17 @@ The release workflow builds these binaries:
 | Platform | Architecture | Artifact |
 |----------|--------------|----------|
 | macOS | Apple Silicon | `tdx-darwin-arm64` |
-| macOS | Intel | `tdx-darwin-x64` |
-| Linux | x64 | `tdx-linux-x64` |
+| macOS | Intel | `tdx-darwin-amd64` |
+| Linux | x64 | `tdx-linux-amd64` |
 | Linux | ARM64 | `tdx-linux-arm64` |
-| Windows | x64 | `tdx-windows-x64.exe` |
+| Windows | x64 | `tdx-windows-amd64.exe` |
+
+## Local Build
+
+To build locally for all platforms:
+
+```bash
+just build-all
+```
+
+Binaries will be in the `dist/` directory.
