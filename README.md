@@ -10,12 +10,12 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 
 ## Features
 
-- **Fast** - Single binary (4MB), instant startup, 30-40x faster than alternatives
-- **Markdown-native** - Todos live in `todo.md`, version control friendly
-- **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
-- **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
-- **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
-- **Cross-platform** - macOS, Linux, Windows
+- ⚡ **Fast** - Single binary (4MB), instant startup, 30-40x faster than alternatives
+- 📝 **Markdown-native** - Todos live in `todo.md`, version control friendly
+- ⌨️ **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
+- 🖥️ **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
+- 🔧 **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
+- 🌍 **Cross-platform** - macOS, Linux, Windows
 
 ## Installation
 
