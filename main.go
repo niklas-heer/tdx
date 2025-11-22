@@ -1066,73 +1066,76 @@ func copyToClipboard(text string) {
 
 // renderInlineCode renders text with backtick-enclosed code and markdown links highlighted
 func renderInlineCode(text string, isChecked bool) string {
-	// First pass: replace markdown links [text](url) with clickable hyperlinks
+	// Use unique markers to preserve links and code blocks during processing
+	type segment struct {
+		text   string
+		isLink bool
+		isCode bool
+		url    string
+	}
+
+	var segments []segment
+	remaining := text
+
+	// Pattern to find links and code blocks
 	linkRe := regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
-	text = linkRe.ReplaceAllStringFunc(text, func(match string) string {
-		// Extract link text and URL
-		submatch := linkRe.FindStringSubmatch(match)
-		if len(submatch) > 2 {
-			linkText := submatch[1]
-			url := submatch[2]
-			// OSC 8 hyperlink: \e]8;;URL\e\\TEXT\e]8;;\e\\
-			// Use a marker that we'll replace later based on checked state
-			return fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", url, cyanStyle.Render(linkText))
-		}
-		return match
-	})
-
-	// If no code blocks and checked, apply magenta to whole text
-	// But we need to handle the link escape sequences specially
 	codeRe := regexp.MustCompile("`([^`]+)`")
-	matches := codeRe.FindAllStringSubmatchIndex(text, -1)
 
-	if len(matches) == 0 {
-		if isChecked {
-			// Apply magenta but preserve any existing escape sequences
-			// Split on the OSC 8 sequences and colorize non-link parts
-			parts := regexp.MustCompile(`(\x1b]8;;[^\x1b]*\x1b\\[^\x1b]*\x1b]8;;\x1b\\)`).Split(text, -1)
-			links := regexp.MustCompile(`(\x1b]8;;[^\x1b]*\x1b\\[^\x1b]*\x1b]8;;\x1b\\)`).FindAllString(text, -1)
+	for len(remaining) > 0 {
+		linkMatch := linkRe.FindStringSubmatchIndex(remaining)
+		codeMatch := codeRe.FindStringSubmatchIndex(remaining)
 
-			var result strings.Builder
-			for i, part := range parts {
-				if part != "" {
-					result.WriteString(magentaStyle.Render(part))
-				}
-				if i < len(links) {
-					result.WriteString(links[i])
-				}
+		// Determine which comes first
+		nextLink := -1
+		nextCode := -1
+		if linkMatch != nil {
+			nextLink = linkMatch[0]
+		}
+		if codeMatch != nil {
+			nextCode = codeMatch[0]
+		}
+
+		if nextLink == -1 && nextCode == -1 {
+			// No more special elements
+			segments = append(segments, segment{text: remaining})
+			break
+		}
+
+		if nextLink != -1 && (nextCode == -1 || nextLink < nextCode) {
+			// Link comes first
+			if nextLink > 0 {
+				segments = append(segments, segment{text: remaining[:nextLink]})
 			}
-			return result.String()
+			linkText := remaining[linkMatch[2]:linkMatch[3]]
+			url := remaining[linkMatch[4]:linkMatch[5]]
+			segments = append(segments, segment{text: linkText, isLink: true, url: url})
+			remaining = remaining[linkMatch[1]:]
+		} else {
+			// Code comes first
+			if nextCode > 0 {
+				segments = append(segments, segment{text: remaining[:nextCode]})
+			}
+			code := remaining[codeMatch[2]:codeMatch[3]]
+			segments = append(segments, segment{text: code, isCode: true})
+			remaining = remaining[codeMatch[1]:]
 		}
-		return text
 	}
 
+	// Build result
 	var result strings.Builder
-	lastIndex := 0
-
-	for _, match := range matches {
-		// Text before the code block
-		before := text[lastIndex:match[0]]
-		if isChecked {
-			result.WriteString(magentaStyle.Render(before))
+	for _, seg := range segments {
+		if seg.isLink {
+			// OSC 8 hyperlink with cyan text
+			result.WriteString(fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", seg.url, cyanStyle.Render(seg.text)))
+		} else if seg.isCode {
+			result.WriteString(codeStyle.Render(" " + seg.text + " "))
 		} else {
-			result.WriteString(before)
-		}
-
-		// The code block (without backticks)
-		code := text[match[2]:match[3]]
-		result.WriteString(codeStyle.Render(" " + code + " "))
-
-		lastIndex = match[1]
-	}
-
-	// Remaining text after last code block
-	if lastIndex < len(text) {
-		after := text[lastIndex:]
-		if isChecked {
-			result.WriteString(magentaStyle.Render(after))
-		} else {
-			result.WriteString(after)
+			// Regular text - apply magenta if checked
+			if isChecked {
+				result.WriteString(magentaStyle.Render(seg.text))
+			} else {
+				result.WriteString(seg.text)
+			}
 		}
 	}
 
