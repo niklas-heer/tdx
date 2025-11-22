@@ -433,3 +433,124 @@ func TestEdgeCase_NavigationOnEmptyList(t *testing.T) {
 		t.Errorf("Expected 0 todos, got %d", len(todos))
 	}
 }
+
+// Unit tests for coverage
+
+func TestParseMarkdown(t *testing.T) {
+	content := `# Todos
+
+- [ ] First task
+- [x] Done task
+- [ ] Third task`
+
+	fm := parseMarkdown(content)
+
+	if len(fm.Todos) != 3 {
+		t.Errorf("Expected 3 todos, got %d", len(fm.Todos))
+	}
+
+	if fm.Todos[0].Text != "First task" {
+		t.Errorf("Expected 'First task', got '%s'", fm.Todos[0].Text)
+	}
+
+	if !fm.Todos[1].Checked {
+		t.Error("Second todo should be checked")
+	}
+
+	if fm.Todos[2].Checked {
+		t.Error("Third todo should not be checked")
+	}
+}
+
+func TestSerializeMarkdown(t *testing.T) {
+	fm := &FileModel{
+		Lines: []string{"# Todos", "", "- [ ] Task 1"},
+		Todos: []Todo{
+			{Index: 1, Checked: false, Text: "Task 1", LineNo: 2},
+		},
+	}
+
+	result := serializeMarkdown(fm)
+
+	if !strings.Contains(result, "# Todos") {
+		t.Error("Should contain header")
+	}
+
+	if !strings.Contains(result, "- [ ] Task 1") {
+		t.Error("Should contain task")
+	}
+
+	if !strings.HasSuffix(result, "\n") {
+		t.Error("Should end with newline")
+	}
+}
+
+func TestSerializeMarkdownChecked(t *testing.T) {
+	fm := &FileModel{
+		Lines: []string{"# Todos", ""},
+		Todos: []Todo{
+			{Index: 1, Checked: true, Text: "Done task", LineNo: 2},
+		},
+	}
+
+	result := serializeMarkdown(fm)
+
+	if !strings.Contains(result, "- [x] Done task") {
+		t.Error("Should contain checked task")
+	}
+}
+
+func TestSerializeMarkdownNoHeader(t *testing.T) {
+	fm := &FileModel{
+		Lines: []string{"- [ ] Task"},
+		Todos: []Todo{
+			{Index: 1, Checked: false, Text: "Task", LineNo: 0},
+		},
+	}
+
+	result := serializeMarkdown(fm)
+
+	if !strings.Contains(result, "# Todos") {
+		t.Error("Should add header when missing")
+	}
+}
+
+func TestRenderInlineCode(t *testing.T) {
+	// Test with code block
+	result := renderInlineCode("Test `code` here", false)
+	if !strings.Contains(result, "code") {
+		t.Error("Should contain code text")
+	}
+
+	// Test with link
+	result = renderInlineCode("Click [here](https://example.com)", false)
+	if !strings.Contains(result, "here") {
+		t.Error("Should contain link text")
+	}
+	if !strings.Contains(result, "example.com") {
+		t.Error("Should contain URL in OSC 8")
+	}
+}
+
+func TestRenderInlineCodeChecked(t *testing.T) {
+	result := renderInlineCode("Checked task", true)
+	// Should contain the text (styling may not render in test environment)
+	if !strings.Contains(result, "Checked task") {
+		t.Error("Should contain the text")
+	}
+}
+
+func TestMinMax(t *testing.T) {
+	if min(5, 3) != 3 {
+		t.Error("min(5, 3) should be 3")
+	}
+	if min(2, 8) != 2 {
+		t.Error("min(2, 8) should be 2")
+	}
+	if max(5, 3) != 5 {
+		t.Error("max(5, 3) should be 5")
+	}
+	if max(2, 8) != 8 {
+		t.Error("max(2, 8) should be 8")
+	}
+}
