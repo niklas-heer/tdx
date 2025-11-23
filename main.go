@@ -41,6 +41,7 @@ type model struct {
 	editMode      bool
 	moveMode      bool
 	helpMode      bool
+	searchMode    bool
 	inputBuffer   string
 	cursorPos     int
 	numberBuffer  string
@@ -483,6 +484,35 @@ func (m *model) processPipedInput(input []byte) {
 			continue
 		}
 
+		// Handle search mode
+		if m.searchMode {
+			switch b {
+			case '\r', '\n': // Enter - select best match
+				if m.inputBuffer != "" {
+					bestIdx := m.findBestMatch(m.inputBuffer)
+					if bestIdx >= 0 {
+						m.selectedIndex = bestIdx
+					}
+				}
+				m.searchMode = false
+				m.inputBuffer = ""
+			case 27: // Escape - cancel search
+				m.searchMode = false
+				m.inputBuffer = ""
+			case 127, 8: // Backspace
+				if m.cursorPos > 0 {
+					m.inputBuffer = m.inputBuffer[:m.cursorPos-1] + m.inputBuffer[m.cursorPos:]
+					m.cursorPos--
+				}
+			default:
+				if b >= 32 && b < 127 { // Printable ASCII
+					m.inputBuffer = m.inputBuffer[:m.cursorPos] + string(b) + m.inputBuffer[m.cursorPos:]
+					m.cursorPos++
+				}
+			}
+			continue
+		}
+
 		// Handle move mode
 		if m.moveMode {
 			switch b {
@@ -562,6 +592,12 @@ func (m *model) processPipedInput(input []byte) {
 			}
 		case '?':
 			m.helpMode = !m.helpMode
+		case '/':
+			if len(m.fileModel.Todos) > 0 {
+				m.searchMode = true
+				m.inputBuffer = ""
+				m.cursorPos = 0
+			}
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			m.numberBuffer += string(b)
 		}
@@ -613,6 +649,11 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle input/edit mode
 	if m.inputMode || m.editMode {
 		return m.handleInputKey(msg)
+	}
+
+	// Handle search mode
+	if m.searchMode {
+		return m.handleSearchKey(msg)
 	}
 
 	// Handle move mode
@@ -709,6 +750,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "?":
 		m.helpMode = true
+
+	case "/":
+		if len(m.fileModel.Todos) > 0 {
+			m.searchMode = true
+			m.inputBuffer = ""
+			m.cursorPos = 0
+		}
 	}
 
 	return m, nil
@@ -815,6 +863,115 @@ func (m model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "enter":
+		// Find best match and select it
+		if m.inputBuffer != "" {
+			bestIdx := m.findBestMatch(m.inputBuffer)
+			if bestIdx >= 0 {
+				m.selectedIndex = bestIdx
+			}
+		}
+		m.searchMode = false
+		m.inputBuffer = ""
+
+	case "esc":
+		m.searchMode = false
+		m.inputBuffer = ""
+
+	case "backspace", "ctrl+h":
+		if m.cursorPos > 0 {
+			m.inputBuffer = m.inputBuffer[:m.cursorPos-1] + m.inputBuffer[m.cursorPos:]
+			m.cursorPos--
+		}
+
+	case "left":
+		if m.cursorPos > 0 {
+			m.cursorPos--
+		}
+
+	case "right":
+		if m.cursorPos < len(m.inputBuffer) {
+			m.cursorPos++
+		}
+
+	default:
+		// Insert character
+		if len(key) == 1 {
+			m.inputBuffer = m.inputBuffer[:m.cursorPos] + key + m.inputBuffer[m.cursorPos:]
+			m.cursorPos++
+		}
+	}
+
+	return m, nil
+}
+
+// findBestMatch returns the index of the best fuzzy match, or -1 if no match
+func (m *model) findBestMatch(query string) int {
+	query = strings.ToLower(query)
+	bestIdx := -1
+	bestScore := -1
+
+	for i, todo := range m.fileModel.Todos {
+		text := strings.ToLower(todo.Text)
+		score := fuzzyScore(query, text)
+		if score > bestScore {
+			bestScore = score
+			bestIdx = i
+		}
+	}
+
+	// Only return match if score is positive
+	if bestScore > 0 {
+		return bestIdx
+	}
+	return -1
+}
+
+// fuzzyScore returns a score for how well query matches text
+// Higher score = better match
+func fuzzyScore(query, text string) int {
+	if query == "" {
+		return 0
+	}
+
+	// Exact substring match gets highest score
+	if strings.Contains(text, query) {
+		return 1000 + len(query)
+	}
+
+	// Fuzzy match: check if all query chars appear in order
+	score := 0
+	queryIdx := 0
+	lastMatchIdx := -1
+
+	for i := 0; i < len(text) && queryIdx < len(query); i++ {
+		if text[i] == query[queryIdx] {
+			score += 10
+			// Bonus for consecutive matches
+			if lastMatchIdx == i-1 {
+				score += 5
+			}
+			// Bonus for matching at word start
+			if i == 0 || text[i-1] == ' ' {
+				score += 3
+			}
+			lastMatchIdx = i
+			queryIdx++
+		}
+	}
+
+	// Only count as match if all query chars were found
+	if queryIdx == len(query) {
+		return score
+	}
+
+	return 0
 }
 
 func (m *model) saveHistory() {
@@ -957,7 +1114,12 @@ func (m model) View() string {
 	b.WriteString("\n")
 
 	// Status bar
-	if m.inputMode || m.editMode {
+	if m.searchMode {
+		before := m.inputBuffer[:m.cursorPos]
+		after := m.inputBuffer[m.cursorPos:]
+		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
+		b.WriteString(cyanStyle.Render("/") + before + cursor + after)
+	} else if m.inputMode || m.editMode {
 		b.WriteString(dimStyle.Render("(Press ") + cyanStyle.Render("Enter") + dimStyle.Render(" to confirm, ") + cyanStyle.Render("Esc") + dimStyle.Render(" to cancel)"))
 	} else if m.moveMode {
 		b.WriteString(yellowStyle.Render("≡ Moving: ") + cyanStyle.Render("j/k") + yellowStyle.Render(" move  |  ") + cyanStyle.Render("enter") + yellowStyle.Render(" confirm  |  ") + cyanStyle.Render("esc") + yellowStyle.Render(" cancel"))
@@ -993,7 +1155,7 @@ func (m model) renderHelp() string {
 				{"j", "Down"},
 				{"k", "Up"},
 				{"5j", "Jump 5 down"},
-				{"3k", "Jump 3 up"},
+				{"/", "Search"},
 			},
 		},
 		{

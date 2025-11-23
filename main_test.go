@@ -554,3 +554,94 @@ func TestMinMax(t *testing.T) {
 		t.Error("max(2, 8) should be 8")
 	}
 }
+
+func TestTUI_SearchAndSelect(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "Buy milk")
+	runCLI(t, file, "add", "Write code")
+	runCLI(t, file, "add", "Read book")
+
+	// Search for "code" and toggle it
+	runPiped(t, file, "/code\r ")
+
+	todos := getTodos(t, file)
+	if todos[0] != "- [ ] Buy milk" {
+		t.Errorf("Expected first unchecked, got: %s", todos[0])
+	}
+	if todos[1] != "- [x] Write code" {
+		t.Errorf("Expected second (searched) checked, got: %s", todos[1])
+	}
+	if todos[2] != "- [ ] Read book" {
+		t.Errorf("Expected third unchecked, got: %s", todos[2])
+	}
+}
+
+func TestTUI_SearchFuzzy(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+	runCLI(t, file, "add", "Second task")
+	runCLI(t, file, "add", "Third task")
+
+	// Fuzzy search for "sec" should find "Second task"
+	runPiped(t, file, "/sec\r ")
+
+	todos := getTodos(t, file)
+	if todos[1] != "- [x] Second task" {
+		t.Errorf("Expected second toggled via fuzzy search, got: %s", todos[1])
+	}
+}
+
+func TestTUI_SearchCancel(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+	runCLI(t, file, "add", "Second task")
+
+	// Start search, then cancel with Esc, should stay on first
+	runPiped(t, file, "/second\x1b ")
+
+	todos := getTodos(t, file)
+	// First should be toggled since we cancelled search and stayed on first item
+	if todos[0] != "- [x] First task" {
+		t.Errorf("Expected first toggled after cancelled search, got: %s", todos[0])
+	}
+}
+
+func TestTUI_SearchNoMatch(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+	runCLI(t, file, "add", "Second task")
+
+	// Search for something that doesn't exist, should stay on current
+	runPiped(t, file, "/xyz123\r ")
+
+	todos := getTodos(t, file)
+	// Should toggle first item since no match was found
+	if todos[0] != "- [x] First task" {
+		t.Errorf("Expected first toggled when no match, got: %s", todos[0])
+	}
+}
+
+func TestFuzzyScore(t *testing.T) {
+	// Exact substring match should score highest
+	score1 := fuzzyScore("code", "write code")
+	score2 := fuzzyScore("cd", "write code")
+	if score1 <= score2 {
+		t.Errorf("Exact match should score higher: %d vs %d", score1, score2)
+	}
+
+	// No match should return 0
+	score := fuzzyScore("xyz", "write code")
+	if score != 0 {
+		t.Errorf("No match should return 0, got: %d", score)
+	}
+
+	// Empty query should return 0
+	score = fuzzyScore("", "write code")
+	if score != 0 {
+		t.Errorf("Empty query should return 0, got: %d", score)
+	}
+}
