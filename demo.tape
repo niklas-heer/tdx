@@ -1,7 +1,7 @@
 # tdx demo - Your todos, in markdown, done fast
 # Run with: vhs demo.tape
 
-Output assets/demo.gif
+Output assets/demo-0.5.0.gif
 
 Require tdx
 
