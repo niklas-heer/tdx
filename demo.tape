@@ -5,37 +5,22 @@ Output assets/demo-0.5.0.gif
 
 Require tdx
 
-Set Shell "bash"
+Set Shell "nu"
 Set FontSize 28
 Set Width 1200
 Set Height 700
 Set Theme "TokyoNight"
 Set TypingSpeed 50ms
 Set Padding 20
+Set WindowBar Colorful
 
 # Setup: Create a fresh demo todo file
 Hide
-Type "rm -f demo_todo.md"
+Type "rm -f demo_todo.md | ignore"
 Enter
-Type "cat > demo_todo.md << 'EOF'"
+Type "['# Project Tasks', '', '- [ ] Set up CI/CD pipeline', '- [ ] Write unit tests', '- [ ] Update documentation', '- [x] Initialize repository', '- [ ] Add error handling', '- [ ] Refactor database layer'] | str join (char nl) | save demo_todo.md"
 Enter
-Type "# Project Tasks"
-Enter
-Enter
-Type "- [ ] Set up CI/CD pipeline"
-Enter
-Type "- [ ] Write unit tests"
-Enter
-Type "- [ ] Update documentation"
-Enter
-Type "- [x] Initialize repository"
-Enter
-Type "- [ ] Add error handling"
-Enter
-Type "- [ ] Refactor database layer"
-Enter
-Type "EOF"
-Enter
+Ctrl+L
 Sleep 500ms
 Show
 
@@ -120,15 +105,15 @@ Sleep 500ms
 Type "d"
 Sleep 1.5s
 
+# Undo the delete
+Type "u"
+Sleep 1.5s
+
 # Show help menu
 Type "?"
 Sleep 3s
 Escape
 Sleep 800ms
-
-# Undo the delete
-Type "u"
-Sleep 1.5s
 
 # Exit
 Escape
@@ -164,6 +149,6 @@ Sleep 3s
 
 # Cleanup
 Hide
-Type "rm -f demo_todo.md"
+Type "rm -f demo_todo.md | ignore"
 Enter
 Show
