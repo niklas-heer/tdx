@@ -1232,7 +1232,7 @@ func (m model) View() string {
 
 	// Show indicator for items above
 	if hasMoreAbove {
-		b.WriteString(fmt.Sprintf("        %s\n", dimStyle().Render(fmt.Sprintf("▲ %d more", startIdx))))
+		b.WriteString(fmt.Sprintf("      %s\n", dimStyle().Render(fmt.Sprintf("▲ %d more", startIdx))))
 	}
 
 	for displayIdx, todoIdx := range todosToShow {
@@ -1296,7 +1296,7 @@ func (m model) View() string {
 
 	// Show indicator for items below
 	if hasMoreBelow {
-		b.WriteString(fmt.Sprintf("        %s\n", dimStyle().Render(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
+		b.WriteString(fmt.Sprintf("      %s\n", dimStyle().Render(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
 	}
 
 	// Show message when search has no results
