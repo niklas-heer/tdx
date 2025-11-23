@@ -110,6 +110,11 @@ func main() {
 		printHelp()
 	case "--version", "-v":
 		fmt.Printf("tdx v%s\n", Version)
+	case "--debug-config":
+		fmt.Printf("Theme: %s\n", appConfig.Theme.Name)
+		fmt.Printf("Accent: %s\n", appConfig.Colors.Accent)
+		fmt.Printf("Success: %s\n", appConfig.Colors.Success)
+		fmt.Printf("MaxVisible: %d\n", appConfig.Display.MaxVisible)
 	case "list":
 		listTodos(filePath)
 	case "add":

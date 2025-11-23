@@ -6,7 +6,7 @@
 - [x] make clipboard paste work
 - [x] fix space to use the approriate symbol in the help page
 - [x] add fuzzy search via / keyboard shortcut
-- [ ] add default height which can be set via config file
-- [ ] add config file for colors and height
+- [x] add config for how many tasks should be shown (max)
+- [x] add config file for colors (themes)
 - [ ] add config setting for check symbol
 - [ ] add config setting for select marker

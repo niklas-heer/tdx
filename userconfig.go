@@ -62,22 +62,35 @@ func DefaultConfig() *UserConfig {
 func LoadConfig() *UserConfig {
 	config := DefaultConfig()
 
-	// Get config path
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return config
+	// Try multiple config locations
+	var configPaths []string
+
+	// First try XDG style: ~/.config/tdx/config.toml
+	if home, err := os.UserHomeDir(); err == nil {
+		configPaths = append(configPaths, filepath.Join(home, ".config", "tdx", "config.toml"))
 	}
 
-	configPath := filepath.Join(configDir, "tdx", "config.toml")
+	// Then try OS-specific config dir
+	if configDir, err := os.UserConfigDir(); err == nil {
+		configPaths = append(configPaths, filepath.Join(configDir, "tdx", "config.toml"))
+	}
 
-	// Check if config file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	// Find first existing config file
+	var configPath string
+	for _, path := range configPaths {
+		if _, err := os.Stat(path); err == nil {
+			configPath = path
+			break
+		}
+	}
+
+	if configPath == "" {
 		return config
 	}
 
 	// Load and parse config
-	if _, err := toml.DecodeFile(configPath, config); err != nil {
-		// On error, return defaults
+	_, err := toml.DecodeFile(configPath, config)
+	if err != nil {
 		return DefaultConfig()
 	}
 
