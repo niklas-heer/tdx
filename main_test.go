@@ -11,6 +11,10 @@ import (
 var testBinary string
 
 func TestMain(m *testing.M) {
+	// Initialize config for unit tests
+	appConfig = LoadConfig()
+	styles = NewStyles(appConfig)
+
 	// Build the binary for testing
 	tmpDir, err := os.MkdirTemp("", "tdx-test")
 	if err != nil {

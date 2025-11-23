@@ -52,24 +52,32 @@ type model struct {
 	err           error
 }
 
-// Styles
+// Global config and styles (initialized in main/runTUI)
 var (
-	magentaStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
-	cyanStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	greenStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	yellowStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	codeStyle    = lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+	appConfig *UserConfig
+	styles    *Styles
 
 	// Pre-compiled regexes for inline code rendering (performance optimization)
 	linkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 	codeRe = regexp.MustCompile("`([^`]+)`")
 )
 
+// Style accessor functions for backward compatibility
+func magentaStyle() lipgloss.Style { return styles.Important }
+func cyanStyle() lipgloss.Style    { return styles.Accent }
+func dimStyle() lipgloss.Style     { return styles.Dim }
+func greenStyle() lipgloss.Style   { return styles.Success }
+func yellowStyle() lipgloss.Style  { return styles.Warning }
+func codeStyle() lipgloss.Style    { return styles.Code }
+
 // Message to clear copy feedback
 type clearCopyFeedbackMsg struct{}
 
 func main() {
+	// Load user config
+	appConfig = LoadConfig()
+	styles = NewStyles(appConfig)
+
 	args := os.Args[1:]
 
 	// Determine file path and command
@@ -325,7 +333,7 @@ func addTodo(filePath string, text string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%s Added: %s\n", greenStyle.Render("✓"), text)
+	fmt.Printf("%s Added: %s\n", greenStyle().Render("✓"), text)
 }
 
 func toggleTodo(filePath string, index int) {
@@ -352,7 +360,7 @@ func toggleTodo(filePath string, index int) {
 	if todo.Checked {
 		checkbox = "[✓]"
 	}
-	fmt.Printf("%s Toggled: %s %s\n", greenStyle.Render("✓"), checkbox, todo.Text)
+	fmt.Printf("%s Toggled: %s %s\n", greenStyle().Render("✓"), checkbox, todo.Text)
 }
 
 func editTodo(filePath string, index int, text string) {
@@ -377,7 +385,7 @@ func editTodo(filePath string, index int, text string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%s Edited: %s\n", greenStyle.Render("✓"), text)
+	fmt.Printf("%s Edited: %s\n", greenStyle().Render("✓"), text)
 }
 
 func deleteTodo(filePath string, index int) {
@@ -411,7 +419,7 @@ func deleteTodo(filePath string, index int) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%s Deleted: %s\n", greenStyle.Render("✓"), todo.Text)
+	fmt.Printf("%s Deleted: %s\n", greenStyle().Render("✓"), todo.Text)
 }
 
 // TUI implementation
@@ -1073,7 +1081,7 @@ func highlightMatches(text, query string) string {
 
 	for i, char := range text {
 		if matchSet[i] {
-			result.WriteString(greenStyle.Render(string(char)))
+			result.WriteString(greenStyle().Render(string(char)))
 		} else {
 			result.WriteString(string(char))
 		}
@@ -1163,7 +1171,7 @@ func (m model) View() string {
 	var b strings.Builder
 
 	if len(m.fileModel.Todos) == 0 && !m.inputMode {
-		b.WriteString(dimStyle.Render("No todos. Press 'n' to create one."))
+		b.WriteString(dimStyle().Render("No todos. Press 'n' to create one."))
 		b.WriteString("\n")
 	}
 
@@ -1177,6 +1185,39 @@ func (m model) View() string {
 		}
 	}
 
+	// Apply max_visible limit with scrolling
+	startIdx := 0
+	if appConfig.Display.MaxVisible > 0 && len(todosToShow) > appConfig.Display.MaxVisible {
+		// Calculate visible window centered on selection
+		var currentPos int
+		if m.searchMode {
+			currentPos = m.searchCursor
+		} else {
+			// Find position of selectedIndex in todosToShow
+			for i, idx := range todosToShow {
+				if idx == m.selectedIndex {
+					currentPos = i
+					break
+				}
+			}
+		}
+
+		halfWindow := appConfig.Display.MaxVisible / 2
+		startIdx = currentPos - halfWindow
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		endIdx := startIdx + appConfig.Display.MaxVisible
+		if endIdx > len(todosToShow) {
+			endIdx = len(todosToShow)
+			startIdx = endIdx - appConfig.Display.MaxVisible
+			if startIdx < 0 {
+				startIdx = 0
+			}
+		}
+		todosToShow = todosToShow[startIdx:endIdx]
+	}
+
 	for displayIdx, todoIdx := range todosToShow {
 		todo := m.fileModel.Todos[todoIdx]
 
@@ -1184,8 +1225,9 @@ func (m model) View() string {
 		var relIndex int
 
 		if m.searchMode {
-			isSelected = displayIdx == m.searchCursor
-			relIndex = displayIdx - m.searchCursor
+			actualDisplayIdx := startIdx + displayIdx
+			isSelected = actualDisplayIdx == m.searchCursor
+			relIndex = actualDisplayIdx - m.searchCursor
 		} else {
 			isSelected = todoIdx == m.selectedIndex
 			relIndex = todoIdx - m.selectedIndex
@@ -1200,15 +1242,15 @@ func (m model) View() string {
 		// Arrow - don't show on existing items when in input mode
 		arrow := "   "
 		if isSelected && !m.inputMode {
-			arrow = cyanStyle.Render(" ➜ ")
+			arrow = cyanStyle().Render(" ➜ ")
 		}
 
 		// Checkbox
 		var checkbox string
 		if todo.Checked {
-			checkbox = magentaStyle.Render("[✓]")
+			checkbox = magentaStyle().Render("[✓]")
 		} else {
-			checkbox = dimStyle.Render("[ ]")
+			checkbox = dimStyle().Render("[ ]")
 		}
 
 		// Text with inline code rendering
@@ -1229,22 +1271,22 @@ func (m model) View() string {
 
 		// Move indicator
 		if m.moveMode && isSelected {
-			arrow = yellowStyle.Render(" ≡ ")
+			arrow = yellowStyle().Render(" ≡ ")
 		}
 
-		b.WriteString(fmt.Sprintf("%s%s%s %s\n", dimStyle.Render(indexStr), arrow, checkbox, text))
+		b.WriteString(fmt.Sprintf("%s%s%s %s\n", dimStyle().Render(indexStr), arrow, checkbox, text))
 	}
 
 	// Show message when search has no results
 	if m.searchMode && len(m.searchResults) == 0 && m.inputBuffer != "" {
-		b.WriteString(dimStyle.Render("  No matches found"))
+		b.WriteString(dimStyle().Render("  No matches found"))
 		b.WriteString("\n")
 	}
 
 	// Input mode
 	if m.inputMode {
-		arrow := cyanStyle.Render(" ➜ ")
-		checkbox := dimStyle.Render("[ ]")
+		arrow := cyanStyle().Render(" ➜ ")
+		checkbox := dimStyle().Render("[ ]")
 		before := m.inputBuffer[:m.cursorPos]
 		after := m.inputBuffer[m.cursorPos:]
 		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
@@ -1258,15 +1300,15 @@ func (m model) View() string {
 		before := m.inputBuffer[:m.cursorPos]
 		after := m.inputBuffer[m.cursorPos:]
 		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-		b.WriteString(cyanStyle.Render("search: ") + before + cursor + after)
+		b.WriteString(cyanStyle().Render("search: ") + before + cursor + after)
 	} else if m.inputMode || m.editMode {
-		b.WriteString(dimStyle.Render("(Press ") + cyanStyle.Render("Enter") + dimStyle.Render(" to confirm, ") + cyanStyle.Render("Esc") + dimStyle.Render(" to cancel)"))
+		b.WriteString(dimStyle().Render("(Press ") + cyanStyle().Render("Enter") + dimStyle().Render(" to confirm, ") + cyanStyle().Render("Esc") + dimStyle().Render(" to cancel)"))
 	} else if m.moveMode {
-		b.WriteString(yellowStyle.Render("≡ Moving: ") + cyanStyle.Render("j/k") + yellowStyle.Render(" move  |  ") + cyanStyle.Render("enter") + yellowStyle.Render(" confirm  |  ") + cyanStyle.Render("esc") + yellowStyle.Render(" cancel"))
+		b.WriteString(yellowStyle().Render("≡ Moving: ") + cyanStyle().Render("j/k") + yellowStyle().Render(" move  |  ") + cyanStyle().Render("enter") + yellowStyle().Render(" confirm  |  ") + cyanStyle().Render("esc") + yellowStyle().Render(" cancel"))
 	} else if m.copyFeedback {
-		b.WriteString(greenStyle.Render("✓ Copied to clipboard!"))
+		b.WriteString(greenStyle().Render("✓ Copied to clipboard!"))
 	} else {
-		b.WriteString(cyanStyle.Render("?") + dimStyle.Render(" help  |  ") + cyanStyle.Render("j/k") + dimStyle.Render(" nav  |  ") + cyanStyle.Render("n") + dimStyle.Render(" new  |  ") + cyanStyle.Render("␣") + dimStyle.Render(" toggle  |  ") + cyanStyle.Render("esc") + dimStyle.Render(" quit"))
+		b.WriteString(cyanStyle().Render("?") + dimStyle().Render(" help  |  ") + cyanStyle().Render("j/k") + dimStyle().Render(" nav  |  ") + cyanStyle().Render("n") + dimStyle().Render(" new  |  ") + cyanStyle().Render("␣") + dimStyle().Render(" toggle  |  ") + cyanStyle().Render("esc") + dimStyle().Render(" quit"))
 	}
 
 	return b.String()
@@ -1275,7 +1317,7 @@ func (m model) View() string {
 func (m model) renderHelp() string {
 	var b strings.Builder
 
-	title := cyanStyle.Render("tdx") + " " + dimStyle.Render("v"+Version)
+	title := cyanStyle().Render("tdx") + " " + dimStyle().Render("v"+Version)
 	b.WriteString("\n  " + title + "\n\n")
 
 	// Define columns: header and entries (key, description)
@@ -1370,7 +1412,7 @@ func (m model) renderHelp() string {
 		padding := colWidths[i] - displayWidth(header)
 		leftPad := padding / 2
 		rightPad := padding - leftPad
-		b.WriteString(strings.Repeat(" ", leftPad) + cyanStyle.Render(header) + strings.Repeat(" ", rightPad))
+		b.WriteString(strings.Repeat(" ", leftPad) + cyanStyle().Render(header) + strings.Repeat(" ", rightPad))
 	}
 	b.WriteString("\n")
 
@@ -1382,7 +1424,7 @@ func (m model) renderHelp() string {
 				e := col.entries[row]
 				// Pad key to max key width in this column
 				keyPad := keyWidths[i] - displayWidth(e.key)
-				content := cyanStyle.Render(e.key) + strings.Repeat(" ", keyPad) + "  " + e.desc
+				content := cyanStyle().Render(e.key) + strings.Repeat(" ", keyPad) + "  " + e.desc
 				// Pad to column width
 				visibleLen := keyWidths[i] + 2 + displayWidth(e.desc)
 				padding := colWidths[i] - visibleLen
@@ -1395,7 +1437,7 @@ func (m model) renderHelp() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  Press ") + cyanStyle.Render("?") + dimStyle.Render(" or ") + cyanStyle.Render("esc") + dimStyle.Render(" to close help"))
+	b.WriteString(dimStyle().Render("  Press ") + cyanStyle().Render("?") + dimStyle().Render(" or ") + cyanStyle().Render("esc") + dimStyle().Render(" to close help"))
 
 	return b.String()
 }
@@ -1482,13 +1524,13 @@ func renderInlineCode(text string, isChecked bool) string {
 	for _, seg := range segments {
 		if seg.isLink {
 			// OSC 8 hyperlink with cyan text
-			result.WriteString(fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", seg.url, cyanStyle.Render(seg.text)))
+			result.WriteString(fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", seg.url, cyanStyle().Render(seg.text)))
 		} else if seg.isCode {
-			result.WriteString(codeStyle.Render(" " + seg.text + " "))
+			result.WriteString(codeStyle().Render(" " + seg.text + " "))
 		} else {
 			// Regular text - apply magenta if checked
 			if isChecked {
-				result.WriteString(magentaStyle.Render(seg.text))
+				result.WriteString(magentaStyle().Render(seg.text))
 			} else {
 				result.WriteString(seg.text)
 			}
