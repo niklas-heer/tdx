@@ -42,6 +42,8 @@ type model struct {
 	moveMode      bool
 	helpMode      bool
 	searchMode    bool
+	searchResults []int // indices of matching todos during search
+	searchCursor  int   // cursor within search results
 	inputBuffer   string
 	cursorPos     int
 	numberBuffer  string
@@ -487,27 +489,28 @@ func (m *model) processPipedInput(input []byte) {
 		// Handle search mode
 		if m.searchMode {
 			switch b {
-			case '\r', '\n': // Enter - select best match
-				if m.inputBuffer != "" {
-					bestIdx := m.findBestMatch(m.inputBuffer)
-					if bestIdx >= 0 {
-						m.selectedIndex = bestIdx
-					}
+			case '\r', '\n': // Enter - select current result
+				if len(m.searchResults) > 0 && m.searchCursor < len(m.searchResults) {
+					m.selectedIndex = m.searchResults[m.searchCursor]
 				}
 				m.searchMode = false
 				m.inputBuffer = ""
+				m.searchResults = nil
 			case 27: // Escape - cancel search
 				m.searchMode = false
 				m.inputBuffer = ""
+				m.searchResults = nil
 			case 127, 8: // Backspace
 				if m.cursorPos > 0 {
 					m.inputBuffer = m.inputBuffer[:m.cursorPos-1] + m.inputBuffer[m.cursorPos:]
 					m.cursorPos--
+					m.updateSearchResults()
 				}
 			default:
 				if b >= 32 && b < 127 { // Printable ASCII
 					m.inputBuffer = m.inputBuffer[:m.cursorPos] + string(b) + m.inputBuffer[m.cursorPos:]
 					m.cursorPos++
+					m.updateSearchResults()
 				}
 			}
 			continue
@@ -597,6 +600,12 @@ func (m *model) processPipedInput(input []byte) {
 				m.searchMode = true
 				m.inputBuffer = ""
 				m.cursorPos = 0
+				m.searchCursor = 0
+				// Initialize with all todos
+				m.searchResults = nil
+				for i := range m.fileModel.Todos {
+					m.searchResults = append(m.searchResults, i)
+				}
 			}
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			m.numberBuffer += string(b)
@@ -756,6 +765,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchMode = true
 			m.inputBuffer = ""
 			m.cursorPos = 0
+			m.searchCursor = 0
+			// Initialize with all todos
+			m.searchResults = nil
+			for i := range m.fileModel.Todos {
+				m.searchResults = append(m.searchResults, i)
+			}
 		}
 	}
 
@@ -870,34 +885,36 @@ func (m model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "enter":
-		// Find best match and select it
-		if m.inputBuffer != "" {
-			bestIdx := m.findBestMatch(m.inputBuffer)
-			if bestIdx >= 0 {
-				m.selectedIndex = bestIdx
-			}
+		// Select current search result
+		if len(m.searchResults) > 0 && m.searchCursor < len(m.searchResults) {
+			m.selectedIndex = m.searchResults[m.searchCursor]
 		}
 		m.searchMode = false
 		m.inputBuffer = ""
+		m.searchResults = nil
 
 	case "esc":
 		m.searchMode = false
 		m.inputBuffer = ""
+		m.searchResults = nil
+
+	case "down", "ctrl+n", "ctrl+j":
+		// Move down in search results
+		if len(m.searchResults) > 0 && m.searchCursor < len(m.searchResults)-1 {
+			m.searchCursor++
+		}
+
+	case "up", "ctrl+p", "ctrl+k":
+		// Move up in search results
+		if m.searchCursor > 0 {
+			m.searchCursor--
+		}
 
 	case "backspace", "ctrl+h":
 		if m.cursorPos > 0 {
 			m.inputBuffer = m.inputBuffer[:m.cursorPos-1] + m.inputBuffer[m.cursorPos:]
 			m.cursorPos--
-		}
-
-	case "left":
-		if m.cursorPos > 0 {
-			m.cursorPos--
-		}
-
-	case "right":
-		if m.cursorPos < len(m.inputBuffer) {
-			m.cursorPos++
+			m.updateSearchResults()
 		}
 
 	default:
@@ -905,10 +922,55 @@ func (m model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(key) == 1 {
 			m.inputBuffer = m.inputBuffer[:m.cursorPos] + key + m.inputBuffer[m.cursorPos:]
 			m.cursorPos++
+			m.updateSearchResults()
 		}
 	}
 
 	return m, nil
+}
+
+// updateSearchResults filters todos based on current search query
+func (m *model) updateSearchResults() {
+	m.searchResults = nil
+	m.searchCursor = 0
+
+	if m.inputBuffer == "" {
+		// Show all todos when query is empty
+		for i := range m.fileModel.Todos {
+			m.searchResults = append(m.searchResults, i)
+		}
+		return
+	}
+
+	query := strings.ToLower(m.inputBuffer)
+
+	// Collect matches with scores
+	type match struct {
+		index int
+		score int
+	}
+	var matches []match
+
+	for i, todo := range m.fileModel.Todos {
+		text := strings.ToLower(todo.Text)
+		score := fuzzyScore(query, text)
+		if score > 0 {
+			matches = append(matches, match{i, score})
+		}
+	}
+
+	// Sort by score descending
+	for i := 0; i < len(matches)-1; i++ {
+		for j := i + 1; j < len(matches); j++ {
+			if matches[j].score > matches[i].score {
+				matches[i], matches[j] = matches[j], matches[i]
+			}
+		}
+	}
+
+	for _, match := range matches {
+		m.searchResults = append(m.searchResults, match.index)
+	}
 }
 
 // findBestMatch returns the index of the best fuzzy match, or -1 if no match
@@ -1059,9 +1121,29 @@ func (m model) View() string {
 		b.WriteString("\n")
 	}
 
-	for i, todo := range m.fileModel.Todos {
-		relIndex := i - m.selectedIndex
-		isSelected := i == m.selectedIndex
+	// Determine which todos to display
+	var todosToShow []int
+	if m.searchMode {
+		todosToShow = m.searchResults
+	} else {
+		for i := range m.fileModel.Todos {
+			todosToShow = append(todosToShow, i)
+		}
+	}
+
+	for displayIdx, todoIdx := range todosToShow {
+		todo := m.fileModel.Todos[todoIdx]
+
+		var isSelected bool
+		var relIndex int
+
+		if m.searchMode {
+			isSelected = displayIdx == m.searchCursor
+			relIndex = displayIdx - m.searchCursor
+		} else {
+			isSelected = todoIdx == m.selectedIndex
+			relIndex = todoIdx - m.selectedIndex
+		}
 
 		// Relative index
 		indexStr := fmt.Sprintf("%+3d", relIndex)
@@ -1087,7 +1169,7 @@ func (m model) View() string {
 		text := renderInlineCode(todo.Text, todo.Checked)
 
 		// Show edit cursor if in edit mode on this item
-		if m.editMode && isSelected {
+		if m.editMode && isSelected && !m.searchMode {
 			before := m.inputBuffer[:m.cursorPos]
 			after := m.inputBuffer[m.cursorPos:]
 			text = before + lipgloss.NewStyle().Reverse(true).Render(" ") + after
@@ -1099,6 +1181,12 @@ func (m model) View() string {
 		}
 
 		b.WriteString(fmt.Sprintf("%s%s%s %s\n", dimStyle.Render(indexStr), arrow, checkbox, text))
+	}
+
+	// Show message when search has no results
+	if m.searchMode && len(m.searchResults) == 0 && m.inputBuffer != "" {
+		b.WriteString(dimStyle.Render("  No matches found"))
+		b.WriteString("\n")
 	}
 
 	// Input mode
