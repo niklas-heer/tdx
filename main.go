@@ -1211,6 +1211,7 @@ func (m model) View() string {
 			}
 		}
 
+		// Center the window on current position
 		halfWindow := appConfig.Display.MaxVisible / 2
 		startIdx = currentPos - halfWindow
 		if startIdx < 0 {
@@ -1230,9 +1231,13 @@ func (m model) View() string {
 		todosToShow = todosToShow[startIdx:endIdx]
 	}
 
-	// Show indicator for items above
-	if hasMoreAbove {
-		b.WriteString(fmt.Sprintf("      %s\n", dimStyle().Render(fmt.Sprintf("▲ %d more", startIdx))))
+	// Show indicator for items above (always reserve space when max_visible is set)
+	if appConfig.Display.MaxVisible > 0 && totalCount > appConfig.Display.MaxVisible {
+		if hasMoreAbove {
+			b.WriteString(fmt.Sprintf("      %s\n", dimStyle().Render(fmt.Sprintf("▲ %d more", startIdx))))
+		} else {
+			b.WriteString("\n")
+		}
 	}
 
 	for displayIdx, todoIdx := range todosToShow {
@@ -1242,9 +1247,9 @@ func (m model) View() string {
 		var relIndex int
 
 		if m.searchMode {
-			actualDisplayIdx := startIdx + displayIdx
-			isSelected = actualDisplayIdx == m.searchCursor
-			relIndex = actualDisplayIdx - m.searchCursor
+			actualIdx := startIdx + displayIdx
+			isSelected = actualIdx == m.searchCursor
+			relIndex = actualIdx - m.searchCursor
 		} else {
 			isSelected = todoIdx == m.selectedIndex
 			relIndex = todoIdx - m.selectedIndex
@@ -1294,9 +1299,13 @@ func (m model) View() string {
 		b.WriteString(fmt.Sprintf("%s%s%s %s\n", dimStyle().Render(indexStr), arrow, checkbox, text))
 	}
 
-	// Show indicator for items below
-	if hasMoreBelow {
-		b.WriteString(fmt.Sprintf("      %s\n", dimStyle().Render(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
+	// Show indicator for items below (always reserve space when max_visible is set)
+	if appConfig.Display.MaxVisible > 0 && totalCount > appConfig.Display.MaxVisible {
+		if hasMoreBelow {
+			b.WriteString(fmt.Sprintf("      %s\n", dimStyle().Render(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
+		} else {
+			b.WriteString("\n")
+		}
 	}
 
 	// Show message when search has no results
