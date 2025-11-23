@@ -10,3 +10,4 @@
 - [x] add config file for colors (themes)
 - [ ] add config setting for check symbol
 - [ ] add config setting for select marker
+- [ ] add themes to ship with tdx so you can just type the name

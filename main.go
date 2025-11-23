@@ -1192,6 +1192,10 @@ func (m model) View() string {
 
 	// Apply max_visible limit with scrolling
 	startIdx := 0
+	totalCount := len(todosToShow)
+	hasMoreAbove := false
+	hasMoreBelow := false
+
 	if appConfig.Display.MaxVisible > 0 && len(todosToShow) > appConfig.Display.MaxVisible {
 		// Calculate visible window centered on selection
 		var currentPos int
@@ -1213,14 +1217,22 @@ func (m model) View() string {
 			startIdx = 0
 		}
 		endIdx := startIdx + appConfig.Display.MaxVisible
-		if endIdx > len(todosToShow) {
-			endIdx = len(todosToShow)
+		if endIdx > totalCount {
+			endIdx = totalCount
 			startIdx = endIdx - appConfig.Display.MaxVisible
 			if startIdx < 0 {
 				startIdx = 0
 			}
 		}
+
+		hasMoreAbove = startIdx > 0
+		hasMoreBelow = endIdx < totalCount
 		todosToShow = todosToShow[startIdx:endIdx]
+	}
+
+	// Show indicator for items above
+	if hasMoreAbove {
+		b.WriteString(fmt.Sprintf("        %s\n", dimStyle().Render(fmt.Sprintf("▲ %d more", startIdx))))
 	}
 
 	for displayIdx, todoIdx := range todosToShow {
@@ -1280,6 +1292,11 @@ func (m model) View() string {
 		}
 
 		b.WriteString(fmt.Sprintf("%s%s%s %s\n", dimStyle().Render(indexStr), arrow, checkbox, text))
+	}
+
+	// Show indicator for items below
+	if hasMoreBelow {
+		b.WriteString(fmt.Sprintf("        %s\n", dimStyle().Render(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
 	}
 
 	// Show message when search has no results
