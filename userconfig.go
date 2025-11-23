@@ -37,21 +37,62 @@ type DisplayConfig struct {
 	MaxVisible int `toml:"max_visible"` // max todos to show (0 = unlimited)
 }
 
+// Built-in themes
+var builtinThemes = map[string]ColorsConfig{
+	"tokyo-night": {
+		Base:       "#c0caf5",
+		Dim:        "#565f89",
+		Accent:     "#7aa2f7",
+		Success:    "#c3e88d",
+		Warning:    "#ff9e64",
+		Important:  "#bb9af7",
+		AlertError: "#ff007c",
+	},
+	"gruvbox-dark": {
+		Base:       "#ebdbb2",
+		Dim:        "#928374",
+		Accent:     "#83a598",
+		Success:    "#b8bb26",
+		Warning:    "#fe8019",
+		Important:  "#d3869b",
+		AlertError: "#fb4934",
+	},
+	"catppuccin-mocha": {
+		Base:       "#cdd6f4",
+		Dim:        "#6c7086",
+		Accent:     "#89b4fa",
+		Success:    "#a6e3a1",
+		Warning:    "#fab387",
+		Important:  "#cba6f7",
+		AlertError: "#f38ba8",
+	},
+	"nord": {
+		Base:       "#eceff4",
+		Dim:        "#4c566a",
+		Accent:     "#88c0d0",
+		Success:    "#a3be8c",
+		Warning:    "#ebcb8b",
+		Important:  "#b48ead",
+		AlertError: "#bf616a",
+	},
+	"dracula": {
+		Base:       "#f8f8f2",
+		Dim:        "#6272a4",
+		Accent:     "#8be9fd",
+		Success:    "#50fa7b",
+		Warning:    "#ffb86c",
+		Important:  "#ff79c6",
+		AlertError: "#ff5555",
+	},
+}
+
 // DefaultConfig returns Tokyo Night theme as default
 func DefaultConfig() *UserConfig {
 	return &UserConfig{
 		Theme: ThemeConfig{
 			Name: "tokyo-night",
 		},
-		Colors: ColorsConfig{
-			Base:       "#c0caf5",
-			Dim:        "#565f89",
-			Accent:     "#7aa2f7",
-			Success:    "#c3e88d",
-			Warning:    "#ff9e64",
-			Important:  "#bb9af7",
-			AlertError: "#ff007c",
-		},
+		Colors: builtinThemes["tokyo-night"],
 		Display: DisplayConfig{
 			MaxVisible: 0, // unlimited by default
 		},
@@ -89,9 +130,19 @@ func LoadConfig() *UserConfig {
 	}
 
 	// Load and parse config
-	_, err := toml.DecodeFile(configPath, config)
+	meta, err := toml.DecodeFile(configPath, config)
 	if err != nil {
 		return DefaultConfig()
+	}
+
+	// Apply builtin theme if name is set and no custom colors defined
+	if config.Theme.Name != "" {
+		if theme, ok := builtinThemes[config.Theme.Name]; ok {
+			// Only apply theme colors if [colors] section wasn't in config
+			if !meta.IsDefined("colors") {
+				config.Colors = theme
+			}
+		}
 	}
 
 	return config
