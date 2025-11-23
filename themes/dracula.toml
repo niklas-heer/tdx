@@ -1,0 +1,12 @@
+[theme]
+name = "dracula"
+author = "Zeno Rocha"
+
+[colors]
+Base = "#f8f8f2"
+Dim = "#6272a4"
+Accent = "#8be9fd"
+Success = "#50fa7b"
+Warning = "#ffb86c"
+Important = "#ff79c6"
+AlertError = "#ff5555"

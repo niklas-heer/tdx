@@ -1,0 +1,12 @@
+[theme]
+name = "gruvbox-dark"
+author = "morhetz"
+
+[colors]
+Base = "#ebdbb2"
+Dim = "#928374"
+Accent = "#83a598"
+Success = "#b8bb26"
+Warning = "#fe8019"
+Important = "#d3869b"
+AlertError = "#fb4934"

@@ -1,12 +1,16 @@
 package main
 
 import (
+	"embed"
 	"os"
 	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/lipgloss"
 )
+
+//go:embed themes/*.toml
+var themesFS embed.FS
 
 // UserConfig holds user configuration
 type UserConfig struct {
@@ -37,54 +41,40 @@ type DisplayConfig struct {
 	MaxVisible int `toml:"max_visible"` // max todos to show (0 = unlimited)
 }
 
-// Built-in themes
-var builtinThemes = map[string]ColorsConfig{
-	"tokyo-night": {
-		Base:       "#c0caf5",
-		Dim:        "#565f89",
-		Accent:     "#7aa2f7",
-		Success:    "#c3e88d",
-		Warning:    "#ff9e64",
-		Important:  "#bb9af7",
-		AlertError: "#ff007c",
-	},
-	"gruvbox-dark": {
-		Base:       "#ebdbb2",
-		Dim:        "#928374",
-		Accent:     "#83a598",
-		Success:    "#b8bb26",
-		Warning:    "#fe8019",
-		Important:  "#d3869b",
-		AlertError: "#fb4934",
-	},
-	"catppuccin-mocha": {
-		Base:       "#cdd6f4",
-		Dim:        "#6c7086",
-		Accent:     "#89b4fa",
-		Success:    "#a6e3a1",
-		Warning:    "#fab387",
-		Important:  "#cba6f7",
-		AlertError: "#f38ba8",
-	},
-	"nord": {
-		Base:       "#eceff4",
-		Dim:        "#4c566a",
-		Accent:     "#88c0d0",
-		Success:    "#a3be8c",
-		Warning:    "#ebcb8b",
-		Important:  "#b48ead",
-		AlertError: "#bf616a",
-	},
-	"dracula": {
-		Base:       "#f8f8f2",
-		Dim:        "#6272a4",
-		Accent:     "#8be9fd",
-		Success:    "#50fa7b",
-		Warning:    "#ffb86c",
-		Important:  "#ff79c6",
-		AlertError: "#ff5555",
-	},
+// loadBuiltinThemes loads themes from embedded TOML files
+func loadBuiltinThemes() map[string]ColorsConfig {
+	themes := make(map[string]ColorsConfig)
+
+	entries, err := themesFS.ReadDir("themes")
+	if err != nil {
+		return themes
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		data, err := themesFS.ReadFile("themes/" + entry.Name())
+		if err != nil {
+			continue
+		}
+
+		var config UserConfig
+		if _, err := toml.Decode(string(data), &config); err != nil {
+			continue
+		}
+
+		if config.Theme.Name != "" {
+			themes[config.Theme.Name] = config.Colors
+		}
+	}
+
+	return themes
 }
+
+// builtinThemes holds all embedded themes
+var builtinThemes = loadBuiltinThemes()
 
 // DefaultConfig returns Tokyo Night theme as default
 func DefaultConfig() *UserConfig {
