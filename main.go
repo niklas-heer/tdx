@@ -1258,7 +1258,7 @@ func (m model) View() string {
 		before := m.inputBuffer[:m.cursorPos]
 		after := m.inputBuffer[m.cursorPos:]
 		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-		b.WriteString(cyanStyle.Render("/") + before + cursor + after)
+		b.WriteString(cyanStyle.Render("search: ") + before + cursor + after)
 	} else if m.inputMode || m.editMode {
 		b.WriteString(dimStyle.Render("(Press ") + cyanStyle.Render("Enter") + dimStyle.Render(" to confirm, ") + cyanStyle.Render("Esc") + dimStyle.Render(" to cancel)"))
 	} else if m.moveMode {
