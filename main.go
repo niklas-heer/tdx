@@ -307,7 +307,7 @@ func listTodos(filePath string) {
 	for _, todo := range fm.Todos {
 		checkbox := "[ ]"
 		if todo.Checked {
-			checkbox = "[✓]"
+			checkbox = "[" + appConfig.Display.CheckSymbol + "]"
 		}
 		fmt.Printf("  %d. %s %s\n", todo.Index, checkbox, todo.Text)
 	}
@@ -363,7 +363,7 @@ func toggleTodo(filePath string, index int) {
 
 	checkbox := "[ ]"
 	if todo.Checked {
-		checkbox = "[✓]"
+		checkbox = "[" + appConfig.Display.CheckSymbol + "]"
 	}
 	fmt.Printf("%s Toggled: %s %s\n", greenStyle().Render("✓"), checkbox, todo.Text)
 }
@@ -1196,11 +1196,20 @@ func (m model) View() string {
 	hasMoreAbove := false
 	hasMoreBelow := false
 
-	if appConfig.Display.MaxVisible > 0 && len(todosToShow) > appConfig.Display.MaxVisible {
+	// When in input mode, reserve one slot for the new task input
+	effectiveMaxVisible := appConfig.Display.MaxVisible
+	if m.inputMode && appConfig.Display.MaxVisible > 0 {
+		effectiveMaxVisible = appConfig.Display.MaxVisible - 1
+	}
+
+	if effectiveMaxVisible > 0 && len(todosToShow) > effectiveMaxVisible {
 		// Calculate visible window centered on selection
 		var currentPos int
 		if m.searchMode {
 			currentPos = m.searchCursor
+		} else if m.inputMode {
+			// When adding new task, scroll to show last items before the input
+			currentPos = totalCount - 1
 		} else {
 			// Find position of selectedIndex in todosToShow
 			for i, idx := range todosToShow {
@@ -1212,23 +1221,26 @@ func (m model) View() string {
 		}
 
 		// Center the window on current position
-		halfWindow := appConfig.Display.MaxVisible / 2
+		halfWindow := effectiveMaxVisible / 2
 		startIdx = currentPos - halfWindow
 		if startIdx < 0 {
 			startIdx = 0
 		}
-		endIdx := startIdx + appConfig.Display.MaxVisible
+		endIdx := startIdx + effectiveMaxVisible
 		if endIdx > totalCount {
 			endIdx = totalCount
-			startIdx = endIdx - appConfig.Display.MaxVisible
+			startIdx = endIdx - effectiveMaxVisible
 			if startIdx < 0 {
 				startIdx = 0
 			}
 		}
 
 		hasMoreAbove = startIdx > 0
-		hasMoreBelow = endIdx < totalCount
+		hasMoreBelow = endIdx < totalCount || m.inputMode
 		todosToShow = todosToShow[startIdx:endIdx]
+	} else if m.inputMode && effectiveMaxVisible > 0 && len(todosToShow) == effectiveMaxVisible {
+		// Edge case: exactly at the limit when adding new task
+		hasMoreBelow = true
 	}
 
 	// Show indicator for items above (always reserve space when max_visible is set)
@@ -1250,6 +1262,10 @@ func (m model) View() string {
 			actualIdx := startIdx + displayIdx
 			isSelected = actualIdx == m.searchCursor
 			relIndex = actualIdx - m.searchCursor
+		} else if m.inputMode {
+			// When adding new task, all existing items are above (negative indices)
+			isSelected = false
+			relIndex = todoIdx - totalCount
 		} else {
 			isSelected = todoIdx == m.selectedIndex
 			relIndex = todoIdx - m.selectedIndex
@@ -1264,13 +1280,13 @@ func (m model) View() string {
 		// Arrow - don't show on existing items when in input mode
 		arrow := "   "
 		if isSelected && !m.inputMode {
-			arrow = cyanStyle().Render(" ➜ ")
+			arrow = cyanStyle().Render(" " + appConfig.Display.SelectMarker + " ")
 		}
 
 		// Checkbox
 		var checkbox string
 		if todo.Checked {
-			checkbox = magentaStyle().Render("[✓]")
+			checkbox = magentaStyle().Render("[" + appConfig.Display.CheckSymbol + "]")
 		} else {
 			checkbox = dimStyle().Render("[ ]")
 		}
@@ -1299,9 +1315,19 @@ func (m model) View() string {
 		b.WriteString(fmt.Sprintf("%s%s%s %s\n", dimStyle().Render(indexStr), arrow, checkbox, text))
 	}
 
+	// Input mode - show new task as part of the visible window
+	if m.inputMode {
+		arrow := cyanStyle().Render(" " + appConfig.Display.SelectMarker + " ")
+		checkbox := dimStyle().Render("[ ]")
+		before := m.inputBuffer[:m.cursorPos]
+		after := m.inputBuffer[m.cursorPos:]
+		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
+		b.WriteString(fmt.Sprintf("%s%s%s %s%s%s\n", dimStyle().Render("  0"), arrow, checkbox, before, cursor, after))
+	}
+
 	// Show indicator for items below (always reserve space when max_visible is set)
 	if appConfig.Display.MaxVisible > 0 && totalCount > appConfig.Display.MaxVisible {
-		if hasMoreBelow {
+		if hasMoreBelow && !m.inputMode {
 			b.WriteString(fmt.Sprintf("      %s\n", dimStyle().Render(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
 		} else {
 			b.WriteString("\n")
@@ -1312,16 +1338,6 @@ func (m model) View() string {
 	if m.searchMode && len(m.searchResults) == 0 && m.inputBuffer != "" {
 		b.WriteString(dimStyle().Render("  No matches found"))
 		b.WriteString("\n")
-	}
-
-	// Input mode
-	if m.inputMode {
-		arrow := cyanStyle().Render(" ➜ ")
-		checkbox := dimStyle().Render("[ ]")
-		before := m.inputBuffer[:m.cursorPos]
-		after := m.inputBuffer[m.cursorPos:]
-		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-		b.WriteString(fmt.Sprintf("   %s%s %s%s%s\n", arrow, checkbox, before, cursor, after))
 	}
 
 	b.WriteString("\n")

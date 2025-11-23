@@ -1,0 +1,12 @@
+[theme]
+name = "github-dark"
+author = "GitHub"
+
+[colors]
+Base = "#c9d1d9"
+Dim = "#8b949e"
+Accent = "#58a6ff"
+Success = "#3fb950"
+Warning = "#d29922"
+Important = "#bc8cff"
+AlertError = "#f85149"

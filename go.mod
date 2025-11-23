@@ -3,13 +3,13 @@ module github.com/niklas-heer/tdx
 go 1.25.4
 
 require (
+	github.com/BurntSushi/toml v1.5.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/mattn/go-runewidth v0.0.19
 )
 
 require (
-	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.3.3 // indirect
 	github.com/charmbracelet/x/ansi v0.11.1 // indirect

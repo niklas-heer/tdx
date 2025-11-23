@@ -8,8 +8,12 @@
 - [x] add fuzzy search via / keyboard shortcut
 - [x] add config for how many tasks should be shown (max)
 - [x] add config file for colors (themes)
-- [ ] add config setting for check symbol
-- [ ] add config setting for select marker
-- [ ] add themes to ship with tdx so you can just use in config. 10 themes. (most popular)
-- [ ] update readme with current capabilities
+- [x] add config setting for check symbol
+- [x] add config setting for select marker
+- [x] add themes to ship with tdx so you can just use in config. 10 themes. (most popular)
+- [x] update readme with current capabilities
+- [x] make sure go mod has no warnings
+- [ ] new release
 - [ ] add tui theme picker via command ": theme" which live previews
+- [ ] add config to hide relative numbers and as a command in the tui and config file
+- [ ] add keyboard shortcut h to toggle hide for the done tasks

@@ -73,6 +73,7 @@ tdx
 | `d` | Delete todo |
 | `c` | Copy to clipboard |
 | `m` | Move mode |
+| `/` | Fuzzy search |
 | `u` | Undo |
 | `?` | Help menu |
 | `Esc` | Quit |
@@ -81,6 +82,9 @@ tdx
 **Vim-style jumps:**
 - `5j` - Move down 5 lines
 - `3k` - Move up 3 lines
+
+**Fuzzy Search:**
+Press `/` to enter search mode. Type to filter todos with live highlighting. Press `Enter` to select or `Esc` to cancel.
 
 ### CLI Commands
 
@@ -167,13 +171,53 @@ just clean      # Clean artifacts
 
 ## Configuration
 
-**Custom file path:**
+### Config File
+
+Create `~/.config/tdx/config.toml` to customize tdx:
+
+```toml
+[theme]
+name = "tokyo-night"  # or any builtin theme
+
+[display]
+max_visible = 10       # limit visible todos (0 = unlimited)
+check_symbol = "✓"     # symbol for completed items
+select_marker = "➜"    # symbol for selected item
+
+# Optional: override theme colors
+[colors]
+Base = "#c0caf5"
+Dim = "#565f89"
+Accent = "#7aa2f7"
+Success = "#9ece6a"
+Warning = "#e0af68"
+Important = "#bb9af7"
+AlertError = "#f7768e"
+```
+
+### Builtin Themes
+
+- `tokyo-night` (default)
+- `gruvbox-dark`
+- `catppuccin-mocha`
+- `nord`
+- `dracula`
+- `solarized-dark`
+- `one-dark`
+- `monokai`
+- `github-dark`
+- `rose-pine`
+
+### Custom File Path
+
 ```bash
 tdx ~/notes/work.md           # Use specific file
 tdx project.md add "Task"     # All commands work
 ```
 
-**Build configuration** in `tdx.toml`:
+### Build Configuration
+
+Build metadata in `tdx.toml`:
 ```toml
 version = "0.4.0"
 description = "your todos, in markdown, done fast"

@@ -38,7 +38,9 @@ type ColorsConfig struct {
 
 // DisplayConfig holds display settings
 type DisplayConfig struct {
-	MaxVisible int `toml:"max_visible"` // max todos to show (0 = unlimited)
+	MaxVisible   int    `toml:"max_visible"`   // max todos to show (0 = unlimited)
+	CheckSymbol  string `toml:"check_symbol"`  // symbol for checked items (default: ✓)
+	SelectMarker string `toml:"select_marker"` // symbol for selected item (default: ➜)
 }
 
 // loadBuiltinThemes loads themes from embedded TOML files
@@ -84,7 +86,9 @@ func DefaultConfig() *UserConfig {
 		},
 		Colors: builtinThemes["tokyo-night"],
 		Display: DisplayConfig{
-			MaxVisible: 0, // unlimited by default
+			MaxVisible:   0,   // unlimited by default
+			CheckSymbol:  "✓", // default check symbol
+			SelectMarker: "➜", // default select marker
 		},
 	}
 }

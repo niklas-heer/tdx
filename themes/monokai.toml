@@ -1,0 +1,12 @@
+[theme]
+name = "monokai"
+author = "Wimer Hazenberg"
+
+[colors]
+Base = "#f8f8f2"
+Dim = "#75715e"
+Accent = "#66d9ef"
+Success = "#a6e22e"
+Warning = "#fd971f"
+Important = "#f92672"
+AlertError = "#f92672"
