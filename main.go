@@ -1036,6 +1036,52 @@ func fuzzyScore(query, text string) int {
 	return 0
 }
 
+// highlightMatches returns text with matched characters highlighted
+func highlightMatches(text, query string) string {
+	if query == "" {
+		return text
+	}
+
+	lowerText := strings.ToLower(text)
+	lowerQuery := strings.ToLower(query)
+
+	// Find match positions
+	var matchPositions []int
+
+	// First try exact substring match
+	if idx := strings.Index(lowerText, lowerQuery); idx != -1 {
+		for i := idx; i < idx+len(query); i++ {
+			matchPositions = append(matchPositions, i)
+		}
+	} else {
+		// Fuzzy match positions
+		queryIdx := 0
+		for i := 0; i < len(lowerText) && queryIdx < len(lowerQuery); i++ {
+			if lowerText[i] == lowerQuery[queryIdx] {
+				matchPositions = append(matchPositions, i)
+				queryIdx++
+			}
+		}
+	}
+
+	// Build highlighted string
+	var result strings.Builder
+	matchSet := make(map[int]bool)
+	for _, pos := range matchPositions {
+		matchSet[pos] = true
+	}
+
+	for i, char := range text {
+		if matchSet[i] {
+			result.WriteString(greenStyle.Render(string(char)))
+		} else {
+			result.WriteString(string(char))
+		}
+	}
+
+	return result.String()
+}
+
 func (m *model) saveHistory() {
 	// Deep copy
 	lines := make([]string, len(m.fileModel.Lines))
@@ -1166,7 +1212,13 @@ func (m model) View() string {
 		}
 
 		// Text with inline code rendering
-		text := renderInlineCode(todo.Text, todo.Checked)
+		var text string
+		if m.searchMode && m.inputBuffer != "" {
+			// Highlight matches during search
+			text = highlightMatches(todo.Text, m.inputBuffer)
+		} else {
+			text = renderInlineCode(todo.Text, todo.Checked)
+		}
 
 		// Show edit cursor if in edit mode on this item
 		if m.editMode && isSelected && !m.searchMode {
