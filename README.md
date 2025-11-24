@@ -14,6 +14,8 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 - 📝 **Markdown-native** - Todos live in `todo.md`, version control friendly
 - ⌨️ **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
 - 🖥️ **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
+- 🎯 **Command Palette** - Helix-style `:` commands with fuzzy search
+- 📋 **Checklist Mode** - Session-only mode, check/uncheck all, filter done
 - 🔧 **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
 - 🌍 **Cross-platform** - macOS, Linux, Windows
 
@@ -74,10 +76,38 @@ tdx
 | `c` | Copy to clipboard |
 | `m` | Move mode |
 | `/` | Fuzzy search |
+| `:` | Command palette |
 | `u` | Undo |
 | `?` | Help menu |
 | `Esc` | Quit |
 | `Cmd+V` / `Ctrl+Y` | Paste (in edit mode) |
+
+**Command Palette (`:`):**
+
+Press `:` to open the command palette with fuzzy search. Available commands:
+
+| Command | Description |
+|---------|-------------|
+| `check-all` | Mark all todos as complete |
+| `uncheck-all` | Mark all todos as incomplete |
+| `sort` | Sort todos (incomplete first) |
+| `filter-done` | Toggle hiding completed todos |
+| `clear-done` | Delete all completed todos |
+| `disable-persist` | Enable session-only mode |
+| `enable-persist` | Disable session-only mode |
+| `save` | Save current state to file |
+| `wrap` | Toggle word wrap |
+| `line-numbers` | Toggle relative line numbers |
+
+**Session-Only Mode:**
+
+Start tdx with `-s` or `--session-only` flag for checklist workflows where you don't want changes saved automatically:
+
+```bash
+tdx -s checklist.md
+```
+
+Use `:save` to manually save when ready, or `:enable-persist` to turn auto-save back on.
 
 **Vim-style jumps:**
 - `5j` - Move down 5 lines
