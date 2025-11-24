@@ -32,6 +32,13 @@ type FileModel struct {
 	Todos []Todo
 }
 
+// Command represents a command in the command palette
+type Command struct {
+	Name        string
+	Description string
+	Handler     func(m *model)
+}
+
 // App state for TUI
 type model struct {
 	filePath      string
@@ -42,6 +49,7 @@ type model struct {
 	moveMode      bool
 	helpMode      bool
 	searchMode    bool
+	commandMode   bool  // command palette mode
 	searchResults []int // indices of matching todos during search
 	searchCursor  int   // cursor within search results
 	inputBuffer   string
@@ -50,6 +58,16 @@ type model struct {
 	history       *FileModel
 	copyFeedback  bool
 	err           error
+
+	// Command palette state
+	commands        []Command
+	filteredCmds    []int // indices of matching commands
+	commandCursor   int   // cursor within filtered commands
+	sessionOnly     bool  // don't persist changes to disk
+	filterDone      bool  // hide completed todos
+	wordWrap        bool  // wrap long lines
+	termWidth       int   // terminal width for wrapping
+	hideLineNumbers bool  // hide relative line numbers
 }
 
 // Global config and styles (initialized in main/runTUI)
@@ -80,10 +98,23 @@ func main() {
 
 	args := os.Args[1:]
 
-	// Determine file path and command
+	// Determine file path, flags, and command
 	filePath := defaultFile
 	var command string
 	var cmdArgs []string
+	sessionOnly := false
+
+	// Process arguments
+	var remainingArgs []string
+	for _, arg := range args {
+		switch arg {
+		case "--session-only", "-s":
+			sessionOnly = true
+		default:
+			remainingArgs = append(remainingArgs, arg)
+		}
+	}
+	args = remainingArgs
 
 	if len(args) > 0 {
 		// Check if first arg is a .md file
@@ -158,7 +189,7 @@ func main() {
 		deleteTodo(filePath, idx)
 	case "":
 		// Launch TUI
-		runTUI(filePath)
+		runTUI(filePath, sessionOnly)
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printHelp()
@@ -171,6 +202,9 @@ func printHelp() {
 
 Usage:
   tdx [file.md] [command] [args]
+
+Options:
+  -s, --session-only  Don't persist changes to disk
 
 Commands:
   (none)              Launch interactive TUI
@@ -190,6 +224,7 @@ TUI Controls:
   c                   Copy to clipboard
   m                   Move todo
   u                   Undo
+  :                   Command palette
   ?                   Toggle help
   Esc                 Quit`, Description)
 	fmt.Println(help)
@@ -429,7 +464,7 @@ func deleteTodo(filePath string, index int) {
 
 // TUI implementation
 
-func runTUI(filePath string) {
+func runTUI(filePath string, sessionOnly bool) {
 	fm, err := readFile(filePath)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
@@ -440,6 +475,8 @@ func runTUI(filePath string) {
 		filePath:      filePath,
 		fileModel:     *fm,
 		selectedIndex: 0,
+		commands:      initCommands(),
+		sessionOnly:   sessionOnly,
 	}
 
 	// Check if we have a TTY
@@ -478,7 +515,7 @@ func (m *model) processPipedInput(input []byte) {
 				} else if m.editMode {
 					if m.inputBuffer != "" {
 						m.fileModel.Todos[m.selectedIndex].Text = m.inputBuffer
-						writeFile(m.filePath, &m.fileModel)
+						m.writeIfPersist()
 					}
 					m.editMode = false
 				}
@@ -529,6 +566,44 @@ func (m *model) processPipedInput(input []byte) {
 			continue
 		}
 
+		// Handle command mode
+		if m.commandMode {
+			switch b {
+			case '\r', '\n': // Enter - execute command
+				if len(m.filteredCmds) > 0 && m.commandCursor < len(m.filteredCmds) {
+					cmdIdx := m.filteredCmds[m.commandCursor]
+					m.commands[cmdIdx].Handler(m)
+				}
+				m.commandMode = false
+				m.inputBuffer = ""
+				m.filteredCmds = nil
+			case '\t': // Tab - complete command
+				if len(m.filteredCmds) > 0 && m.commandCursor < len(m.filteredCmds) {
+					cmdIdx := m.filteredCmds[m.commandCursor]
+					m.inputBuffer = m.commands[cmdIdx].Name
+					m.cursorPos = len(m.inputBuffer)
+					m.updateFilteredCommands()
+				}
+			case 27: // Escape - cancel
+				m.commandMode = false
+				m.inputBuffer = ""
+				m.filteredCmds = nil
+			case 127, 8: // Backspace
+				if m.cursorPos > 0 {
+					m.inputBuffer = m.inputBuffer[:m.cursorPos-1] + m.inputBuffer[m.cursorPos:]
+					m.cursorPos--
+					m.updateFilteredCommands()
+				}
+			default:
+				if b >= 32 && b < 127 { // Printable ASCII
+					m.inputBuffer = m.inputBuffer[:m.cursorPos] + string(b) + m.inputBuffer[m.cursorPos:]
+					m.cursorPos++
+					m.updateFilteredCommands()
+				}
+			}
+			continue
+		}
+
 		// Handle move mode
 		if m.moveMode {
 			switch b {
@@ -543,7 +618,7 @@ func (m *model) processPipedInput(input []byte) {
 					m.selectedIndex--
 				}
 			case '\r', '\n':
-				writeFile(m.filePath, &m.fileModel)
+				m.writeIfPersist()
 				m.moveMode = false
 			case 27:
 				m.moveMode = false
@@ -569,7 +644,11 @@ func (m *model) processPipedInput(input []byte) {
 				m.saveHistory()
 				todo := &m.fileModel.Todos[m.selectedIndex]
 				todo.Checked = !todo.Checked
-				writeFile(m.filePath, &m.fileModel)
+				m.writeIfPersist()
+				// Adjust selection if item is now hidden by filter
+				if m.filterDone && todo.Checked {
+					m.adjustSelectionForFilter()
+				}
 			}
 		case 'n':
 			m.saveHistory()
@@ -597,7 +676,7 @@ func (m *model) processPipedInput(input []byte) {
 			if m.history != nil {
 				m.fileModel = *m.history
 				m.history = nil
-				writeFile(m.filePath, &m.fileModel)
+				m.writeIfPersist()
 				if m.selectedIndex >= len(m.fileModel.Todos) {
 					m.selectedIndex = max(0, len(m.fileModel.Todos)-1)
 				}
@@ -620,6 +699,16 @@ func (m *model) processPipedInput(input []byte) {
 					m.searchResults = append(m.searchResults, i)
 				}
 			}
+		case ':':
+			m.commandMode = true
+			m.inputBuffer = ""
+			m.cursorPos = 0
+			m.commandCursor = 0
+			// Initialize with all commands
+			m.filteredCmds = nil
+			for i := range m.commands {
+				m.filteredCmds = append(m.filteredCmds, i)
+			}
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			m.numberBuffer += string(b)
 		}
@@ -641,6 +730,9 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.termWidth = msg.Width
+		return m, nil
 	case clearCopyFeedbackMsg:
 		m.copyFeedback = false
 		return m, nil
@@ -678,6 +770,11 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchKey(msg)
 	}
 
+	// Handle command mode
+	if m.commandMode {
+		return m.handleCommandKey(msg)
+	}
+
 	// Handle move mode
 	if m.moveMode {
 		return m.handleMoveKey(msg)
@@ -709,20 +806,56 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "j", "down":
-		m.selectedIndex = min(m.selectedIndex+count, len(m.fileModel.Todos)-1)
-		if m.selectedIndex < 0 {
-			m.selectedIndex = 0
+		if m.filterDone {
+			// Navigate within visible todos only
+			visible := m.getVisibleTodos()
+			if len(visible) > 0 {
+				currentPos := 0
+				for i, idx := range visible {
+					if idx == m.selectedIndex {
+						currentPos = i
+						break
+					}
+				}
+				newPos := min(currentPos+count, len(visible)-1)
+				m.selectedIndex = visible[newPos]
+			}
+		} else {
+			m.selectedIndex = min(m.selectedIndex+count, len(m.fileModel.Todos)-1)
+			if m.selectedIndex < 0 {
+				m.selectedIndex = 0
+			}
 		}
 
 	case "k", "up":
-		m.selectedIndex = max(m.selectedIndex-count, 0)
+		if m.filterDone {
+			// Navigate within visible todos only
+			visible := m.getVisibleTodos()
+			if len(visible) > 0 {
+				currentPos := 0
+				for i, idx := range visible {
+					if idx == m.selectedIndex {
+						currentPos = i
+						break
+					}
+				}
+				newPos := max(currentPos-count, 0)
+				m.selectedIndex = visible[newPos]
+			}
+		} else {
+			m.selectedIndex = max(m.selectedIndex-count, 0)
+		}
 
 	case " ", "enter":
 		if len(m.fileModel.Todos) > 0 {
 			m.saveHistory()
 			todo := &m.fileModel.Todos[m.selectedIndex]
 			todo.Checked = !todo.Checked
-			writeFile(m.filePath, &m.fileModel)
+			m.writeIfPersist()
+			// Adjust selection if item is now hidden by filter
+			if m.filterDone && todo.Checked {
+				m.adjustSelectionForFilter()
+			}
 		}
 
 	case "n":
@@ -764,7 +897,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.history != nil {
 			m.fileModel = *m.history
 			m.history = nil
-			writeFile(m.filePath, &m.fileModel)
+			m.writeIfPersist()
 			if m.selectedIndex >= len(m.fileModel.Todos) {
 				m.selectedIndex = max(0, len(m.fileModel.Todos)-1)
 			}
@@ -785,6 +918,17 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.searchResults = append(m.searchResults, i)
 			}
 		}
+
+	case ":":
+		m.commandMode = true
+		m.inputBuffer = ""
+		m.cursorPos = 0
+		m.commandCursor = 0
+		// Initialize with all commands
+		m.filteredCmds = nil
+		for i := range m.commands {
+			m.filteredCmds = append(m.filteredCmds, i)
+		}
 	}
 
 	return m, nil
@@ -803,7 +947,7 @@ func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.editMode {
 			if m.inputBuffer != "" {
 				m.fileModel.Todos[m.selectedIndex].Text = m.inputBuffer
-				writeFile(m.filePath, &m.fileModel)
+				m.writeIfPersist()
 			}
 			m.editMode = false
 		}
@@ -879,7 +1023,7 @@ func (m model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "enter":
-		writeFile(m.filePath, &m.fileModel)
+		m.writeIfPersist()
 		m.moveMode = false
 
 	case "esc":
@@ -936,6 +1080,65 @@ func (m model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inputBuffer = m.inputBuffer[:m.cursorPos] + key + m.inputBuffer[m.cursorPos:]
 			m.cursorPos++
 			m.updateSearchResults()
+		}
+	}
+
+	return m, nil
+}
+
+func (m model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "enter":
+		// Execute current command
+		if len(m.filteredCmds) > 0 && m.commandCursor < len(m.filteredCmds) {
+			cmdIdx := m.filteredCmds[m.commandCursor]
+			m.commands[cmdIdx].Handler(&m)
+		}
+		m.commandMode = false
+		m.inputBuffer = ""
+		m.filteredCmds = nil
+
+	case "tab":
+		// Tab completes to the selected command name
+		if len(m.filteredCmds) > 0 && m.commandCursor < len(m.filteredCmds) {
+			cmdIdx := m.filteredCmds[m.commandCursor]
+			m.inputBuffer = m.commands[cmdIdx].Name
+			m.cursorPos = len(m.inputBuffer)
+			m.updateFilteredCommands()
+		}
+
+	case "esc":
+		m.commandMode = false
+		m.inputBuffer = ""
+		m.filteredCmds = nil
+
+	case "down", "ctrl+n", "ctrl+j":
+		// Move down in command list
+		if len(m.filteredCmds) > 0 && m.commandCursor < len(m.filteredCmds)-1 {
+			m.commandCursor++
+		}
+
+	case "up", "ctrl+p", "ctrl+k":
+		// Move up in command list
+		if m.commandCursor > 0 {
+			m.commandCursor--
+		}
+
+	case "backspace", "ctrl+h":
+		if m.cursorPos > 0 {
+			m.inputBuffer = m.inputBuffer[:m.cursorPos-1] + m.inputBuffer[m.cursorPos:]
+			m.cursorPos--
+			m.updateFilteredCommands()
+		}
+
+	default:
+		// Insert character
+		if len(key) == 1 {
+			m.inputBuffer = m.inputBuffer[:m.cursorPos] + key + m.inputBuffer[m.cursorPos:]
+			m.cursorPos++
+			m.updateFilteredCommands()
 		}
 	}
 
@@ -1120,7 +1323,7 @@ func (m *model) addNewTodo() {
 	m.fileModel.Todos = append(m.fileModel.Todos, newTodo)
 	m.fileModel.Lines = append(m.fileModel.Lines, fmt.Sprintf("- [ ] %s", m.inputBuffer))
 
-	writeFile(m.filePath, &m.fileModel)
+	m.writeIfPersist()
 	m.selectedIndex = len(m.fileModel.Todos) - 1
 }
 
@@ -1143,7 +1346,7 @@ func (m *model) deleteCurrent() {
 	// Re-parse
 	m.fileModel = *parseMarkdown(strings.Join(m.fileModel.Lines, "\n"))
 
-	writeFile(m.filePath, &m.fileModel)
+	m.writeIfPersist()
 
 	// Adjust selection
 	if m.selectedIndex >= len(m.fileModel.Todos) {
@@ -1186,6 +1389,10 @@ func (m model) View() string {
 		todosToShow = m.searchResults
 	} else {
 		for i := range m.fileModel.Todos {
+			// Apply filter-done if enabled
+			if m.filterDone && m.fileModel.Todos[i].Checked {
+				continue
+			}
 			todosToShow = append(todosToShow, i)
 		}
 	}
@@ -1252,6 +1459,15 @@ func (m model) View() string {
 		}
 	}
 
+	// Find position of selected item in visible list for relative indexing
+	selectedVisiblePos := 0
+	for i, idx := range todosToShow {
+		if idx == m.selectedIndex {
+			selectedVisiblePos = startIdx + i
+			break
+		}
+	}
+
 	for displayIdx, todoIdx := range todosToShow {
 		todo := m.fileModel.Todos[todoIdx]
 
@@ -1265,16 +1481,22 @@ func (m model) View() string {
 		} else if m.inputMode {
 			// When adding new task, all existing items are above (negative indices)
 			isSelected = false
-			relIndex = todoIdx - totalCount
+			relIndex = (startIdx + displayIdx) - totalCount
 		} else {
 			isSelected = todoIdx == m.selectedIndex
-			relIndex = todoIdx - m.selectedIndex
+			// Use position in visible list for relative index
+			relIndex = (startIdx + displayIdx) - selectedVisiblePos
 		}
 
 		// Relative index
-		indexStr := fmt.Sprintf("%+3d", relIndex)
-		if relIndex == 0 {
-			indexStr = "  0"
+		var indexStr string
+		if m.hideLineNumbers {
+			indexStr = "   "
+		} else {
+			indexStr = fmt.Sprintf("%+3d", relIndex)
+			if relIndex == 0 {
+				indexStr = "  0"
+			}
 		}
 
 		// Arrow - don't show on existing items when in input mode
@@ -1312,7 +1534,57 @@ func (m model) View() string {
 			arrow = yellowStyle().Render(" ≡ ")
 		}
 
-		b.WriteString(fmt.Sprintf("%s%s%s %s\n", dimStyle().Render(indexStr), arrow, checkbox, text))
+		// Build the line prefix (index + arrow + checkbox + space)
+		prefix := fmt.Sprintf("%s%s%s ", dimStyle().Render(indexStr), arrow, checkbox)
+		prefixWidth := 3 + 3 + 3 + 1 // index(3) + arrow(3) + checkbox(3) + space(1)
+
+		// Apply word wrap if enabled
+		if m.wordWrap && m.termWidth > 0 {
+			availWidth := m.termWidth - prefixWidth
+			indent := strings.Repeat(" ", prefixWidth)
+			// Wrap plain text first, then apply styling to each line
+			plainText := todo.Text
+			if m.searchMode && m.inputBuffer != "" {
+				// For search mode, wrap plain then highlight
+				wrappedLines := wrapText(plainText, availWidth, indent)
+				for i, line := range wrappedLines {
+					// Apply highlighting after wrapping
+					var styledLine string
+					if i == 0 {
+						styledLine = highlightMatches(line, m.inputBuffer)
+					} else {
+						// Remove indent, highlight, re-add indent
+						trimmed := strings.TrimPrefix(line, indent)
+						styledLine = indent + highlightMatches(trimmed, m.inputBuffer)
+					}
+					if i == 0 {
+						b.WriteString(prefix + styledLine + "\n")
+					} else {
+						b.WriteString(styledLine + "\n")
+					}
+				}
+			} else {
+				// Normal mode: wrap plain then render inline code
+				wrappedLines := wrapText(plainText, availWidth, indent)
+				for i, line := range wrappedLines {
+					var styledLine string
+					if i == 0 {
+						styledLine = renderInlineCode(line, todo.Checked)
+					} else {
+						// Remove indent, style, re-add indent
+						trimmed := strings.TrimPrefix(line, indent)
+						styledLine = indent + renderInlineCode(trimmed, todo.Checked)
+					}
+					if i == 0 {
+						b.WriteString(prefix + styledLine + "\n")
+					} else {
+						b.WriteString(styledLine + "\n")
+					}
+				}
+			}
+		} else {
+			b.WriteString(prefix + text + "\n")
+		}
 	}
 
 	// Input mode - show new task as part of the visible window
@@ -1342,20 +1614,120 @@ func (m model) View() string {
 
 	b.WriteString("\n")
 
+	// Command palette overlay - render as floating box
+	if m.commandMode {
+		maxCmds := 6 // Show at most 6 commands
+		cmdStartIdx := 0
+		if m.commandCursor >= maxCmds {
+			cmdStartIdx = m.commandCursor - maxCmds + 1
+		}
+
+		cmdEndIdx := cmdStartIdx + maxCmds
+		if cmdEndIdx > len(m.filteredCmds) {
+			cmdEndIdx = len(m.filteredCmds)
+		}
+
+		// Build command list
+		var cmdLines []string
+		for i := cmdStartIdx; i < cmdEndIdx; i++ {
+			cmdIdx := m.filteredCmds[i]
+			cmd := m.commands[cmdIdx]
+
+			var line string
+			if i == m.commandCursor {
+				line = cyanStyle().Render(appConfig.Display.SelectMarker+" "+cmd.Name) + dimStyle().Render(" - "+cmd.Description)
+			} else {
+				line = "  " + cmd.Name + dimStyle().Render(" - "+cmd.Description)
+			}
+			cmdLines = append(cmdLines, line)
+		}
+
+		if len(m.filteredCmds) == 0 {
+			cmdLines = append(cmdLines, dimStyle().Render("  No matching commands"))
+		}
+
+		// Render with box styling
+		boxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#3b4261")).
+			Padding(0, 1)
+
+		b.WriteString(boxStyle.Render(strings.Join(cmdLines, "\n")))
+		b.WriteString("\n")
+	}
+
+	// Helper for mode indicator style
+	modeIndicator := func(icon, label string) string {
+		return lipgloss.NewStyle().
+			Background(lipgloss.Color("#3b4261")).
+			Foreground(lipgloss.Color("#c0caf5")).
+			Padding(0, 1).
+			Render(icon + " " + label)
+	}
+
 	// Status bar
-	if m.searchMode {
+	if m.commandMode {
+		b.WriteString(modeIndicator("⌘", "COMMAND"))
+		b.WriteString("  ")
 		before := m.inputBuffer[:m.cursorPos]
 		after := m.inputBuffer[m.cursorPos:]
 		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-		b.WriteString(cyanStyle().Render("search: ") + before + cursor + after)
-	} else if m.inputMode || m.editMode {
-		b.WriteString(dimStyle().Render("(Press ") + cyanStyle().Render("Enter") + dimStyle().Render(" to confirm, ") + cyanStyle().Render("Esc") + dimStyle().Render(" to cancel)"))
+		b.WriteString(cyanStyle().Render(":") + before + cursor + after)
+		b.WriteString(dimStyle().Render("  ↑/↓ navigate  tab complete  enter execute  esc cancel"))
+	} else if m.searchMode {
+		b.WriteString(modeIndicator("🔍", "SEARCH"))
+		b.WriteString("  ")
+		before := m.inputBuffer[:m.cursorPos]
+		after := m.inputBuffer[m.cursorPos:]
+		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
+		b.WriteString(before + cursor + after)
+		b.WriteString(dimStyle().Render("  ↑/↓ navigate  enter select  esc cancel"))
+	} else if m.inputMode {
+		b.WriteString(modeIndicator("✎", "NEW"))
+		b.WriteString("  ")
+		b.WriteString(dimStyle().Render("enter confirm  esc cancel"))
+	} else if m.editMode {
+		b.WriteString(modeIndicator("✎", "EDIT"))
+		b.WriteString("  ")
+		b.WriteString(dimStyle().Render("enter confirm  esc cancel"))
 	} else if m.moveMode {
-		b.WriteString(yellowStyle().Render("≡ Moving: ") + cyanStyle().Render("j/k") + yellowStyle().Render(" move  |  ") + cyanStyle().Render("enter") + yellowStyle().Render(" confirm  |  ") + cyanStyle().Render("esc") + yellowStyle().Render(" cancel"))
+		b.WriteString(modeIndicator("≡", "MOVE"))
+		b.WriteString("  ")
+		b.WriteString(dimStyle().Render("j/k move  enter confirm  esc cancel"))
 	} else if m.copyFeedback {
 		b.WriteString(greenStyle().Render("✓ Copied to clipboard!"))
 	} else {
-		b.WriteString(cyanStyle().Render("?") + dimStyle().Render(" help  |  ") + cyanStyle().Render("j/k") + dimStyle().Render(" nav  |  ") + cyanStyle().Render("n") + dimStyle().Render(" new  |  ") + cyanStyle().Render("␣") + dimStyle().Render(" toggle  |  ") + cyanStyle().Render("esc") + dimStyle().Render(" quit"))
+		// Normal status bar with mode indicators and help
+		var indicators []string
+		if m.sessionOnly {
+			indicators = append(indicators, "⚡NO SAVE")
+		}
+		if m.filterDone {
+			indicators = append(indicators, "⊘ FILTERED")
+		}
+		if m.wordWrap {
+			indicators = append(indicators, "↩ WRAP")
+		}
+
+		// Show indicator block with background if any indicators are active
+		if len(indicators) > 0 {
+			indicatorText := strings.Join(indicators, " │ ")
+			indicatorStyle := lipgloss.NewStyle().
+				Background(lipgloss.Color("#3b4261")).
+				Foreground(lipgloss.Color("#c0caf5")).
+				Padding(0, 1)
+			b.WriteString(indicatorStyle.Render(indicatorText))
+			b.WriteString("  ")
+		}
+
+		// Help hints
+		var helpParts []string
+		helpParts = append(helpParts, cyanStyle().Render("?")+dimStyle().Render(" help"))
+		helpParts = append(helpParts, cyanStyle().Render(":")+dimStyle().Render(" cmd"))
+		helpParts = append(helpParts, cyanStyle().Render("n")+dimStyle().Render(" new"))
+		helpParts = append(helpParts, cyanStyle().Render("␣")+dimStyle().Render(" toggle"))
+		helpParts = append(helpParts, cyanStyle().Render("esc")+dimStyle().Render(" quit"))
+		b.WriteString(strings.Join(helpParts, "  "))
 	}
 
 	return b.String()
@@ -1487,6 +1859,296 @@ func (m model) renderHelp() string {
 	b.WriteString(dimStyle().Render("  Press ") + cyanStyle().Render("?") + dimStyle().Render(" or ") + cyanStyle().Render("esc") + dimStyle().Render(" to close help"))
 
 	return b.String()
+}
+
+// initCommands initializes the command palette with all available commands
+func initCommands() []Command {
+	return []Command{
+		{
+			Name:        "check-all",
+			Description: "Mark all todos as complete",
+			Handler: func(m *model) {
+				m.saveHistory()
+				for i := range m.fileModel.Todos {
+					m.fileModel.Todos[i].Checked = true
+				}
+				m.writeIfPersist()
+			},
+		},
+		{
+			Name:        "uncheck-all",
+			Description: "Mark all todos as incomplete",
+			Handler: func(m *model) {
+				m.saveHistory()
+				for i := range m.fileModel.Todos {
+					m.fileModel.Todos[i].Checked = false
+				}
+				m.writeIfPersist()
+			},
+		},
+		{
+			Name:        "sort",
+			Description: "Sort todos (incomplete first)",
+			Handler: func(m *model) {
+				m.saveHistory()
+				// Stable sort: incomplete first, then complete
+				var incomplete, complete []Todo
+				for _, todo := range m.fileModel.Todos {
+					if todo.Checked {
+						complete = append(complete, todo)
+					} else {
+						incomplete = append(incomplete, todo)
+					}
+				}
+				m.fileModel.Todos = append(incomplete, complete...)
+				// Update indices
+				for i := range m.fileModel.Todos {
+					m.fileModel.Todos[i].Index = i + 1
+				}
+				m.writeIfPersist()
+				// Adjust selection if needed
+				if m.selectedIndex >= len(m.fileModel.Todos) {
+					m.selectedIndex = max(0, len(m.fileModel.Todos)-1)
+				}
+			},
+		},
+		{
+			Name:        "filter-done",
+			Description: "Toggle showing/hiding completed todos",
+			Handler: func(m *model) {
+				m.filterDone = !m.filterDone
+				// Adjust selection if current item is now hidden
+				if m.filterDone {
+					m.adjustSelectionForFilter()
+				}
+			},
+		},
+		{
+			Name:        "clear-done",
+			Description: "Delete all completed todos",
+			Handler: func(m *model) {
+				m.saveHistory()
+				var remaining []Todo
+				for _, todo := range m.fileModel.Todos {
+					if !todo.Checked {
+						remaining = append(remaining, todo)
+					}
+				}
+				m.fileModel.Todos = remaining
+				// Update indices
+				for i := range m.fileModel.Todos {
+					m.fileModel.Todos[i].Index = i + 1
+				}
+				m.writeIfPersist()
+				// Adjust selection
+				if m.selectedIndex >= len(m.fileModel.Todos) {
+					m.selectedIndex = max(0, len(m.fileModel.Todos)-1)
+				}
+			},
+		},
+		{
+			Name:        "disable-persist",
+			Description: "Enable session-only mode (changes not saved)",
+			Handler: func(m *model) {
+				m.sessionOnly = true
+			},
+		},
+		{
+			Name:        "enable-persist",
+			Description: "Disable session-only mode (changes saved)",
+			Handler: func(m *model) {
+				m.sessionOnly = false
+			},
+		},
+		{
+			Name:        "save",
+			Description: "Save current state to file",
+			Handler: func(m *model) {
+				writeFile(m.filePath, &m.fileModel)
+			},
+		},
+		{
+			Name:        "wrap",
+			Description: "Toggle word wrap for long lines",
+			Handler: func(m *model) {
+				m.wordWrap = !m.wordWrap
+			},
+		},
+		{
+			Name:        "line-numbers",
+			Description: "Toggle relative line numbers",
+			Handler: func(m *model) {
+				m.hideLineNumbers = !m.hideLineNumbers
+			},
+		},
+	}
+}
+
+// writeIfPersist writes to file only if not in session-only mode
+func (m *model) writeIfPersist() {
+	if !m.sessionOnly {
+		writeFile(m.filePath, &m.fileModel)
+	}
+}
+
+// getVisibleTodos returns indices of todos that should be shown (respecting filterDone)
+func (m *model) getVisibleTodos() []int {
+	var visible []int
+	for i := range m.fileModel.Todos {
+		if m.filterDone && m.fileModel.Todos[i].Checked {
+			continue
+		}
+		visible = append(visible, i)
+	}
+	return visible
+}
+
+// adjustSelectionForFilter ensures selectedIndex points to a visible todo
+func (m *model) adjustSelectionForFilter() {
+	visible := m.getVisibleTodos()
+	if len(visible) == 0 {
+		m.selectedIndex = 0
+		return
+	}
+
+	// Check if current selection is visible
+	for _, idx := range visible {
+		if idx == m.selectedIndex {
+			return // Already visible
+		}
+	}
+
+	// Find nearest visible todo
+	bestIdx := visible[0]
+	bestDist := abs(m.selectedIndex - bestIdx)
+	for _, idx := range visible {
+		dist := abs(m.selectedIndex - idx)
+		if dist < bestDist {
+			bestIdx = idx
+			bestDist = dist
+		}
+	}
+	m.selectedIndex = bestIdx
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// wrapText wraps text to fit within maxWidth, returning multiple lines
+// indent is the string to prepend to continuation lines
+func wrapText(text string, maxWidth int, indent string) []string {
+	if maxWidth <= 0 || len(text) <= maxWidth {
+		return []string{text}
+	}
+
+	var lines []string
+	indentWidth := runewidth.StringWidth(indent)
+	firstLineWidth := maxWidth
+	contLineWidth := maxWidth - indentWidth
+
+	if contLineWidth <= 10 {
+		// Too narrow to wrap meaningfully
+		return []string{text}
+	}
+
+	remaining := text
+	isFirst := true
+
+	for len(remaining) > 0 {
+		lineWidth := contLineWidth
+		if isFirst {
+			lineWidth = firstLineWidth
+			isFirst = false
+		}
+
+		if runewidth.StringWidth(remaining) <= lineWidth {
+			if len(lines) > 0 {
+				lines = append(lines, indent+remaining)
+			} else {
+				lines = append(lines, remaining)
+			}
+			break
+		}
+
+		// Find break point (prefer space)
+		breakAt := 0
+		lastSpace := -1
+		width := 0
+		for i, r := range remaining {
+			w := runewidth.RuneWidth(r)
+			if width+w > lineWidth {
+				break
+			}
+			width += w
+			breakAt = i + len(string(r))
+			if r == ' ' {
+				lastSpace = breakAt
+			}
+		}
+
+		// Prefer breaking at space
+		if lastSpace > 0 && lastSpace > breakAt/2 {
+			breakAt = lastSpace
+		}
+
+		line := remaining[:breakAt]
+		if len(lines) > 0 {
+			lines = append(lines, indent+line)
+		} else {
+			lines = append(lines, line)
+		}
+		remaining = strings.TrimLeft(remaining[breakAt:], " ")
+	}
+
+	return lines
+}
+
+// updateFilteredCommands filters commands based on current input
+func (m *model) updateFilteredCommands() {
+	m.filteredCmds = nil
+	m.commandCursor = 0
+
+	if m.inputBuffer == "" {
+		// Show all commands when query is empty
+		for i := range m.commands {
+			m.filteredCmds = append(m.filteredCmds, i)
+		}
+		return
+	}
+
+	query := strings.ToLower(m.inputBuffer)
+
+	// Collect matches with scores
+	type match struct {
+		index int
+		score int
+	}
+	var matches []match
+
+	for i, cmd := range m.commands {
+		text := strings.ToLower(cmd.Name)
+		score := fuzzyScore(query, text)
+		if score > 0 {
+			matches = append(matches, match{i, score})
+		}
+	}
+
+	// Sort by score descending
+	for i := 0; i < len(matches)-1; i++ {
+		for j := i + 1; j < len(matches); j++ {
+			if matches[j].score > matches[i].score {
+				matches[i], matches[j] = matches[j], matches[i]
+			}
+		}
+	}
+
+	for _, match := range matches {
+		m.filteredCmds = append(m.filteredCmds, match.index)
+	}
 }
 
 func copyToClipboard(text string) {

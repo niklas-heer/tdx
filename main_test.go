@@ -649,3 +649,135 @@ func TestFuzzyScore(t *testing.T) {
 		t.Errorf("Empty query should return 0, got: %d", score)
 	}
 }
+
+func TestTUI_CommandCheckAll(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+	runCLI(t, file, "add", "Second task")
+	runCLI(t, file, "add", "Third task")
+
+	// Open command palette and execute check-all
+	runPiped(t, file, ":check-all\r")
+
+	todos := getTodos(t, file)
+	for i, todo := range todos {
+		if !strings.HasPrefix(todo, "- [x] ") {
+			t.Errorf("Expected todo %d to be checked, got: %s", i+1, todo)
+		}
+	}
+}
+
+func TestTUI_CommandUncheckAll(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+	runCLI(t, file, "add", "Second task")
+	// Check them first
+	runPiped(t, file, " j ")
+
+	// Now uncheck all
+	runPiped(t, file, ":uncheck-all\r")
+
+	todos := getTodos(t, file)
+	for i, todo := range todos {
+		if !strings.HasPrefix(todo, "- [ ] ") {
+			t.Errorf("Expected todo %d to be unchecked, got: %s", i+1, todo)
+		}
+	}
+}
+
+func TestTUI_CommandSort(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+	runCLI(t, file, "add", "Second task")
+	runCLI(t, file, "add", "Third task")
+
+	// Check the second one
+	runPiped(t, file, "j ")
+
+	// Now sort - incomplete should come first
+	runPiped(t, file, ":sort\r")
+
+	todos := getTodos(t, file)
+	// First two should be unchecked, last should be checked
+	if !strings.HasPrefix(todos[0], "- [ ] ") {
+		t.Errorf("Expected first to be unchecked after sort, got: %s", todos[0])
+	}
+	if !strings.HasPrefix(todos[1], "- [ ] ") {
+		t.Errorf("Expected second to be unchecked after sort, got: %s", todos[1])
+	}
+	if !strings.HasPrefix(todos[2], "- [x] ") {
+		t.Errorf("Expected third to be checked after sort, got: %s", todos[2])
+	}
+}
+
+func TestTUI_CommandClearDone(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+	runCLI(t, file, "add", "Second task")
+	runCLI(t, file, "add", "Third task")
+
+	// Check first and third
+	runPiped(t, file, " jj ")
+
+	// Clear done
+	runPiped(t, file, ":clear-done\r")
+
+	todos := getTodos(t, file)
+	if len(todos) != 1 {
+		t.Errorf("Expected 1 todo after clear-done, got %d", len(todos))
+	}
+	if todos[0] != "- [ ] Second task" {
+		t.Errorf("Expected only Second task remaining, got: %s", todos[0])
+	}
+}
+
+func TestTUI_CommandFuzzyMatch(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+	runCLI(t, file, "add", "Second task")
+
+	// Fuzzy search for command "chk" should match "check-all"
+	runPiped(t, file, ":chk\r")
+
+	todos := getTodos(t, file)
+	// Both should be checked
+	for i, todo := range todos {
+		if !strings.HasPrefix(todo, "- [x] ") {
+			t.Errorf("Expected todo %d to be checked via fuzzy command, got: %s", i+1, todo)
+		}
+	}
+}
+
+func TestTUI_CommandTabComplete(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+
+	// Type partial, tab to complete, then enter
+	runPiped(t, file, ":che\t\r")
+
+	todos := getTodos(t, file)
+	if !strings.HasPrefix(todos[0], "- [x] ") {
+		t.Errorf("Expected todo checked via tab-completed command, got: %s", todos[0])
+	}
+}
+
+func TestTUI_SessionOnlyMode(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "First task")
+
+	// Enable session-only mode, then toggle
+	runPiped(t, file, ":disable-persist\r ")
+
+	// File should still have unchecked todo
+	todos := getTodos(t, file)
+	if todos[0] != "- [ ] First task" {
+		t.Errorf("Expected todo to remain unchecked in session-only mode, got: %s", todos[0])
+	}
+}
