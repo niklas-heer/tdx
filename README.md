@@ -290,12 +290,12 @@ Read File → Goldmark Parser → AST (in-memory tree)
 
 **Key Benefits:**
 
-✅ **Non-destructive** - Your markdown formatting, comments, and structure stay intact
-✅ **Complex markdown** - Handles nested lists, code blocks, links, emphasis seamlessly
-✅ **Fast operations** - No regex scanning, no full-file rewrites
-✅ **Predictable** - AST guarantees correct parsing and serialization
-✅ **Tag support** - HashtagExtraction built into AST traversal
-✅ **Heading-aware** - Knows which todos belong under which headings
+- ✅ **Non-destructive** - Your markdown formatting, comments, and structure stay intact
+- ✅ **Complex markdown** - Handles nested lists, code blocks, links, emphasis seamlessly
+- ✅ **Fast operations** - No regex scanning, no full-file rewrites
+- ✅ **Predictable** - AST guarantees correct parsing and serialization
+- ✅ **Tag support** - HashtagExtraction built into AST traversal
+- ✅ **Heading-aware** - Knows which todos belong under which headings
 
 ### Project Structure
 
