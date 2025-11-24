@@ -1,0 +1,12 @@
+[theme]
+name = "nord"
+author = "Arctic Ice Studio"
+
+[colors]
+Base = "#eceff4"
+Dim = "#4c566a"
+Accent = "#88c0d0"
+Success = "#a3be8c"
+Warning = "#ebcb8b"
+Important = "#b48ead"
+AlertError = "#bf616a"

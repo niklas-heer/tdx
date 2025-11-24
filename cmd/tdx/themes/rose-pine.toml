@@ -1,0 +1,12 @@
+[theme]
+name = "rose-pine"
+author = "Rose Pine"
+
+[colors]
+Base = "#e0def4"
+Dim = "#6e6a86"
+Accent = "#9ccfd8"
+Success = "#31748f"
+Warning = "#f6c177"
+Important = "#c4a7e7"
+AlertError = "#eb6f92"
