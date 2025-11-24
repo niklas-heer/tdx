@@ -1,6 +1,6 @@
 # Build outputs
 dist/
-tdx
+/tdx
 
 # OS files
 .DS_Store

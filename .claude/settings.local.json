@@ -12,7 +12,13 @@
       "Bash(cat:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(git push:*)",
+      "Bash(git describe:*)",
+      "Bash(git show:*)",
+      "Bash(gh release view:*)",
+      "Bash(curl:*)",
+      "Bash(./scripts/update-homebrew.sh:*)"
     ],
     "deny": [],
     "ask": []
