@@ -9,7 +9,10 @@
       "Bash(./test_release_notes.sh:*)",
       "Bash(.github/scripts/test_release_notes.sh:*)",
       "Bash(./scripts/test_release_notes.sh:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git check-ignore:*)"
     ],
     "deny": [],
     "ask": []
