@@ -1,7 +1,7 @@
 # tdx demo - Your todos, in markdown, done fast
 # Run with: vhs demo.tape
 
-Output assets/demo-0.5.0.gif
+Output assets/demo-0.6.0.gif
 
 Require tdx
 
@@ -14,11 +14,11 @@ Set TypingSpeed 50ms
 Set Padding 20
 Set WindowBar Colorful
 
-# Setup: Create a fresh demo todo file
+# Setup: Create a demo todo file with sections
 Hide
 Type "rm -f demo_todo.md | ignore"
 Enter
-Type "['# Project Tasks', '', '- [ ] Set up CI/CD pipeline', '- [ ] Write unit tests', '- [ ] Update documentation', '- [x] Initialize repository', '- [ ] Add error handling', '- [ ] Refactor database layer'] | str join (char nl) | save demo_todo.md"
+Type "['# Project Tasks', '', '## Backend', '- [ ] Set up CI/CD pipeline', '- [ ] Write unit tests', '- [x] Initialize repository', '', '## Frontend', '- [ ] Update documentation', '- [ ] Add error handling', '- [x] Design mockups', '', '## DevOps', '- [ ] Configure monitoring', '- [ ] Set up staging env'] | str join (char nl) | save demo_todo.md"
 Enter
 Ctrl+L
 Sleep 500ms
@@ -87,13 +87,43 @@ Sleep 1.5s
 Enter
 Sleep 1.5s
 
-# Move mode - reorder task
+# Move mode - move task across sections
+Type "k"
+Sleep 500ms
 Type "m"
 Sleep 800ms
-Type "kk"
+Type "jjjj"
+Sleep 1s
+Enter
+Sleep 1.5s
+
+# Filter done tasks
+Type ":"
+Sleep 500ms
+Type "filter-done"
 Sleep 800ms
 Enter
 Sleep 1.5s
+
+# Navigate filtered view
+Type "jj"
+Sleep 1s
+
+# Move in filtered view
+Type "m"
+Sleep 800ms
+Type "k"
+Sleep 800ms
+Enter
+Sleep 1.5s
+
+# Clear filter
+Type ":"
+Sleep 500ms
+Type "filter-done"
+Sleep 500ms
+Enter
+Sleep 1s
 
 # Copy to clipboard
 Type "c"
@@ -136,14 +166,14 @@ Type "tdx demo_todo.md toggle 1"
 Enter
 Sleep 1.5s
 
-# Mention themes
+# Show features
 Sleep 500ms
-Type "# 10 builtin themes: tokyo-night, dracula, nord, gruvbox..."
+Type "# Features: Move tasks across sections, filter done, headings, themes..."
 Enter
 Sleep 2s
 
 # Final message
-Type "# Fast, simple, markdown-native todos"
+Type "# Fast, modular, markdown-native todos"
 Enter
 Sleep 3s
 
