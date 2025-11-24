@@ -15,6 +15,10 @@
 - [x] make sure go mod has no warnings
 - [x] new release
 - [ ] add tui theme picker via command ": theme" which live previews
-- [ ] add config to hide relative numbers and as a command in the tui and config file
+- [x] add config to hide relative numbers and as a command in the tui and config file
 - [ ] add keyboard shortcut h to toggle hide for the done tasks (+config)
-- [ ] add command to toggle all checklist to done and/or todo (make checklists work)
+- [x] add command to toggle all checklist to done and/or todo (make checklists work)
+- [ ] add date when task was added (@2025-11-24)
+- [ ] add tags and f shortcut to filter for tags (#tag)
+- [ ] add priorities and a priority-sort command (p1, p2, ...)
+- [ ] add markdown metadata for options (persit: false, filter-done: true, ...)
