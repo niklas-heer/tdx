@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(chmod:*)",
+      "Bash(git tag:*)",
+      "Bash(python3:*)",
+      "Bash(./test_release_notes.sh:*)",
+      "Bash(.github/scripts/test_release_notes.sh:*)",
+      "Bash(./scripts/test_release_notes.sh:*)",
+      "Bash(cat:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
