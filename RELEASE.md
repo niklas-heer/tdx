@@ -16,46 +16,57 @@ This interactive script will:
 - Commit and tag the release
 - Push to GitHub
 
-### 2. Wait for GitHub Actions
+### 2. That's it! 🎉
 
-The release workflow will automatically:
-- Build binaries for all platforms (macOS, Linux, Windows)
-- Generate changelog from conventional commits
-- Create GitHub Release with all binaries attached
+Everything else is **fully automated**. GitHub Actions will:
 
-### 3. Update Homebrew formula
+#### Build Workflow (`release.yml`)
+- ✅ Build binaries for all platforms (macOS, Linux, Windows)
+- ✅ Generate AI-powered release notes with Claude Haiku 4.5
+- ✅ Create GitHub Release with all binaries attached
 
-After the GitHub Actions workflow completes:
+#### Homebrew Tap Workflow (`update-homebrew.yml`)
+- ✅ Download all release binaries
+- ✅ Calculate SHA256 checksums
+- ✅ Update `homebrew-tap/Formula/tdx.rb` automatically
+- ✅ Commit and push to tap repository
 
+#### CI Workflow (`ci.yml`)
+- ✅ Run tests and linting on all PRs
+- ✅ Verify builds on all platforms
+
+### Monitoring the Release
+
+Watch the workflows at:
+- https://github.com/niklas-heer/tdx/actions
+
+Within minutes, users can install with:
 ```bash
-just update-homebrew 0.3.0
-```
-
-This downloads all binaries and updates the formula with correct SHA256 checksums.
-
-### 4. Commit and push the tap repo
-
-```bash
-cd /path/to/homebrew-tap
-git add -A && git commit -m "tdx 0.3.0"
-git push
+brew upgrade niklas-heer/tap/tdx
 ```
 
 ## Conventional Commits
 
-Use these prefixes for automatic changelog categorization:
+Use these prefixes for better AI-generated release notes:
 
-- `feat:` - New features → **Features** section
-- `fix:` - Bug fixes → **Bug Fixes** section
-- `docs:` - Documentation → **Documentation** section
-- `chore:` - Maintenance → **Maintenance** section
+- `feat:` - New features → **✨ Features** section
+- `fix:` - Bug fixes → **🐛 Bug Fixes** section
+- `docs:` - Documentation → **📚 Documentation** section
+- `chore:` - Maintenance → **⚙️ Maintenance** section
+- `refactor:` - Code improvements → **🔧 Improvements** section
+
+**Pro tip:** Add detailed commit bodies! The AI uses them to write richer release notes.
 
 Examples:
 ```bash
-git commit -m "feat: add dark mode support"
+# Good - with detailed body
+git commit -m "feat: add dark mode support" -m "- Toggle with :dark-mode command
+- Persists user preference
+- Works with all color schemes"
+
+# Also good - simple commit
 git commit -m "fix: resolve crash on startup"
 git commit -m "docs: update installation guide"
-git commit -m "chore: bump dependencies"
 ```
 
 ## Build Artifacts

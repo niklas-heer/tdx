@@ -15,8 +15,10 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 - ⌨️ **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
 - 🖥️ **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
 - 🎯 **Command Palette** - Helix-style `:` commands with fuzzy search
-- 📋 **Checklist Mode** - Session-only mode, check/uncheck all, filter done
+- 📋 **Read-Only Mode** - Prevent auto-save, check/uncheck all, filter done
 - 🔧 **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
+- 🔄 **Smart Conflict Detection** - Auto-merge external changes, reactive file watching
+- 📑 **Per-File Configuration** - YAML frontmatter for file-specific settings
 - 🌍 **Cross-platform** - macOS, Linux, Windows
 
 ## Installation
@@ -45,7 +47,7 @@ Download the latest binary for your platform from [Releases](https://github.com/
 
 ### From Source
 
-Requires Go 1.21+:
+Requires Go 1.25+:
 
 ```bash
 git clone https://github.com/niklas-heer/tdx.git
@@ -76,6 +78,7 @@ tdx
 | `c` | Copy to clipboard |
 | `m` | Move mode |
 | `/` | Fuzzy search |
+| `f` | Tag filter |
 | `:` | Command palette |
 | `u` | Undo |
 | `?` | Help menu |
@@ -91,23 +94,26 @@ Press `:` to open the command palette with fuzzy search. Available commands:
 | `check-all` | Mark all todos as complete |
 | `uncheck-all` | Mark all todos as incomplete |
 | `sort` | Sort todos (incomplete first) |
-| `filter-done` | Toggle hiding completed todos |
+| `filter-done` | Toggle showing/hiding completed todos |
 | `clear-done` | Delete all completed todos |
-| `disable-persist` | Enable session-only mode |
-| `enable-persist` | Disable session-only mode |
+| `read-only` | Toggle read-only mode (changes not saved) |
 | `save` | Save current state to file |
-| `wrap` | Toggle word wrap |
+| `force-save` | Force save even if file was modified externally |
+| `reload` | Reload file from disk (discards unsaved changes) |
+| `wrap` | Toggle word wrap for long lines |
 | `line-numbers` | Toggle relative line numbers |
+| `set-max-visible` | Set max visible items for this session |
+| `show-headings` | Toggle displaying markdown headings between tasks |
 
-**Session-Only Mode:**
+**Read-Only Mode:**
 
-Start tdx with `-s` or `--session-only` flag for checklist workflows where you don't want changes saved automatically:
+Start tdx with `-r` or `--read-only` flag for workflows where you don't want changes saved automatically:
 
 ```bash
-tdx -s checklist.md
+tdx -r checklist.md
 ```
 
-Use `:save` to manually save when ready, or `:enable-persist` to turn auto-save back on.
+Use `:save` to manually save when ready, or `:read-only` to turn auto-save back on.
 
 **Vim-style jumps:**
 - `5j` - Move down 5 lines
@@ -115,6 +121,24 @@ Use `:save` to manually save when ready, or `:enable-persist` to turn auto-save 
 
 **Fuzzy Search:**
 Press `/` to enter search mode. Type to filter todos with live highlighting. Press `Enter` to select or `Esc` to cancel.
+
+**Tags & Filtering:**
+
+Add hashtags to your todos for organization:
+
+```markdown
+- [ ] Fix authentication #urgent #backend
+- [ ] Update docs #docs
+- [ ] Add dark mode #feature #frontend
+```
+
+Press `f` to open tag filter mode:
+- Navigate with `↑/↓` or `j/k`
+- Toggle tags with `Space` or `Enter`
+- Clear all filters with `c`
+- Press `Esc` when done
+
+Active tag filters are shown in the status bar. Todos are automatically filtered to show only matching items.
 
 ### CLI Commands
 
@@ -153,11 +177,159 @@ Todos are stored in `todo.md` using standard Markdown:
 Other markdown content is preserved.
 ```
 
+### Per-File Configuration
+
+Add YAML frontmatter to customize behavior for specific files:
+
+```markdown
+---
+persist: false
+max-visible: 10
+show-headings: true
+---
+# Todos
+
+- [ ] Task one
+```
+
+**Available options:**
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `persist` | boolean | Enable/disable auto-save (false = read-only mode) |
+| `filter-done` | boolean | Hide completed tasks by default |
+| `max-visible` | number | Limit visible tasks (0 = unlimited) |
+| `show-headings` | boolean | Show markdown headings between tasks |
+| `read-only` | boolean | Prevent all edits (view-only mode) |
+| `word-wrap` | boolean | Enable word wrapping |
+
+**Examples:**
+
+Read-only checklist:
+```markdown
+---
+persist: false
+---
+# Shopping List
+- [ ] Milk
+```
+
+Project tracker with headings:
+```markdown
+---
+show-headings: true
+max-visible: 15
+---
+# Project Tasks
+
+## Backend
+- [ ] API endpoints
+
+## Frontend
+- [ ] UI components
+```
+
+Read-only reference:
+```markdown
+---
+read-only: true
+---
+# Company Standards
+- [x] Use linter
+```
+
+Per-file settings override command-line flags and config file defaults.
+
+## Architecture
+
+### AST-Based Markdown Engine
+
+tdx uses **[Goldmark](https://github.com/yuin/goldmark)** (Go's industry-standard Markdown parser) with a custom serializer to provide robust, format-preserving todo management:
+
+**Why AST over regex?**
+- ⚡ **Performance** - Parse once, manipulate efficiently in memory
+- 🎯 **Precision** - Surgical updates to specific nodes without side effects
+- 📝 **Format Preservation** - Maintains your markdown structure, spacing, and formatting
+- 🔒 **Reliability** - Correctly handles edge cases (nested lists, code blocks, links, etc.)
+- 🏷️ **Rich Features** - Enables advanced features like tag extraction, heading tracking
+
+**How it works:**
+
+```
+Read File → Goldmark Parser → AST (in-memory tree)
+                                  ↓
+                           Manipulate nodes
+                           (toggle, add, delete, swap)
+                                  ↓
+                          Custom Serializer → Write File
+```
+
+**Implementation Details:**
+
+1. **Parser** (`internal/markdown/ast.go:29`)
+   - Uses **Goldmark** with GitHub Flavored Markdown (GFM) extension
+   - Parses markdown into an Abstract Syntax Tree
+   - Each todo becomes a `TaskCheckBox` node within a `ListItem`
+   - Preserves source bytes with segment pointers for text nodes
+
+2. **AST Operations** (`internal/markdown/ast.go`)
+   - `ExtractTodos()` - Walk AST and collect all task list items
+   - `ExtractHeadings()` - Find headings and their positions relative to todos
+   - `ToggleTodo()` - Flip checkbox state in the AST
+   - `UpdateTodoText()` - Append new text to source, update segment pointers
+   - `DeleteTodo()` - Remove list item node from parent
+   - `AddTodo()` - Create new list item with checkbox and text nodes
+   - `SwapTodos()` - Reorder list items (handles adjacent and cross-section swaps)
+
+3. **Custom Serializer** (`internal/markdown/serializer.go:12`)
+   - Recursively walks the modified AST
+   - Reconstructs markdown with proper formatting
+   - Built custom because Goldmark's renderer had formatting issues
+   - Handles: headings, lists, checkboxes, code blocks, links, emphasis, strikethrough, etc.
+   - Preserves spacing and blank lines
+
+**Key Benefits:**
+
+✅ **Non-destructive** - Your markdown formatting, comments, and structure stay intact
+✅ **Complex markdown** - Handles nested lists, code blocks, links, emphasis seamlessly
+✅ **Fast operations** - No regex scanning, no full-file rewrites
+✅ **Predictable** - AST guarantees correct parsing and serialization
+✅ **Tag support** - HashtagExtraction built into AST traversal
+✅ **Heading-aware** - Knows which todos belong under which headings
+
+### Project Structure
+
+```
+tdx/
+├── cmd/tdx/              # Main application
+│   ├── main.go          # Entry point, CLI routing
+│   ├── config.go        # Build-time configuration
+│   ├── userconfig.go    # User configuration (themes, settings)
+│   └── *_test.go        # Comprehensive test suite
+├── internal/
+│   ├── markdown/        # AST-based markdown engine
+│   │   ├── parser.go    # Markdown → AST
+│   │   ├── ast.go       # AST data structures
+│   │   └── serializer.go # AST → Markdown
+│   ├── tui/             # Terminal UI (Bubble Tea)
+│   │   ├── model.go     # Application state
+│   │   ├── update.go    # Event handling
+│   │   ├── view.go      # Rendering
+│   │   ├── commands.go  # Command palette
+│   │   └── render.go    # Display logic
+│   ├── cmd/             # CLI command handlers
+│   │   └── cli.go       # List, add, toggle, etc.
+│   └── util/            # Utilities
+│       ├── text.go      # Text processing
+│       └── clipboard.go # Clipboard operations
+└── scripts/             # Development & release tools
+```
+
 ## Development
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.25+
 - [just](https://github.com/casey/just) (command runner)
 
 ### Building
@@ -171,18 +343,6 @@ just build-all
 
 # Install to /usr/local/bin
 just install
-```
-
-### Project Structure
-
-```
-tdx/
-├── main.go          # Main application
-├── config.go        # Version/description variables
-├── tdx.toml         # Build configuration
-├── go.mod           # Go modules
-├── justfile         # Build commands
-└── todo.md          # Your todos
 ```
 
 ### Commands
@@ -249,7 +409,7 @@ tdx project.md add "Task"     # All commands work
 
 Build metadata in `tdx.toml`:
 ```toml
-version = "0.4.0"
+version = "0.6.0"
 description = "your todos, in markdown, done fast"
 ```
 

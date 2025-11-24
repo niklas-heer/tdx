@@ -17,7 +17,7 @@ build:
     #!/bin/bash
     VERSION=$(grep '^version' tdx.toml | cut -d'"' -f2)
     DESCRIPTION=$(grep '^description' tdx.toml | cut -d'"' -f2)
-    go build -ldflags "-X main.Version=$VERSION -X 'main.Description=$DESCRIPTION'" -o tdx .
+    go build -ldflags "-X main.Version=$VERSION -X 'main.Description=$DESCRIPTION'" -o tdx ./cmd/tdx
     echo "✓ Built tdx v$VERSION"
 
 # Build for all platforms
@@ -30,11 +30,11 @@ build-all:
     mkdir -p dist
 
     echo "Building for all platforms..."
-    GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/tdx-darwin-arm64 .
-    GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-darwin-amd64 .
-    GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-linux-amd64 .
-    GOOS=linux GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/tdx-linux-arm64 .
-    GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-windows-amd64.exe .
+    GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/tdx-darwin-arm64 ./cmd/tdx
+    GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-darwin-amd64 ./cmd/tdx
+    GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-linux-amd64 ./cmd/tdx
+    GOOS=linux GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/tdx-linux-arm64 ./cmd/tdx
+    GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-windows-amd64.exe ./cmd/tdx
 
     echo "✓ Built binaries in dist/"
     ls -lh dist/
@@ -60,9 +60,9 @@ uninstall:
 dev *ARGS: build
     ./tdx {{ARGS}}
 
-# Launch interactive TUI
-tui: build
-    ./tdx
+# Launch interactive TUI (pass flags after --)
+tui *ARGS: build
+    ./tdx {{ARGS}}
 
 # Show help message
 help: build

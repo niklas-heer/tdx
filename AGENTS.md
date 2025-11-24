@@ -83,17 +83,18 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - Each package change should have its own descriptive conventional commit.
 
 ## Go development
-- This project is written in Go (1.21+).
+- This project is written in Go (1.25+).
 - Use `just` as the task runner for common operations:
   - `just build` - Build the binary
   - `just test` - Run tests
   - `just install` - Install to /usr/local/bin
-  - `just release` - Create a new release
+  - `just release` - Create a new release (fully automated)
 - Run tests with `go test -v ./...` or `just test`.
 - Code structure:
-  - `main.go` - Main application code
-  - `config.go` - Build-time variables (version, description)
-  - `main_test.go` - All tests (e2e and unit)
+  - `cmd/tdx/main.go` - Main application code
+  - `cmd/tdx/config.go` - Build-time variables (version, description)
+  - `cmd/tdx/*_test.go` - All tests (e2e, unit, edge cases)
+  - `internal/` - Internal packages (tui, cmd, markdown, util)
   - `tdx.toml` - Build configuration (version, description)
 - Dependencies:
   - Use `go mod tidy` to clean up dependencies

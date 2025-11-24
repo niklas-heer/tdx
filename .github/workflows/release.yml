@@ -43,7 +43,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version: "1.25"
 
       - name: Build binary
         shell: bash
@@ -53,7 +53,7 @@ jobs:
         run: |
           VERSION=$(grep '^version' tdx.toml | cut -d'"' -f2)
           DESCRIPTION=$(grep '^description' tdx.toml | cut -d'"' -f2)
-          go build -ldflags "-X main.Version=$VERSION -X 'main.Description=$DESCRIPTION'" -o ${{ matrix.artifact }} .
+          go build -ldflags "-X main.Version=$VERSION -X 'main.Description=$DESCRIPTION'" -o ${{ matrix.artifact }} ./cmd/tdx
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -81,83 +81,40 @@ jobs:
           find artifacts -type f -exec mv {} release/ \;
           cd release && ls -la
 
-      - name: Generate changelog
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Generate AI-powered release notes
         id: changelog
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          CURRENT_TAG: ${{ github.ref_name }}
+          PREV_TAG: ${{ github.event.before }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AI_MODEL: anthropic/claude-haiku-4.5
         run: |
           # Get previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          CURRENT_TAG="${{ github.ref_name }}"
+          export PREV_TAG
 
-          if [ -z "$PREV_TAG" ]; then
-            # First release - get all commits
-            COMMITS=$(git log --pretty=format:"%s" $CURRENT_TAG)
-          else
-            # Get commits between tags
-            COMMITS=$(git log --pretty=format:"%s" ${PREV_TAG}..${CURRENT_TAG})
-          fi
+          # Generate release notes using AI
+          python3 .github/scripts/generate_release_notes.py > release_notes.md
 
-          # Build changelog sections
-          FEATURES=""
-          FIXES=""
-          DOCS=""
-          CHORES=""
-          OTHER=""
+          # Display for debugging
+          echo "Generated release notes:"
+          cat release_notes.md
 
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-
-            if [[ "$line" =~ ^feat ]]; then
-              FEATURES="${FEATURES}- ${line}\n"
-            elif [[ "$line" =~ ^fix ]]; then
-              FIXES="${FIXES}- ${line}\n"
-            elif [[ "$line" =~ ^docs ]]; then
-              DOCS="${DOCS}- ${line}\n"
-            elif [[ "$line" =~ ^chore ]]; then
-              CHORES="${CHORES}- ${line}\n"
-            elif [[ "$line" =~ ^Merge ]]; then
-              # Skip merge commits
-              continue
-            else
-              OTHER="${OTHER}- ${line}\n"
-            fi
-          done <<< "$COMMITS"
-
-          # Build final changelog
-          CHANGELOG=""
-
-          if [ -n "$FEATURES" ]; then
-            CHANGELOG="${CHANGELOG}## Features\n\n${FEATURES}\n"
-          fi
-
-          if [ -n "$FIXES" ]; then
-            CHANGELOG="${CHANGELOG}## Bug Fixes\n\n${FIXES}\n"
-          fi
-
-          if [ -n "$DOCS" ]; then
-            CHANGELOG="${CHANGELOG}## Documentation\n\n${DOCS}\n"
-          fi
-
-          if [ -n "$CHORES" ]; then
-            CHANGELOG="${CHANGELOG}## Maintenance\n\n${CHORES}\n"
-          fi
-
-          if [ -n "$OTHER" ]; then
-            CHANGELOG="${CHANGELOG}## Other\n\n${OTHER}\n"
-          fi
-
-          # Add compare link
-          if [ -n "$PREV_TAG" ]; then
-            CHANGELOG="${CHANGELOG}\n**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${CURRENT_TAG}"
-          fi
-
-          # Write to file for the release action
-          echo -e "$CHANGELOG" > changelog.md
-          cat changelog.md
-
-          # Set output
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Set output for GitHub Actions
+          {
+            echo "changelog<<EOF"
+            cat release_notes.md
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
