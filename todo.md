@@ -1,28 +1,36 @@
-# Todos
+---
+max-visible: 0
+show-headings: true
+---
+# tdx - features
 
-- [x] rewrite in `go` to make things fast
-- [x] fix save and format file with no new lines between the tasks
-- [x] make esc the consitent exit q shouldn't be used
-- [x] make clipboard paste work
-- [x] fix space to use the approriate symbol in the help page
-- [x] add fuzzy search via / keyboard shortcut
-- [x] add config for how many tasks should be shown (max)
-- [x] add config file for colors (themes)
-- [x] add config setting for check symbol
-- [x] add config setting for select marker
-- [x] add themes to ship with tdx so you can just use in config. 10 themes. (most popular)
-- [x] update readme with current capabilities
-- [x] make sure go mod has no warnings
-- [x] new release
-- [ ] add tui theme picker via command ": theme" which live previews
-- [x] add config to hide relative numbers and as a command in the tui and config file
-- [ ] add keyboard shortcut h to toggle hide for the done tasks (+config)
-- [x] add command to toggle all checklist to done and/or todo (make checklists work)
-- [ ] add date when task was added (@2025-11-24)
-- [ ] add tags and f shortcut to filter for tags (#tag)
-- [ ] add function to edit pervious seen files (persit in locla share or config )
+## Refactor
+
+- [x] split project up into multiple files
+- [x] refactor and use AST for markdown
+- [x] add 3-way-merge and conflict detection
+
+## Release
+
+- [x] CI -> release notes should be generated through an llm (openrouter?)
+- [x] CI run tests for merge requests
+- [x] make sure CI still works
+
+## Priority requests
+
+- [x] add command to toggle heading on (add flag for it as well or markdown metadata)
+- [x] add command to set max-visible while running
+- [x] add markdown metadata for options (persit: false, filter-done: true, ...)
+- [ ] add functionality to edit pervious seen files (saved in locale share or config)
+- [ ] add frontmatter for hide done/filter-done
+
+## Reddit requests
+
+- [ ] add date when task is due (@due(2025-11-24))
 - [ ] add priorities and a priority-sort command (p1, p2, ...)
-- [ ] add markdown metadata for options (persit: false, filter-done: true, ...)
-- [ ] add command to toggle heading on (add flag for it as well or markdown metadata)
-- [ ] add some feature to get to files opened with it before
-- [ ] add command to set max-visible while running
+- [x] add tags and f shortcut to filter for tags (#tag)
+
+## Maybe
+
+- [ ] add tui theme picker via command ": theme" which live previews
+- [ ] add keyboard shortcut h to toggle hide for the done tasks (+config)
