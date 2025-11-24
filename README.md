@@ -3,7 +3,7 @@
 **Your todos, in markdown, done fast.**
 
 <p align="center">
-  <img src="assets/demo-0.5.0.gif" alt="tdx demo" width="600">
+  <img src="assets/demo-0.7.0.gif" alt="tdx demo" width="600">
 </p>
 
 A fast, single-binary CLI todo manager focused on developer experience. Features vim-style navigation, an interactive TUI, and scriptable commands—all stored in plain markdown you can version control.
