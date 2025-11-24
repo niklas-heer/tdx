@@ -16,4 +16,5 @@
 - [x] new release
 - [ ] add tui theme picker via command ": theme" which live previews
 - [ ] add config to hide relative numbers and as a command in the tui and config file
-- [ ] add keyboard shortcut h to toggle hide for the done tasks
+- [ ] add keyboard shortcut h to toggle hide for the done tasks (+config)
+- [ ] add command to toggle all checklist to done and/or todo (make checklists work)
