@@ -20,5 +20,9 @@
 - [x] add command to toggle all checklist to done and/or todo (make checklists work)
 - [ ] add date when task was added (@2025-11-24)
 - [ ] add tags and f shortcut to filter for tags (#tag)
+- [ ] add function to edit pervious seen files (persit in locla share or config )
 - [ ] add priorities and a priority-sort command (p1, p2, ...)
 - [ ] add markdown metadata for options (persit: false, filter-done: true, ...)
+- [ ] add command to toggle heading on (add flag for it as well or markdown metadata)
+- [ ] add some feature to get to files opened with it before
+- [ ] add command to set max-visible while running
