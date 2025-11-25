@@ -1190,15 +1190,8 @@ func RunPiped(filePath string, input []byte, readOnly bool) string {
 
 	m := New(filePath, fm, readOnly, showHeadings, maxVisible, Config, StyleFuncs, Version)
 
-	// Apply additional frontmatter settings
-	if fm.Metadata != nil {
-		if fm.Metadata.FilterDone != nil {
-			m.FilterDone = *fm.Metadata.FilterDone
-		}
-		if fm.Metadata.WordWrap != nil {
-			m.WordWrap = *fm.Metadata.WordWrap
-		}
-	}
+	// Note: FilterDone and WordWrap are now applied in New() from metadata
+	// This ensures cursor positioning happens after filters are applied
 
 	m.ProcessPipedInput(input)
 	return m.View()

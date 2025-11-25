@@ -70,8 +70,9 @@ func TestNew_InitializesCorrectly(t *testing.T) {
 	if m.WordWrap != true {
 		t.Error("WordWrap should default to true")
 	}
-	if m.headingsDirty != true {
-		t.Error("headingsDirty should be true initially")
+	// Note: headingsDirty is false because showHeadings=true causes GetDocumentTree() to be called during New()
+	if m.headingsDirty != false {
+		t.Error("headingsDirty should be false after initialization with showHeadings=true")
 	}
 }
 

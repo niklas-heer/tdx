@@ -132,6 +132,33 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 		appVersion:         version,
 	}
 
+	// Apply metadata settings (including FilterDone) from file
+	if fm.Metadata != nil {
+		if fm.Metadata.FilterDone != nil {
+			m.FilterDone = *fm.Metadata.FilterDone
+		}
+		if fm.Metadata.WordWrap != nil {
+			m.WordWrap = *fm.Metadata.WordWrap
+		}
+	}
+
+	// Position cursor on first visible item if filters are active
+	if m.hasActiveFilters() || m.ShowHeadings {
+		tree := m.GetDocumentTree()
+		// Find the first visible todo node
+		for _, node := range tree.Flat {
+			if node.Type == DocNodeTodo && node.Visible {
+				if m.SelectedIndex != node.TodoIndex {
+					m.SelectedIndex = node.TodoIndex
+					// Invalidate tree since we changed SelectedIndex after building it
+					// This ensures the tree's Selected index will be correct on next access
+					m.InvalidateDocumentTree()
+				}
+				break
+			}
+		}
+	}
+
 	return m
 }
 
