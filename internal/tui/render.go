@@ -242,50 +242,15 @@ func RenderTodoLine(
 		availWidth := termWidth - prefixWidth
 		indent := strings.Repeat(" ", prefixWidth)
 
-		if isSearchMode && searchQuery != "" {
-			// For search mode, wrap plain then highlight
-			wrappedLines := util.WrapText(plainText, availWidth, indent)
-			for i, line := range wrappedLines {
-				// Apply highlighting after wrapping
-				var styledLine string
-				if i == 0 {
-					styledLine = HighlightMatches(line, searchQuery, func(s string) string {
-						return cyanStyle(s)
-					})
-				} else {
-					// Remove indent, highlight, re-add indent
-					trimmed := strings.TrimPrefix(line, indent)
-					styledLine = indent + HighlightMatches(trimmed, searchQuery, func(s string) string {
-						return cyanStyle(s)
-					})
-				}
-				if i == 0 {
-					b.WriteString(prefix + styledLine + "\n")
-				} else {
-					b.WriteString(styledLine + "\n")
-				}
-			}
-		} else {
-			// Normal mode: wrap plain then render inline code
-			wrappedLines := util.WrapText(plainText, availWidth, indent)
-			for i, line := range wrappedLines {
-				var styledLine string
-				if i == 0 {
-					styledLine = RenderInlineCode(line, isChecked, func(s string) string {
-						return magentaStyle(s)
-					}, cyanStyle, codeStyleFunc)
-				} else {
-					// Remove indent, style, re-add indent
-					trimmed := strings.TrimPrefix(line, indent)
-					styledLine = indent + RenderInlineCode(trimmed, isChecked, func(s string) string {
-						return magentaStyle(s)
-					}, cyanStyle, codeStyleFunc)
-				}
-				if i == 0 {
-					b.WriteString(prefix + styledLine + "\n")
-				} else {
-					b.WriteString(styledLine + "\n")
-				}
+		// Wrap the STYLED text (which already has escape codes for links, code, tags)
+		// This preserves rendering but may break across visual boundaries
+		wrappedLines := util.WrapText(text, availWidth, indent)
+
+		for i, line := range wrappedLines {
+			if i == 0 {
+				b.WriteString(prefix + line + "\n")
+			} else {
+				b.WriteString(line + "\n")
 			}
 		}
 	} else {

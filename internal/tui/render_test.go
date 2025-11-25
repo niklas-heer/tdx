@@ -91,3 +91,80 @@ func TestRenderInlineCode_NoMarkdown(t *testing.T) {
 		t.Errorf("Expected plain text to pass through unchanged, got: %s", result)
 	}
 }
+
+// TestRenderTodoLine_LinksWithWordWrap tests that links work correctly with word wrapping
+func TestRenderTodoLine_LinksWithWordWrap(t *testing.T) {
+	identity := func(s string) string { return s }
+	cyanStyle := func(s string) string { return s } // Keep text as-is for testing
+
+	// Pre-render the text (this is what view.go does)
+	plainText := "Check [Google](https://google.com) for more information"
+	renderedText := RenderInlineCode(plainText, false, identity, cyanStyle, identity)
+
+	// Verify the rendered text contains OSC 8 codes
+	if !strings.Contains(renderedText, "\x1b]8;;https://google.com\x1b\\") {
+		t.Errorf("Rendered text should contain OSC 8 hyperlink, got: %q", renderedText)
+	}
+
+	// Now test RenderTodoLine with word wrap enabled
+	prefix := " 1 ➜ [ ] "
+	prefixWidth := 10
+	termWidth := 40 // Narrow terminal to force wrapping
+
+	result := RenderTodoLine(
+		prefix,
+		renderedText, // Already rendered with OSC 8 codes
+		plainText,    // Plain text for potential re-rendering
+		false,        // not search mode
+		"",           // no search query
+		false,        // not checked
+		true,         // word wrap enabled
+		termWidth,
+		prefixWidth,
+		identity, cyanStyle, identity, identity,
+	)
+
+	// The result should still contain OSC 8 codes (not broken by wrapping)
+	if !strings.Contains(result, "\x1b]8;;https://google.com\x1b\\") {
+		t.Errorf("Word-wrapped result should preserve OSC 8 hyperlink, got: %q", result)
+	}
+
+	// Should NOT contain markdown syntax
+	if strings.Contains(result, "](") {
+		t.Errorf("Word-wrapped result should not contain markdown syntax, got: %q", result)
+	}
+}
+
+// TestRenderTodoLine_LinksWithoutWordWrap tests that links work correctly without word wrapping
+func TestRenderTodoLine_LinksWithoutWordWrap(t *testing.T) {
+	identity := func(s string) string { return s }
+	cyanStyle := func(s string) string { return s }
+
+	plainText := "Visit [GitHub](https://github.com) today"
+	renderedText := RenderInlineCode(plainText, false, identity, cyanStyle, identity)
+
+	prefix := " 1 ➜ [ ] "
+	prefixWidth := 10
+	termWidth := 80
+
+	result := RenderTodoLine(
+		prefix,
+		renderedText,
+		plainText,
+		false, "", false,
+		false, // word wrap disabled
+		termWidth,
+		prefixWidth,
+		identity, cyanStyle, identity, identity,
+	)
+
+	// Should contain OSC 8 codes
+	if !strings.Contains(result, "\x1b]8;;https://github.com\x1b\\") {
+		t.Errorf("Result should contain OSC 8 hyperlink, got: %q", result)
+	}
+
+	// Should NOT contain markdown syntax
+	if strings.Contains(result, "](") {
+		t.Errorf("Result should not contain markdown syntax, got: %q", result)
+	}
+}
