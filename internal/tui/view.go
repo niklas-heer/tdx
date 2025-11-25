@@ -2,9 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/niklas-heer/tdx/internal/util"
 	overlay "github.com/rmhubbert/bubbletea-overlay"
@@ -25,6 +28,21 @@ func (m Model) View() string {
 	background := mainContent + "\n" + statusBar
 
 	// If there's an overlay active, composite it on top
+	if m.RecentFilesMode {
+		// Ensure there's space for overlay positioning
+		contentLines := strings.Count(mainContent, "\n")
+		minLines := 10 // Minimum lines to ensure overlay positioning works well
+		if contentLines < minLines {
+			for i := contentLines; i < minLines; i++ {
+				background += "\n"
+			}
+		}
+
+		overlayContent := m.renderRecentFilesOverlay()
+		// Position overlay just above status bar
+		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+	}
+
 	if m.FilterMode {
 		// Ensure there's space for overlay positioning
 		contentLines := strings.Count(mainContent, "\n")
@@ -634,6 +652,120 @@ func (m Model) renderCommandOverlayCompact() string {
 		}).
 		BorderForeground(lipgloss.Color("#7aa2f7")).
 		Padding(0, 1)
+
+	return overlayStyle.Render(content)
+}
+
+// renderRecentFilesOverlay renders a compact modal for recent files
+func (m Model) renderRecentFilesOverlay() string {
+	var b strings.Builder
+	styles := m.Styles()
+
+	// Filter files based on search
+	filteredFiles := []config.RecentFile{}
+	for _, file := range m.RecentFiles {
+		if m.RecentFilesSearch == "" || strings.Contains(strings.ToLower(file.Path), strings.ToLower(m.RecentFilesSearch)) {
+			filteredFiles = append(filteredFiles, file)
+		}
+	}
+
+	// Title with search input
+	if m.RecentFilesSearch != "" {
+		b.WriteString(styles.Cyan("Recent: ") + m.RecentFilesSearch)
+	} else {
+		b.WriteString(styles.Cyan("Recent Files"))
+	}
+	b.WriteString("\n")
+
+	// Show top 8 files with scrolling
+	maxFiles := 8
+	totalFiles := len(filteredFiles)
+
+	if totalFiles == 0 {
+		if m.RecentFilesSearch != "" {
+			b.WriteString(styles.Dim("  No matching files"))
+		} else {
+			b.WriteString(styles.Dim("  No recent files"))
+		}
+		b.WriteString("\n")
+	} else {
+		// Calculate scroll window to keep cursor visible
+		startIdx := 0
+		if m.RecentFilesCursor >= maxFiles {
+			startIdx = m.RecentFilesCursor - maxFiles + 1
+		}
+
+		endIdx := startIdx + maxFiles
+		if endIdx > totalFiles {
+			endIdx = totalFiles
+			startIdx = endIdx - maxFiles
+			if startIdx < 0 {
+				startIdx = 0
+			}
+		}
+
+		// Render visible files
+		for i := startIdx; i < endIdx; i++ {
+			file := filteredFiles[i]
+			isSelected := (i == m.RecentFilesCursor)
+
+			// Get display path (show ~ for home directory)
+			displayPath := file.Path
+			if home, err := os.UserHomeDir(); err == nil {
+				if rel, err := filepath.Rel(home, file.Path); err == nil && !strings.HasPrefix(rel, "..") {
+					displayPath = "~/" + rel
+				}
+			}
+
+			// Truncate long paths
+			if len(displayPath) > 60 {
+				displayPath = "..." + displayPath[len(displayPath)-57:]
+			}
+
+			// Format info
+			info := fmt.Sprintf("×%d", file.AccessCount)
+
+			var marker string
+			if isSelected {
+				marker = styles.Cyan("▸ ")
+				displayPath = styles.Cyan(displayPath)
+			} else {
+				marker = "  "
+			}
+
+			b.WriteString(marker + displayPath + " " + styles.Dim(info))
+			b.WriteString("\n")
+		}
+
+		// Show indicator for more files
+		if totalFiles > maxFiles {
+			remaining := totalFiles - endIdx
+			if remaining > 0 {
+				b.WriteString(styles.Dim(fmt.Sprintf("  ... %d more", remaining)))
+				b.WriteString("\n")
+			}
+		}
+	}
+
+	// Help text
+	b.WriteString(styles.Dim("Type to filter • ↑/↓ navigate • ↵ open • esc close"))
+
+	// Style as compact modal
+	content := b.String()
+	overlayStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "┌",
+			TopRight:    "┐",
+			BottomLeft:  "└",
+			BottomRight: "┘",
+		}).
+		BorderForeground(lipgloss.Color("#7aa2f7")).
+		Padding(0, 1).
+		Width(70)
 
 	return overlayStyle.Render(content)
 }

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -46,6 +47,7 @@ type Model struct {
 	HelpMode            bool
 	SearchMode          bool
 	CommandMode         bool
+	RecentFilesMode     bool
 	MaxVisibleInputMode bool
 	SearchResults       []int
 	SearchCursor        int
@@ -77,6 +79,11 @@ type Model struct {
 	FilteredTags    []string // Currently active tag filters
 	AvailableTags   []string // All unique tags from todos
 	TagFilterCursor int      // Cursor position in tag filter list
+
+	// Recent files state
+	RecentFiles       []config.RecentFile // List of recent files
+	RecentFilesCursor int                 // Cursor position in recent files list
+	RecentFilesSearch string              // Search filter for recent files
 
 	// Cached headings for performance (avoid re-extraction on every render)
 	cachedHeadings []markdown.Heading

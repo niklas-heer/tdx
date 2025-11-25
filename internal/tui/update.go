@@ -122,6 +122,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle recent files mode
+	if m.RecentFilesMode {
+		return m.handleRecentFilesInput(key)
+	}
+
 	// Number buffer for vim-style navigation
 	if key >= "1" && key <= "9" {
 		m.NumberBuffer += key
@@ -255,6 +260,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "?":
 		m.HelpMode = true
+
+	case "r":
+		// Load and display recent files
+		if recentFiles, err := config.LoadRecentFiles(); err == nil {
+			recentFiles.SortByScore()
+			m.RecentFiles = recentFiles.Files
+			m.RecentFilesCursor = 0
+			m.RecentFilesSearch = ""
+			m.RecentFilesMode = true
+		}
 
 	case "/":
 		if len(m.FileModel.Todos) > 0 {
@@ -1117,7 +1132,7 @@ func (m *Model) ProcessPipedInput(input []byte) {
 
 		// Check for quit in normal mode (q or esc without other modes active)
 		if !m.InputMode && !m.EditMode && !m.SearchMode && !m.CommandMode &&
-			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode {
+			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode {
 			if b == 'q' || b == 27 {
 				return
 			}
@@ -1167,6 +1182,102 @@ func (m *Model) getCount() int {
 		m.NumberBuffer = ""
 	}
 	return count
+}
+
+// handleRecentFilesInput handles keyboard input in recent files mode
+func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
+	// Filter recent files based on search
+	filteredFiles := []config.RecentFile{}
+	for _, file := range m.RecentFiles {
+		if m.RecentFilesSearch == "" || strings.Contains(strings.ToLower(file.Path), strings.ToLower(m.RecentFilesSearch)) {
+			filteredFiles = append(filteredFiles, file)
+		}
+	}
+
+	switch key {
+	case "esc", "r":
+		// Exit recent files mode
+		m.RecentFilesMode = false
+		m.RecentFilesSearch = ""
+		return m, nil
+
+	case "j", "down":
+		if len(filteredFiles) > 0 {
+			m.RecentFilesCursor = (m.RecentFilesCursor + 1) % len(filteredFiles)
+		}
+
+	case "k", "up":
+		if len(filteredFiles) > 0 {
+			m.RecentFilesCursor--
+			if m.RecentFilesCursor < 0 {
+				m.RecentFilesCursor = len(filteredFiles) - 1
+			}
+		}
+
+	case "enter":
+		// Open selected file
+		if m.RecentFilesCursor < len(filteredFiles) {
+			selectedFile := filteredFiles[m.RecentFilesCursor]
+
+			// Save current file's cursor position before switching
+			_ = config.SaveRecentFile(m.FilePath, m.SelectedIndex)
+
+			// Load the new file
+			fm, err := markdown.ReadFile(selectedFile.Path)
+			if err != nil {
+				m.Err = err
+				m.RecentFilesMode = false
+				return m, nil
+			}
+
+			// Update model with new file
+			m.FilePath = selectedFile.Path
+			m.FileModel = *fm
+			m.History = nil // Clear undo history
+			m.RecentFilesMode = false
+			m.RecentFilesSearch = ""
+
+			// Try to restore cursor position from recent files
+			if recentFiles, err := config.LoadRecentFiles(); err == nil {
+				if savedPos := recentFiles.GetCursorPosition(selectedFile.Path); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
+					m.SelectedIndex = savedPos
+				} else {
+					m.SelectedIndex = 0
+				}
+			} else {
+				m.SelectedIndex = 0
+			}
+
+			// Ensure cursor is within bounds
+			if m.SelectedIndex >= len(m.FileModel.Todos) {
+				m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
+			}
+
+			// Invalidate caches to refresh AST, headings, and tree
+			m.InvalidateHeadingsCache()
+			m.InvalidateDocumentTree()
+
+			return m, nil
+		}
+
+	case "backspace":
+		if len(m.RecentFilesSearch) > 0 {
+			m.RecentFilesSearch = m.RecentFilesSearch[:len(m.RecentFilesSearch)-1]
+			m.RecentFilesCursor = 0 // Reset cursor when search changes
+		}
+
+	default:
+		// Add to search buffer (printable characters, but skip leading spaces)
+		if len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
+			// Skip leading spaces
+			if !(m.RecentFilesSearch == "" && key == " ") {
+				m.RecentFilesSearch += key
+				m.RecentFilesCursor = 0 // Reset cursor when search changes
+			}
+		}
+	}
+
+	return m, nil
 }
 
 // RunPiped runs the TUI with piped input for testing
@@ -1263,6 +1374,15 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		}
 	}
 
+	// Try to restore cursor position from recent files (if file content hasn't changed)
+	if recentFiles, err := config.LoadRecentFiles(); err == nil {
+		if savedPos := recentFiles.GetCursorPosition(filePath); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
+			m.SelectedIndex = savedPos
+			// Invalidate tree to ensure correct positioning
+			m.InvalidateDocumentTree()
+		}
+	}
+
 	// Check if we have a TTY
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
@@ -1270,12 +1390,22 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		input, _ := io.ReadAll(os.Stdin)
 		m.ProcessPipedInput(input)
 		fmt.Print(m.View())
+		// Save cursor position to recent files
+		_ = config.SaveRecentFile(filePath, m.SelectedIndex)
 		return
 	}
 
 	// Normal TTY - use Bubbletea (no alt screen to keep context visible)
 	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		fmt.Printf("Error: %v\n", err)
+		return
+	}
+
+	// Save cursor position to recent files when exiting
+	if m, ok := finalModel.(Model); ok {
+		// Save with current cursor position
+		_ = config.SaveRecentFile(filePath, m.SelectedIndex)
 	}
 }

@@ -19,6 +19,7 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 - 🔧 **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
 - 🔄 **Smart Conflict Detection** - Auto-merge external changes, reactive file watching
 - 📑 **Per-File Configuration** - YAML frontmatter for file-specific settings
+- 📂 **Recent Files** - Jump to recently opened files with cursor position restoration
 - 🌍 **Cross-platform** - macOS, Linux, Windows
 
 ## Installation
@@ -82,6 +83,7 @@ tdx
 | `m` | Move mode |
 | `/` | Fuzzy search |
 | `f` | Tag filter |
+| `r` | Recent files |
 | `:` | Command palette |
 | `u` | Undo |
 | `?` | Help menu |
@@ -167,6 +169,52 @@ tdx delete 3
 tdx ~/notes/work.md list
 tdx project.md add "Task"
 ```
+
+### Recent Files
+
+tdx automatically tracks recently opened files and restores your cursor position when you reopen them.
+
+**TUI Mode:**
+
+Press `r` in the TUI to open the recent files overlay:
+- Type to filter files by path (fuzzy search)
+- Navigate with `↑/↓` or `j/k`
+- Press `Enter` to open a file
+- Press `Esc` or `r` to close
+
+**CLI Commands:**
+
+```bash
+# List recently opened files (sorted by frequency and recency)
+tdx recent
+
+# Open a specific recent file by number
+tdx recent 1
+
+# Clear recent files history
+tdx recent clear
+```
+
+**Features:**
+- **Smart Sorting**: Files are ranked by both frequency (how often you open them) and recency (when you last accessed them)
+- **Cursor Restoration**: When you reopen a file, tdx automatically restores your cursor to the last position
+- **Change Detection**: If the file content has changed since your last visit, the cursor resets to the first item for safety
+- **Configurable Limit**: Set maximum recent files in your config (default: 20)
+
+**Configuration:**
+
+In `~/.config/tdx/config.yaml`:
+
+```yaml
+max-recent-files: 20  # Maximum number of recent files to track
+```
+
+Recent files are stored in `~/.config/tdx/recent.json` and include:
+- File path
+- Last access time
+- Access count (frequency)
+- Last cursor position
+- Content hash (for change detection)
 
 ## File Format
 

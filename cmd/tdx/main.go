@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/niklas-heer/tdx/internal/cmd"
+	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/tui"
 )
 
@@ -110,6 +111,8 @@ func main() {
 		fmt.Printf("MaxVisible: %d\n", appConfig.Display.MaxVisible)
 	case "list", "add", "toggle", "edit", "delete":
 		cmd.HandleCommand(command, cmdArgs, filePath)
+	case "recent":
+		handleRecentCommand(cmdArgs, readOnly, showHeadings, maxVisible)
 	case "":
 		// Launch TUI
 		tui.Run(filePath, readOnly, showHeadings, maxVisible)
@@ -138,6 +141,9 @@ Commands:
   toggle <index>      Toggle todo completion
   edit <index> "text" Edit todo text
   delete <index>      Delete a todo
+  recent              List recently opened files
+  recent <number>     Open a recent file by number
+  recent clear        Clear recent files history
   help                Show this help
 
 TUI Controls:
@@ -153,4 +159,64 @@ TUI Controls:
   ?                   Toggle help
   Esc                 Quit`, Description)
 	fmt.Println(help)
+}
+
+func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVisible int) {
+	// Handle "clear" subcommand
+	if len(args) > 0 && args[0] == "clear" {
+		if err := config.ClearRecentFiles(); err != nil {
+			fmt.Printf("Error clearing recent files: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Recent files cleared")
+		return
+	}
+
+	// Load recent files
+	recentFiles, err := config.LoadRecentFiles()
+	if err != nil {
+		fmt.Printf("Error loading recent files: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(recentFiles.Files) == 0 {
+		fmt.Println("No recent files")
+		return
+	}
+
+	// Sort by score (recency * frequency)
+	recentFiles.SortByScore()
+
+	// If numeric argument, open that file
+	if len(args) > 0 {
+		index, err := strconv.Atoi(args[0])
+		if err != nil || index < 1 || index > len(recentFiles.Files) {
+			fmt.Printf("Error: invalid file number. Use 1-%d\n", len(recentFiles.Files))
+			os.Exit(1)
+		}
+
+		// Open the selected file (1-indexed)
+		filePath := recentFiles.Files[index-1].Path
+		tui.Run(filePath, readOnly, showHeadings, maxVisible)
+		return
+	}
+
+	// No args - list all recent files
+	fmt.Println("Recent files:")
+	for i, file := range recentFiles.Files {
+		// Show relative path if in home directory
+		displayPath := file.Path
+		if home, err := os.UserHomeDir(); err == nil {
+			if rel, err := filepath.Rel(home, file.Path); err == nil && !strings.HasPrefix(rel, "..") {
+				displayPath = "~/" + rel
+			}
+		}
+
+		fmt.Printf("  %d. %s (accessed %d times, last: %s)\n",
+			i+1,
+			displayPath,
+			file.AccessCount,
+			file.LastAccessed.Format("2006-01-02 15:04"))
+	}
+	fmt.Println("\nUse 'tdx recent <number>' to open a file")
 }

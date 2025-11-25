@@ -134,6 +134,7 @@ func RenderHelp(version string, cyanStyle, dimStyle func(string) string) string 
 			header: "OTHER",
 			entries: []entry{
 				{"u", "Undo"},
+				{"r", "Recent files"},
 				{"?", "Help"},
 				{"esc", "Quit"},
 			},
