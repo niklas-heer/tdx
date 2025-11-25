@@ -165,10 +165,6 @@ func (doc *ASTDocument) extractTodoText(listItem ast.Node, checkbox ast.Node) st
 	for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
 		// Walk this child and collect text nodes
 		ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			if !entering {
-				return ast.WalkContinue, nil
-			}
-
 			// Skip the checkbox itself
 			if n == checkbox {
 				return ast.WalkSkipChildren, nil
@@ -177,28 +173,48 @@ func (doc *ASTDocument) extractTodoText(listItem ast.Node, checkbox ast.Node) st
 			// Collect text content
 			switch node := n.(type) {
 			case *ast.Text:
-				segment := node.Segment
-				buf.Write(segment.Value(doc.Source))
-				// Add space if this is a soft line break
-				if node.SoftLineBreak() {
-					buf.WriteByte(' ')
-				}
-			case *ast.String:
-				buf.Write(node.Value)
-			case *ast.CodeSpan:
-				// Code spans need special handling
-				buf.WriteByte('`')
-				for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-					if textNode, ok := child.(*ast.Text); ok {
-						segment := textNode.Segment
-						buf.Write(segment.Value(doc.Source))
+				if entering {
+					segment := node.Segment
+					buf.Write(segment.Value(doc.Source))
+					// Add space if this is a soft line break
+					if node.SoftLineBreak() {
+						buf.WriteByte(' ')
 					}
 				}
-				buf.WriteByte('`')
-				return ast.WalkSkipChildren, nil
+			case *ast.String:
+				if entering {
+					buf.Write(node.Value)
+				}
+			case *ast.CodeSpan:
+				if entering {
+					// Code spans need special handling
+					buf.WriteByte('`')
+					for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+						if textNode, ok := child.(*ast.Text); ok {
+							segment := textNode.Segment
+							buf.Write(segment.Value(doc.Source))
+						}
+					}
+					buf.WriteByte('`')
+					return ast.WalkSkipChildren, nil
+				}
 			case *ast.Link:
-				// Preserve link syntax
-				buf.WriteByte('[')
+				// Preserve full markdown link syntax [text](url)
+				if entering {
+					buf.WriteByte('[')
+					// Collect link text from children
+					for linkChild := node.FirstChild(); linkChild != nil; linkChild = linkChild.NextSibling() {
+						if textNode, ok := linkChild.(*ast.Text); ok {
+							segment := textNode.Segment
+							buf.Write(segment.Value(doc.Source))
+						}
+					}
+					buf.WriteByte(']')
+					buf.WriteByte('(')
+					buf.Write(node.Destination)
+					buf.WriteByte(')')
+					return ast.WalkSkipChildren, nil
+				}
 			case *ast.Emphasis:
 				// Could preserve emphasis markers if needed
 			}

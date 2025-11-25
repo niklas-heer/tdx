@@ -111,16 +111,86 @@ func TestUpdateTodoText_WithLinks(t *testing.T) {
 		t.Fatalf("UpdateTodoItem failed: %v", err)
 	}
 
-	// Note: The text extraction may not include the URL part, just the link text
-	// This is expected behavior - we're testing that links are preserved in the AST
-	if fm.Todos[0].Text == "" {
-		t.Errorf("Todo text should not be empty after update with link")
+	// The text should preserve the full markdown link syntax
+	if fm.Todos[0].Text != newText {
+		t.Errorf("Expected '%s', got '%s'", newText, fm.Todos[0].Text)
 	}
 
-	// Verify serialization
+	// Verify serialization preserves links
 	serialized := SerializeMarkdown(fm)
-	if serialized == "" {
-		t.Error("Serialized output should not be empty")
+	fm2 := ParseMarkdown(serialized)
+
+	if fm2.Todos[0].Text != newText {
+		t.Errorf("After round-trip: expected '%s', got '%s'", newText, fm2.Todos[0].Text)
+	}
+}
+
+func TestExtractTodos_WithLinks(t *testing.T) {
+	// Test that links are properly extracted from markdown
+	content := `# Test File
+
+- [ ] Check [Google](https://google.com) for info
+- [x] Review [Documentation](https://example.com/docs) carefully
+- [ ] Visit [GitHub](https://github.com) repo
+- [ ] Multiple [links](https://a.com) in [one](https://b.com) todo
+`
+
+	fm := ParseMarkdown(content)
+
+	if len(fm.Todos) != 4 {
+		t.Fatalf("Expected 4 todos, got %d", len(fm.Todos))
+	}
+
+	// Test first todo with link
+	expected := "Check [Google](https://google.com) for info"
+	if fm.Todos[0].Text != expected {
+		t.Errorf("Todo 1: expected '%s', got '%s'", expected, fm.Todos[0].Text)
+	}
+
+	// Test checked todo with link
+	expected = "Review [Documentation](https://example.com/docs) carefully"
+	if fm.Todos[1].Text != expected {
+		t.Errorf("Todo 2: expected '%s', got '%s'", expected, fm.Todos[1].Text)
+	}
+	if !fm.Todos[1].Checked {
+		t.Error("Todo 2 should be checked")
+	}
+
+	// Test simple link
+	expected = "Visit [GitHub](https://github.com) repo"
+	if fm.Todos[2].Text != expected {
+		t.Errorf("Todo 3: expected '%s', got '%s'", expected, fm.Todos[2].Text)
+	}
+
+	// Test multiple links
+	expected = "Multiple [links](https://a.com) in [one](https://b.com) todo"
+	if fm.Todos[3].Text != expected {
+		t.Errorf("Todo 4: expected '%s', got '%s'", expected, fm.Todos[3].Text)
+	}
+}
+
+func TestExtractTodos_LinksWithCode(t *testing.T) {
+	// Test that links and code can coexist
+	content := `# Todos
+
+- [ ] Check [docs](https://example.com) and update ` + "`config.yaml`" + `
+- [ ] Fix ` + "`bug`" + ` in [main.go](https://github.com/user/repo/main.go)
+`
+
+	fm := ParseMarkdown(content)
+
+	if len(fm.Todos) != 2 {
+		t.Fatalf("Expected 2 todos, got %d", len(fm.Todos))
+	}
+
+	expected1 := "Check [docs](https://example.com) and update `config.yaml`"
+	if fm.Todos[0].Text != expected1 {
+		t.Errorf("Todo 1: expected '%s', got '%s'", expected1, fm.Todos[0].Text)
+	}
+
+	expected2 := "Fix `bug` in [main.go](https://github.com/user/repo/main.go)"
+	if fm.Todos[1].Text != expected2 {
+		t.Errorf("Todo 2: expected '%s', got '%s'", expected2, fm.Todos[1].Text)
 	}
 }
 
