@@ -20,7 +20,8 @@
       "Bash(curl:*)",
       "Bash(./scripts/update-homebrew.sh:*)",
       "Bash(go mod vendor:*)",
-      "Bash(gh issue comment:*)"
+      "Bash(gh issue comment:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []
