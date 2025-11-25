@@ -38,7 +38,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reloadedMsg:
 		// Successfully reloaded from disk
 		m = msg.model
+		m.InvalidateHeadingsCache()  // Invalidate cache on reload
 		return m, watchFileChanges() // Continue watching
+	case SearchDebounceMsg:
+		// Debounced search update
+		if m.SearchMode && m.searchPending {
+			m.updateSearchResults()
+			m.searchPending = false
+		}
+		return m, nil
+	case CommandDebounceMsg:
+		// Debounced command filter update
+		if m.CommandMode && m.searchPending {
+			m.updateFilteredCommands()
+			m.searchPending = false
+		}
+		return m, nil
 	case tea.KeyMsg:
 		// Handle EOF from piped input
 		if msg.Type == tea.KeyCtrlD {
@@ -118,6 +133,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.NumberBuffer != "" {
 		count, _ = strconv.Atoi(m.NumberBuffer)
 		m.NumberBuffer = ""
+	}
+
+	// Reset g-pressed state on any key except 'g' itself (handled in switch)
+	if key != "g" && key != "G" {
+		m.gPressed = false
 	}
 
 	switch key {
@@ -245,6 +265,36 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.FilterMode = true
 			m.TagFilterCursor = 0
 		}
+
+	case "G":
+		// Go to bottom (vim-style)
+		if m.FilterDone || len(m.FilteredTags) > 0 {
+			visible := m.getVisibleTodos()
+			if len(visible) > 0 {
+				m.SelectedIndex = visible[len(visible)-1]
+			}
+		} else if len(m.FileModel.Todos) > 0 {
+			m.SelectedIndex = len(m.FileModel.Todos) - 1
+		}
+		m.gPressed = false
+
+	case "g":
+		// First g press - wait for second g
+		if m.gPressed {
+			// gg - go to top
+			if m.FilterDone || len(m.FilteredTags) > 0 {
+				visible := m.getVisibleTodos()
+				if len(visible) > 0 {
+					m.SelectedIndex = visible[0]
+				}
+			} else if len(m.FileModel.Todos) > 0 {
+				m.SelectedIndex = 0
+			}
+			m.gPressed = false
+		} else {
+			m.gPressed = true
+		}
+		return m, nil
 
 	case ":":
 		m.CommandMode = true
@@ -451,11 +501,13 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.SearchMode = false
 		m.InputBuffer = ""
 		m.SearchResults = nil
+		m.searchPending = false
 
 	case "esc":
 		m.SearchMode = false
 		m.InputBuffer = ""
 		m.SearchResults = nil
+		m.searchPending = false
 
 	case "down", "ctrl+n", "ctrl+j":
 		// Move down in search results
@@ -473,7 +525,9 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.CursorPos > 0 {
 			m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
 			m.CursorPos--
-			m.updateSearchResults()
+			// Debounce search update
+			m.searchPending = true
+			return m, searchDebounceCmd()
 		}
 
 	default:
@@ -481,7 +535,9 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(key) == 1 {
 			m.InputBuffer = m.InputBuffer[:m.CursorPos] + key + m.InputBuffer[m.CursorPos:]
 			m.CursorPos++
-			m.updateSearchResults()
+			// Debounce search update
+			m.searchPending = true
+			return m, searchDebounceCmd()
 		}
 	}
 
@@ -551,6 +607,7 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Commands[cmdIdx].Handler(&m)
 		}
 		m.CommandMode = false
+		m.searchPending = false
 		// Only clear buffer if we didn't switch to input or maxVisibleInput mode
 		if !m.InputMode && !m.MaxVisibleInputMode {
 			m.InputBuffer = ""
@@ -570,6 +627,7 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.CommandMode = false
 		m.InputBuffer = ""
 		m.FilteredCmds = nil
+		m.searchPending = false
 
 	case "down", "ctrl+n", "ctrl+j":
 		// Move down in command list
@@ -587,7 +645,9 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.CursorPos > 0 {
 			m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
 			m.CursorPos--
-			m.updateFilteredCommands()
+			// Debounce command filter update
+			m.searchPending = true
+			return m, commandDebounceCmd()
 		}
 
 	default:
@@ -595,7 +655,9 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(key) == 1 {
 			m.InputBuffer = m.InputBuffer[:m.CursorPos] + key + m.InputBuffer[m.CursorPos:]
 			m.CursorPos++
-			m.updateFilteredCommands()
+			// Debounce command filter update
+			m.searchPending = true
+			return m, commandDebounceCmd()
 		}
 	}
 
@@ -610,6 +672,7 @@ func (m *Model) saveHistory() {
 
 func (m *Model) addNewTodo() {
 	m.FileModel.AddTodoItem(m.InputBuffer, false)
+	m.InvalidateHeadingsCache() // New todo may affect heading positions
 	m.writeIfPersist()
 	m.SelectedIndex = len(m.FileModel.Todos) - 1
 }
@@ -620,6 +683,7 @@ func (m *Model) deleteCurrent() {
 	}
 
 	m.FileModel.DeleteTodoItem(m.SelectedIndex)
+	m.InvalidateHeadingsCache() // Deletion may affect heading positions
 	m.writeIfPersist()
 
 	// Adjust selection
@@ -629,7 +693,11 @@ func (m *Model) deleteCurrent() {
 }
 
 func (m *Model) moveTodo(from, to int) error {
-	return m.FileModel.MoveTodoItem(from, to)
+	err := m.FileModel.MoveTodoItem(from, to)
+	if err == nil {
+		m.InvalidateHeadingsCache() // Move may affect heading positions
+	}
+	return err
 }
 
 func (m *Model) swapTodos(i, j int) error {
@@ -1185,6 +1253,35 @@ func (m *Model) ProcessPipedInput(input []byte) {
 			}
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			m.NumberBuffer += string(b)
+		case 'G':
+			// Go to bottom (vim-style)
+			if m.FilterDone || len(m.FilteredTags) > 0 {
+				visible := m.getVisibleTodos()
+				if len(visible) > 0 {
+					m.SelectedIndex = visible[len(visible)-1]
+				}
+			} else if len(m.FileModel.Todos) > 0 {
+				m.SelectedIndex = len(m.FileModel.Todos) - 1
+			}
+			m.gPressed = false
+		case 'g':
+			// gg - go to top
+			if m.gPressed {
+				if m.FilterDone || len(m.FilteredTags) > 0 {
+					visible := m.getVisibleTodos()
+					if len(visible) > 0 {
+						m.SelectedIndex = visible[0]
+					}
+				} else if len(m.FileModel.Todos) > 0 {
+					m.SelectedIndex = 0
+				}
+				m.gPressed = false
+			} else {
+				m.gPressed = true
+			}
+		default:
+			// Reset g-pressed state on any other key
+			m.gPressed = false
 		}
 	}
 }
@@ -1241,7 +1338,7 @@ func (m *Model) getCount() int {
 // RunPiped runs the TUI with piped input for testing
 func RunPiped(filePath string, input []byte, readOnly bool) string {
 	fm, _ := markdown.ReadFile(filePath)
-	m := New(filePath, fm, readOnly, false, -1)
+	m := New(filePath, fm, readOnly, false, -1, Config, StyleFuncs, Version)
 	m.ProcessPipedInput(input)
 	return m.View()
 }
@@ -1289,7 +1386,7 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		}
 	}
 
-	m := New(filePath, fm, readOnly, showHeadings, maxVisible)
+	m := New(filePath, fm, readOnly, showHeadings, maxVisible, Config, StyleFuncs, Version)
 
 	// Apply additional settings with same priority order
 	// Start with global config defaults

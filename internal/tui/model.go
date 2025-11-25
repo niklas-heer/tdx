@@ -7,6 +7,32 @@ import (
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
+// StyleFuncsType holds style functions for rendering
+type StyleFuncsType struct {
+	Magenta func(string) string
+	Cyan    func(string) string
+	Dim     func(string) string
+	Green   func(string) string
+	Yellow  func(string) string
+	Code    func(string) string
+}
+
+// ConfigType holds display configuration
+type ConfigType struct {
+	Display struct {
+		CheckSymbol  string
+		SelectMarker string
+		MaxVisible   int
+	}
+}
+
+// Global variables for backward compatibility (deprecated - use Model methods instead)
+var (
+	Config     *ConfigType
+	StyleFuncs *StyleFuncsType
+	Version    string
+)
+
 // Model holds the TUI application state
 type Model struct {
 	FilePath            string
@@ -49,13 +75,34 @@ type Model struct {
 	FilteredTags    []string // Currently active tag filters
 	AvailableTags   []string // All unique tags from todos
 	TagFilterCursor int      // Cursor position in tag filter list
+
+	// Cached headings for performance (avoid re-extraction on every render)
+	cachedHeadings []markdown.Heading
+	headingsDirty  bool
+
+	// Search debouncing
+	searchPending bool // Whether a search update is pending
+
+	// Vim-style multi-key sequence tracking
+	gPressed bool // Whether 'g' was pressed (for gg sequence)
+
+	// Injected dependencies (previously global)
+	config     *ConfigType
+	styles     *StyleFuncsType
+	appVersion string
 }
 
 // ClearCopyFeedbackMsg is sent to clear copy feedback after a delay
 type ClearCopyFeedbackMsg struct{}
 
-// New creates a new TUI model
-func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bool, maxVisible int) Model {
+// SearchDebounceMsg is sent after debounce delay to trigger search update
+type SearchDebounceMsg struct{}
+
+// CommandDebounceMsg is sent after debounce delay to trigger command filter update
+type CommandDebounceMsg struct{}
+
+// New creates a new TUI model with injected dependencies
+func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bool, maxVisible int, config *ConfigType, styles *StyleFuncsType, version string) Model {
 	// Extract all available tags from todos
 	availableTags := markdown.GetAllTags(fm.Todos)
 
@@ -70,8 +117,37 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 		LocallyModified:    make(map[string]bool),
 		AvailableTags:      availableTags,
 		FilteredTags:       []string{},
-		WordWrap:           true, // Default to true for better UX
+		WordWrap:           true,  // Default to true for better UX
+		headingsDirty:      true,  // Force initial cache population
+		searchPending:      false, // No pending search on init
+		config:             config,
+		styles:             styles,
+		appVersion:         version,
 	}
+}
+
+// Config returns the model's configuration (for backward compatibility during transition)
+func (m *Model) Config() *ConfigType {
+	if m.config != nil {
+		return m.config
+	}
+	return Config // Fall back to global for backward compatibility
+}
+
+// Styles returns the model's style functions (for backward compatibility during transition)
+func (m *Model) Styles() *StyleFuncsType {
+	if m.styles != nil {
+		return m.styles
+	}
+	return StyleFuncs // Fall back to global for backward compatibility
+}
+
+// Version returns the app version string
+func (m *Model) Version() string {
+	if m.appVersion != "" {
+		return m.appVersion
+	}
+	return Version // Fall back to global for backward compatibility
 }
 
 // Init initializes the TUI
@@ -86,5 +162,33 @@ func (m Model) Init() tea.Cmd {
 func watchFileChanges() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return FileChangedMsg{}
+	})
+}
+
+// GetHeadings returns cached headings, refreshing if dirty
+func (m *Model) GetHeadings() []markdown.Heading {
+	if m.headingsDirty {
+		m.cachedHeadings = m.FileModel.GetHeadings()
+		m.headingsDirty = false
+	}
+	return m.cachedHeadings
+}
+
+// InvalidateHeadingsCache marks the headings cache as needing refresh
+func (m *Model) InvalidateHeadingsCache() {
+	m.headingsDirty = true
+}
+
+// searchDebounceCmd returns a command that triggers search update after a delay
+func searchDebounceCmd() tea.Cmd {
+	return tea.Tick(50*time.Millisecond, func(t time.Time) tea.Msg {
+		return SearchDebounceMsg{}
+	})
+}
+
+// commandDebounceCmd returns a command that triggers command filter update after a delay
+func commandDebounceCmd() tea.Cmd {
+	return tea.Tick(50*time.Millisecond, func(t time.Time) tea.Msg {
+		return CommandDebounceMsg{}
 	})
 }

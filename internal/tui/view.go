@@ -10,34 +10,11 @@ import (
 	overlay "github.com/rmhubbert/bubbletea-overlay"
 )
 
-// Global config and styles - injected from main
-type StyleFuncsType struct {
-	Magenta func(string) string
-	Cyan    func(string) string
-	Dim     func(string) string
-	Green   func(string) string
-	Yellow  func(string) string
-	Code    func(string) string
-}
-
-type ConfigType struct {
-	Display struct {
-		CheckSymbol  string
-		SelectMarker string
-		MaxVisible   int
-	}
-}
-
-var (
-	Config     *ConfigType
-	StyleFuncs *StyleFuncsType
-	Version    string
-)
-
 // View renders the TUI
 func (m Model) View() string {
+	styles := m.Styles()
 	if m.HelpMode {
-		return RenderHelp(Version, StyleFuncs.Cyan, StyleFuncs.Dim)
+		return RenderHelp(m.Version(), styles.Cyan, styles.Dim)
 	}
 
 	// Render main content and status bar
@@ -84,9 +61,11 @@ func (m Model) View() string {
 // renderMainContent renders the main todo list (without status bar)
 func (m Model) renderMainContent() string {
 	var b strings.Builder
+	styles := m.Styles()
+	config := m.Config()
 
 	if len(m.FileModel.Todos) == 0 && !m.InputMode {
-		b.WriteString(StyleFuncs.Dim("No todos. Press 'n' to create one."))
+		b.WriteString(styles.Dim("No todos. Press 'n' to create one."))
 		b.WriteString("\n")
 	}
 
@@ -120,7 +99,7 @@ func (m Model) renderMainContent() string {
 
 	// When in input mode, reserve one slot for the new task input
 	// Use maxVisibleOverride if set (>= 0), otherwise use config
-	configMaxVisible := Config.Display.MaxVisible
+	configMaxVisible := config.Display.MaxVisible
 	if m.MaxVisibleOverride >= 0 {
 		configMaxVisible = m.MaxVisibleOverride
 	}
@@ -173,7 +152,7 @@ func (m Model) renderMainContent() string {
 	// Show indicator for items above (always reserve space when max_visible is set)
 	if configMaxVisible > 0 && totalCount > configMaxVisible {
 		if hasMoreAbove {
-			b.WriteString(fmt.Sprintf("      %s\n", StyleFuncs.Dim(fmt.Sprintf("▲ %d more", startIdx))))
+			b.WriteString(fmt.Sprintf("      %s\n", styles.Dim(fmt.Sprintf("▲ %d more", startIdx))))
 		} else {
 			b.WriteString("\n")
 		}
@@ -188,10 +167,10 @@ func (m Model) renderMainContent() string {
 		}
 	}
 
-	// Get all headings if enabled
+	// Get all headings if enabled (uses cached headings for performance)
 	var allHeadings []markdown.Heading
 	if m.ShowHeadings {
-		allHeadings = m.FileModel.GetHeadings()
+		allHeadings = m.GetHeadings()
 	}
 
 	// Track the last displayed todo index to show headings in between
@@ -208,7 +187,7 @@ func (m Model) renderMainContent() string {
 				if heading.BeforeTodoIndex > lastDisplayedTodoIdx && heading.BeforeTodoIndex <= todoIdx {
 					// Render heading with appropriate formatting
 					headingText := strings.Repeat("#", heading.Level) + " " + heading.Text
-					b.WriteString(fmt.Sprintf("      %s\n", StyleFuncs.Cyan(headingText)))
+					b.WriteString(fmt.Sprintf("      %s\n", styles.Cyan(headingText)))
 				}
 			}
 		}
@@ -246,24 +225,24 @@ func (m Model) renderMainContent() string {
 		// Arrow - don't show on existing items when in input mode
 		arrow := "   "
 		if isSelected && !m.InputMode {
-			arrow = StyleFuncs.Cyan(" " + Config.Display.SelectMarker + " ")
+			arrow = styles.Cyan(" " + config.Display.SelectMarker + " ")
 		}
 
 		// Checkbox
 		var checkbox string
 		if todo.Checked {
-			checkbox = StyleFuncs.Magenta("[" + Config.Display.CheckSymbol + "]")
+			checkbox = styles.Magenta("[" + config.Display.CheckSymbol + "]")
 		} else {
-			checkbox = StyleFuncs.Dim("[ ]")
+			checkbox = styles.Dim("[ ]")
 		}
 
 		// Move indicator (check before building prefix)
 		if m.MoveMode && isSelected {
-			arrow = StyleFuncs.Yellow(" ≡ ")
+			arrow = styles.Yellow(" ≡ ")
 		}
 
 		// Build the line prefix (needed early for edit mode wrapping)
-		prefix := fmt.Sprintf("%s%s%s ", StyleFuncs.Dim(indexStr), arrow, checkbox)
+		prefix := fmt.Sprintf("%s%s%s ", styles.Dim(indexStr), arrow, checkbox)
 		prefixWidth := 3 + 3 + 3 + 1 // index(3) + arrow(3) + checkbox(3) + space(1)
 
 		// Text with inline code rendering and tag colorization
@@ -272,11 +251,11 @@ func (m Model) renderMainContent() string {
 
 		if m.SearchMode && m.InputBuffer != "" {
 			// Highlight matches during search
-			text = HighlightMatches(todo.Text, m.InputBuffer, StyleFuncs.Green)
+			text = HighlightMatches(todo.Text, m.InputBuffer, styles.Green)
 		} else {
-			text = RenderInlineCode(todo.Text, todo.Checked, StyleFuncs.Magenta, StyleFuncs.Cyan, StyleFuncs.Code)
+			text = RenderInlineCode(todo.Text, todo.Checked, styles.Magenta, styles.Cyan, styles.Code)
 			// Colorize tags
-			text = ColorizeTags(text, StyleFuncs.Yellow)
+			text = ColorizeTags(text, styles.Yellow)
 		}
 
 		// Show edit cursor if in edit mode on this item
@@ -317,24 +296,24 @@ func (m Model) renderMainContent() string {
 			prefix, text, plainText,
 			m.SearchMode, m.InputBuffer, todo.Checked,
 			m.WordWrap, m.TermWidth, prefixWidth,
-			StyleFuncs.Magenta, StyleFuncs.Cyan, StyleFuncs.Code, StyleFuncs.Dim,
+			styles.Magenta, styles.Cyan, styles.Code, styles.Dim,
 		))
 	}
 
 	// Input mode - show new task as part of the visible window
 	if m.InputMode {
-		arrow := StyleFuncs.Cyan(" " + Config.Display.SelectMarker + " ")
-		checkbox := StyleFuncs.Dim("[ ]")
+		arrow := styles.Cyan(" " + config.Display.SelectMarker + " ")
+		checkbox := styles.Dim("[ ]")
 		before := m.InputBuffer[:m.CursorPos]
 		after := m.InputBuffer[m.CursorPos:]
 		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-		b.WriteString(fmt.Sprintf("%s%s%s %s%s%s\n", StyleFuncs.Dim("  0"), arrow, checkbox, before, cursor, after))
+		b.WriteString(fmt.Sprintf("%s%s%s %s%s%s\n", styles.Dim("  0"), arrow, checkbox, before, cursor, after))
 	}
 
 	// Show indicator for items below (always reserve space when max_visible is set)
 	if configMaxVisible > 0 && totalCount > configMaxVisible {
 		if hasMoreBelow && !m.InputMode {
-			b.WriteString(fmt.Sprintf("      %s\n", StyleFuncs.Dim(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
+			b.WriteString(fmt.Sprintf("      %s\n", styles.Dim(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
 		} else {
 			b.WriteString("\n")
 		}
@@ -342,7 +321,7 @@ func (m Model) renderMainContent() string {
 
 	// Show message when search has no results
 	if m.SearchMode && len(m.SearchResults) == 0 && m.InputBuffer != "" {
-		b.WriteString(StyleFuncs.Dim("  No matches found"))
+		b.WriteString(styles.Dim("  No matches found"))
 		b.WriteString("\n")
 	}
 
@@ -354,6 +333,7 @@ func (m Model) renderMainContent() string {
 // renderStatusBar renders the status bar at the bottom
 func (m Model) renderStatusBar() string {
 	var b strings.Builder
+	styles := m.Styles()
 
 	// Show error if present
 	if m.Err != nil {
@@ -367,9 +347,9 @@ func (m Model) renderStatusBar() string {
 
 		// Show helpful hints based on error type
 		if m.Err.Error() == "file changed externally" {
-			b.WriteString(StyleFuncs.Cyan(":reload") + StyleFuncs.Dim(" or ") + StyleFuncs.Cyan(":force-save"))
+			b.WriteString(styles.Cyan(":reload") + styles.Dim(" or ") + styles.Cyan(":force-save"))
 		} else {
-			b.WriteString(StyleFuncs.Dim("any key to dismiss"))
+			b.WriteString(styles.Dim("any key to dismiss"))
 		}
 		b.WriteString("\n")
 	}
@@ -378,11 +358,11 @@ func (m Model) renderStatusBar() string {
 	if m.CommandMode {
 		b.WriteString(ModeIndicator("⌘", "COMMAND"))
 		b.WriteString("  ")
-		b.WriteString(StyleFuncs.Dim("Type to filter commands"))
+		b.WriteString(styles.Dim("Type to filter commands"))
 	} else if m.FilterMode {
 		b.WriteString(ModeIndicator("🏷", "FILTER"))
 		b.WriteString("  ")
-		b.WriteString(StyleFuncs.Dim("Select tags to filter todos"))
+		b.WriteString(styles.Dim("Select tags to filter todos"))
 	} else if m.SearchMode {
 		b.WriteString(ModeIndicator("🔍", "SEARCH"))
 		b.WriteString("  ")
@@ -390,7 +370,7 @@ func (m Model) renderStatusBar() string {
 		after := m.InputBuffer[m.CursorPos:]
 		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
 		b.WriteString(before + cursor + after)
-		b.WriteString(StyleFuncs.Dim("  ↑/↓ navigate  enter select  esc cancel"))
+		b.WriteString(styles.Dim("  ↑/↓ navigate  enter select  esc cancel"))
 	} else if m.MaxVisibleInputMode {
 		b.WriteString(ModeIndicator("⊙", "SET MAX"))
 		b.WriteString("  ")
@@ -398,21 +378,21 @@ func (m Model) renderStatusBar() string {
 		after := m.InputBuffer[m.CursorPos:]
 		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
 		b.WriteString(before + cursor + after)
-		b.WriteString(StyleFuncs.Dim("  enter confirm  esc cancel"))
+		b.WriteString(styles.Dim("  enter confirm  esc cancel"))
 	} else if m.InputMode {
 		b.WriteString(ModeIndicator("✎", "NEW"))
 		b.WriteString("  ")
-		b.WriteString(StyleFuncs.Dim("enter confirm  esc cancel"))
+		b.WriteString(styles.Dim("enter confirm  esc cancel"))
 	} else if m.EditMode {
 		b.WriteString(ModeIndicator("✎", "EDIT"))
 		b.WriteString("  ")
-		b.WriteString(StyleFuncs.Dim("enter confirm  esc cancel"))
+		b.WriteString(styles.Dim("enter confirm  esc cancel"))
 	} else if m.MoveMode {
 		b.WriteString(ModeIndicator("≡", "MOVE"))
 		b.WriteString("  ")
-		b.WriteString(StyleFuncs.Dim("j/k move  enter confirm  esc cancel"))
+		b.WriteString(styles.Dim("j/k move  enter confirm  esc cancel"))
 	} else if m.CopyFeedback {
-		b.WriteString(StyleFuncs.Green("✓ Copied to clipboard!"))
+		b.WriteString(styles.Green("✓ Copied to clipboard!"))
 	} else {
 		// Normal status bar with mode indicators and help
 		var indicators []string
@@ -449,11 +429,11 @@ func (m Model) renderStatusBar() string {
 
 		// Help hints
 		var helpParts []string
-		helpParts = append(helpParts, StyleFuncs.Cyan("?")+StyleFuncs.Dim(" help"))
-		helpParts = append(helpParts, StyleFuncs.Cyan(":")+StyleFuncs.Dim(" cmd"))
-		helpParts = append(helpParts, StyleFuncs.Cyan("n")+StyleFuncs.Dim(" new"))
-		helpParts = append(helpParts, StyleFuncs.Cyan("␣")+StyleFuncs.Dim(" toggle"))
-		helpParts = append(helpParts, StyleFuncs.Cyan("esc")+StyleFuncs.Dim(" quit"))
+		helpParts = append(helpParts, styles.Cyan("?")+styles.Dim(" help"))
+		helpParts = append(helpParts, styles.Cyan(":")+styles.Dim(" cmd"))
+		helpParts = append(helpParts, styles.Cyan("n")+styles.Dim(" new"))
+		helpParts = append(helpParts, styles.Cyan("␣")+styles.Dim(" toggle"))
+		helpParts = append(helpParts, styles.Cyan("esc")+styles.Dim(" quit"))
 		b.WriteString(strings.Join(helpParts, "  "))
 	}
 
@@ -463,11 +443,12 @@ func (m Model) renderStatusBar() string {
 // renderFilterOverlay renders the tag filter overlay as a centered modal
 func (m Model) renderFilterOverlay() string {
 	var b strings.Builder
+	styles := m.Styles()
 
 	// Header
 	b.WriteString(ModeIndicator("🏷", "FILTER"))
 	b.WriteString("\n\n")
-	b.WriteString(StyleFuncs.Dim("Select tags to filter:"))
+	b.WriteString(styles.Dim("Select tags to filter:"))
 	b.WriteString("\n\n")
 
 	// Display available tags
@@ -483,25 +464,25 @@ func (m Model) renderFilterOverlay() string {
 
 		var marker string
 		if isSelected {
-			marker = StyleFuncs.Cyan("→ ")
+			marker = styles.Cyan("→ ")
 		} else {
 			marker = "  "
 		}
 
 		var checkbox string
 		if isActive {
-			checkbox = StyleFuncs.Green("[✓] ")
+			checkbox = styles.Green("[✓] ")
 		} else {
-			checkbox = StyleFuncs.Dim("[ ] ")
+			checkbox = styles.Dim("[ ] ")
 		}
 
-		b.WriteString(marker + checkbox + StyleFuncs.Cyan("#"+tag))
+		b.WriteString(marker + checkbox + styles.Cyan("#"+tag))
 		b.WriteString("\n")
 	}
 
 	// Footer with help
 	b.WriteString("\n")
-	b.WriteString(StyleFuncs.Dim("  ↑/↓ navigate  space toggle  c clear all  esc done"))
+	b.WriteString(styles.Dim("  ↑/↓ navigate  space toggle  c clear all  esc done"))
 
 	// Style the overlay with a border and background (extension of status bar)
 	content := b.String()
@@ -527,12 +508,13 @@ func (m Model) renderFilterOverlay() string {
 // renderCommandOverlayCompact renders a compact modal command palette
 func (m Model) renderCommandOverlayCompact() string {
 	var b strings.Builder
+	styles := m.Styles()
 
 	// Command input with cursor
 	before := m.InputBuffer[:m.CursorPos]
 	after := m.InputBuffer[m.CursorPos:]
 	cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-	b.WriteString(StyleFuncs.Cyan(":") + before + cursor + after)
+	b.WriteString(styles.Cyan(":") + before + cursor + after)
 	b.WriteString("\n")
 
 	// Show top 5 matching commands with scrolling
@@ -540,7 +522,7 @@ func (m Model) renderCommandOverlayCompact() string {
 	totalCmds := len(m.FilteredCmds)
 
 	if totalCmds == 0 {
-		b.WriteString(StyleFuncs.Dim("  No matching commands"))
+		b.WriteString(styles.Dim("  No matching commands"))
 		b.WriteString("\n")
 	} else {
 		// Calculate scroll window to keep cursor visible
@@ -566,17 +548,17 @@ func (m Model) renderCommandOverlayCompact() string {
 
 			var marker string
 			if isSelected {
-				marker = StyleFuncs.Cyan("→ ")
+				marker = styles.Cyan("→ ")
 			} else {
 				marker = "  "
 			}
 
 			cmdName := cmd.Name
 			if isSelected {
-				cmdName = StyleFuncs.Cyan(cmdName)
+				cmdName = styles.Cyan(cmdName)
 			}
 
-			cmdDesc := StyleFuncs.Dim(" - " + cmd.Description)
+			cmdDesc := styles.Dim(" - " + cmd.Description)
 			b.WriteString(marker + cmdName + cmdDesc)
 			b.WriteString("\n")
 		}
@@ -584,7 +566,7 @@ func (m Model) renderCommandOverlayCompact() string {
 		// Show indicator for more commands
 		if totalCmds > maxCmds {
 			remaining := totalCmds - maxCmds
-			b.WriteString(StyleFuncs.Dim(fmt.Sprintf("  ... %d more (type to filter)", remaining)))
+			b.WriteString(styles.Dim(fmt.Sprintf("  ... %d more (type to filter)", remaining)))
 			b.WriteString("\n")
 		}
 	}
@@ -611,6 +593,7 @@ func (m Model) renderCommandOverlayCompact() string {
 // renderFilterOverlayCompact renders a compact modal filter selector
 func (m Model) renderFilterOverlayCompact() string {
 	var b strings.Builder
+	styles := m.Styles()
 
 	// Display tags vertically in compact modal
 	maxTags := 8
@@ -632,26 +615,26 @@ func (m Model) renderFilterOverlayCompact() string {
 
 		var marker string
 		if isSelected {
-			marker = StyleFuncs.Cyan("→ ")
+			marker = styles.Cyan("→ ")
 		} else {
 			marker = "  "
 		}
 
 		var checkbox string
 		if isActive {
-			checkbox = StyleFuncs.Green("[✓] ")
+			checkbox = styles.Green("[✓] ")
 		} else {
-			checkbox = StyleFuncs.Dim("[ ] ")
+			checkbox = styles.Dim("[ ] ")
 		}
 
-		tagText := StyleFuncs.Cyan("#" + tag)
+		tagText := styles.Cyan("#" + tag)
 		b.WriteString(marker + checkbox + tagText)
 		b.WriteString("\n")
 	}
 
 	// Add help text
 	b.WriteString("\n")
-	b.WriteString(StyleFuncs.Dim("space toggle  c clear  esc done"))
+	b.WriteString(styles.Dim("space toggle  c clear  esc done"))
 
 	// Style as compact modal
 	content := b.String()
@@ -675,6 +658,7 @@ func (m Model) renderFilterOverlayCompact() string {
 // renderCommandOverlay renders the command palette overlay as a bottom-left modal
 func (m Model) renderCommandOverlay() string {
 	var b strings.Builder
+	styles := m.Styles()
 
 	// Header
 	b.WriteString(ModeIndicator("⌘", "COMMAND"))
@@ -684,7 +668,7 @@ func (m Model) renderCommandOverlay() string {
 	before := m.InputBuffer[:m.CursorPos]
 	after := m.InputBuffer[m.CursorPos:]
 	cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-	b.WriteString(StyleFuncs.Cyan(":") + before + cursor + after)
+	b.WriteString(styles.Cyan(":") + before + cursor + after)
 	b.WriteString("\n\n")
 
 	// Display filtered commands
@@ -698,21 +682,21 @@ func (m Model) renderCommandOverlay() string {
 
 		var marker string
 		if isSelected {
-			marker = StyleFuncs.Cyan("→ ")
+			marker = styles.Cyan("→ ")
 		} else {
 			marker = "  "
 		}
 
 		// Command name and description
-		cmdName := StyleFuncs.Cyan(cmd.Name)
-		cmdDesc := StyleFuncs.Dim(" - " + cmd.Description)
+		cmdName := styles.Cyan(cmd.Name)
+		cmdDesc := styles.Dim(" - " + cmd.Description)
 		b.WriteString(marker + cmdName + cmdDesc)
 		b.WriteString("\n")
 	}
 
 	// Footer with help
 	b.WriteString("\n")
-	b.WriteString(StyleFuncs.Dim("  ↑/↓ navigate  tab complete  enter execute  esc cancel"))
+	b.WriteString(styles.Dim("  ↑/↓ navigate  tab complete  enter execute  esc cancel"))
 
 	// Style the overlay with a border and background (extension of status bar)
 	content := b.String()
