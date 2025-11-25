@@ -25,14 +25,15 @@ jobs:
           nix build .#default 2>&1 | tee build.log
           set -e
 
-      - name: Parse correct hash
+      - name: Extract new vendor hash
         id: extract_hash
         run: |
-          HASH=$(grep -o 'got: *sha256-[0-9a-zA-Z+/=]*' build.log | sed 's/.*got: *//')
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-
+          HASH=$(grep -oP 'sha256-[0-9A-Za-z+/=]+' flake.nix | head -n 1)
+          echo "hash=${HASH}" >> $GITHUB_OUTPUT
+          
       - name: Print extracted hash for debugging
-        run: echo "Correct hash: ${{ steps.extract_hash.outputs.hash }}"
+        run: |
+          echo "Correct hash: ${{ steps.extract_hash.outputs.hash }}"
 
       - name: Replace vendorHash in flake.nix
         run: |
