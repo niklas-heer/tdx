@@ -1,4 +1,4 @@
-name: Update vendorHash
+name: Fix VendorHash
 on:
   workflow_dispatch:
   push:
