@@ -23,6 +23,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 - **LLM content is not welcome**: Do NOT use the docs folder to store LLM-generated notes, temporary files, or work-in-progress content.
 - **Use OpenSpec instead**: For internal development documentation, specifications, and change tracking, use OpenSpec.
 - **Keep docs clean**: The docs folder should only contain polished, finalized content intended for end users and maintainers.
+- **Install script sync**: The `docs/install.sh` file is a copy (not symlink) of `scripts/install.sh` for GitHub Pages. When updating the install script, remember to copy it to docs: `cp scripts/install.sh docs/install.sh`
 
 ## References Folder
 - **Read-only reference**: The `references/` folder is provided as documentation and context for the LLM only.
