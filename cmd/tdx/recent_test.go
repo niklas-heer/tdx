@@ -16,8 +16,8 @@ func TestRecentCommandClear(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add file to recent using TUI
-	runPiped(t, testFile, " ")
+	// Add file to recent using TUI (open and quit with Escape)
+	runPiped(t, testFile, "\x1b")
 
 	// Clear recent files using CLI
 	// Note: CLI commands may fail in CI without TTY, so we just verify it doesn't crash
@@ -49,8 +49,8 @@ func TestRecentFilesCursorRestoration(t *testing.T) {
 	// Clear recent files (ignore errors - may not work in CI)
 	runCLI(t, "", "recent", "clear")
 
-	// Open file, move cursor down 3 times, then quit
-	output := runPiped(t, testFile, "jjj ")
+	// Open file, move cursor down 3 times, then quit with Escape
+	output := runPiped(t, testFile, "jjj\x1b")
 
 	// The display uses relative positions where 0 = selected item
 	// After moving down 3 times, we're on Task 4 which shows as "0 ➜" (selected)
@@ -59,7 +59,7 @@ func TestRecentFilesCursorRestoration(t *testing.T) {
 	}
 
 	// Open file again - cursor should be restored to Task 4 (still shown as 0 ➜)
-	output = runPiped(t, testFile, " ")
+	output = runPiped(t, testFile, "\x1b")
 
 	if !strings.Contains(output, "0 ➜ [ ] Task 4") {
 		t.Errorf("Expected cursor restored to Task 4 (shown as 0 ➜), got: %s", output)
@@ -82,8 +82,8 @@ func TestRecentFilesCursorResetOnChange(t *testing.T) {
 	// Clear recent files (ignore errors - may not work in CI)
 	runCLI(t, "", "recent", "clear")
 
-	// Open file, move cursor down 2 times
-	output := runPiped(t, testFile, "jj ")
+	// Open file, move cursor down 2 times, then quit with Escape
+	output := runPiped(t, testFile, "jj\x1b")
 	// Selected item always shows as "0 ➜" (relative position)
 	if !strings.Contains(output, "0 ➜ [ ] Task 3") {
 		t.Errorf("Expected cursor on Task 3 (shown as 0 ➜), got: %s", output)
@@ -100,7 +100,7 @@ func TestRecentFilesCursorResetOnChange(t *testing.T) {
 	}
 
 	// Open file again - cursor should be at start (file changed)
-	output = runPiped(t, testFile, " ")
+	output = runPiped(t, testFile, "\x1b")
 
 	if !strings.Contains(output, "0 ➜ [ ] New Task 1") {
 		t.Errorf("Expected cursor reset to first task after file change, got: %s", output)
