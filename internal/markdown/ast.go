@@ -50,51 +50,51 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 	var todos []Todo
 	todoIndex := 1
 
-	ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		// Look for task checkboxes
+	// Walk the document structure in order, processing List nodes
+	// This ensures we respect the parent-child relationships we've modified
+	var walkNode func(ast.Node)
+	walkNode = func(node ast.Node) {
+		// Process current node
 		if node.Kind() == extast.KindTaskCheckBox {
 			checkbox := node.(*extast.TaskCheckBox)
 
 			// Navigate: TaskCheckBox -> TextBlock -> ListItem
 			textBlock := checkbox.Parent()
-			if textBlock == nil {
-				return ast.WalkContinue, nil
+			if textBlock != nil {
+				listItem := textBlock.Parent()
+				if listItem != nil {
+					// Extract text content (everything after the checkbox)
+					text := doc.extractTodoText(listItem, checkbox)
+
+					// Extract tags from the text
+					tags := ExtractTags(text)
+
+					// Get line number from textBlock (ListItem doesn't have Lines())
+					lineNo := 0
+					if textBlock.Lines().Len() > 0 {
+						lineNo = textBlock.Lines().At(0).Start
+					}
+
+					todo := Todo{
+						Index:   todoIndex,
+						Checked: checkbox.IsChecked,
+						Text:    text,
+						LineNo:  lineNo,
+						Tags:    tags,
+					}
+					todos = append(todos, todo)
+					todoIndex++
+				}
 			}
-
-			listItem := textBlock.Parent()
-			if listItem == nil {
-				return ast.WalkContinue, nil
-			}
-
-			// Extract text content (everything after the checkbox)
-			text := doc.extractTodoText(listItem, checkbox)
-
-			// Extract tags from the text
-			tags := ExtractTags(text)
-
-			// Get line number from textBlock (ListItem doesn't have Lines())
-			lineNo := 0
-			if textBlock.Lines().Len() > 0 {
-				lineNo = textBlock.Lines().At(0).Start
-			}
-
-			todo := Todo{
-				Index:   todoIndex,
-				Checked: checkbox.IsChecked,
-				Text:    text,
-				LineNo:  lineNo,
-				Tags:    tags,
-			}
-			todos = append(todos, todo)
-			todoIndex++
 		}
 
-		return ast.WalkContinue, nil
-	})
+		// Walk children in document order by iterating through siblings
+		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+			walkNode(child)
+		}
+	}
+
+	walkNode(doc.AST)
 
 	return todos
 }
@@ -110,49 +110,12 @@ type Heading struct {
 // ExtractHeadings walks the AST and extracts all headings with their positions relative to todos
 func (doc *ASTDocument) ExtractHeadings() []Heading {
 	var headings []Heading
-
-	// Build a map of ListItem nodes to todo indices by walking in order
-	todoNodeMap := make(map[ast.Node]int)
-	todoIndex := 0
-
-	ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		// Map ListItems that contain task checkboxes to their index
-		if node.Kind() == extast.KindTaskCheckBox {
-			checkbox := node.(*extast.TaskCheckBox)
-			textBlock := checkbox.Parent()
-			if textBlock != nil {
-				listItem := textBlock.Parent()
-				if listItem != nil {
-					todoNodeMap[listItem] = todoIndex
-					todoIndex++
-				}
-			}
-		}
-
-		return ast.WalkContinue, nil
-	})
-
-	// Now walk again to find headings and determine their position relative to todos
 	nextTodoIndex := 0
 
-	ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		// Track which todo we're at based on AST order
-		if node.Kind() == ast.KindListItem {
-			if idx, isTodo := todoNodeMap[node]; isTodo {
-				if idx >= nextTodoIndex {
-					nextTodoIndex = idx + 1
-				}
-			}
-		}
-
+	// Use structure-based walk to respect modified parent-child relationships
+	var walkNode func(ast.Node)
+	walkNode = func(node ast.Node) {
+		// Process headings before processing their children
 		if node.Kind() == ast.KindHeading {
 			heading := node.(*ast.Heading)
 
@@ -171,21 +134,26 @@ func (doc *ASTDocument) ExtractHeadings() []Heading {
 			}
 
 			// The heading appears before the next todo we'll encounter
-			beforeTodoIndex := nextTodoIndex
-			if beforeTodoIndex >= todoIndex {
-				beforeTodoIndex = -1 // After all todos
-			}
-
 			headings = append(headings, Heading{
 				Level:           heading.Level,
 				Text:            text.String(),
 				LineNo:          lineNo,
-				BeforeTodoIndex: beforeTodoIndex,
+				BeforeTodoIndex: nextTodoIndex,
 			})
 		}
 
-		return ast.WalkContinue, nil
-	})
+		// Count todos as we encounter them
+		if node.Kind() == extast.KindTaskCheckBox {
+			nextTodoIndex++
+		}
+
+		// Walk children in document order by iterating through siblings
+		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+			walkNode(child)
+		}
+	}
+
+	walkNode(doc.AST)
 
 	return headings
 }

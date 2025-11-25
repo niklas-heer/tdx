@@ -471,7 +471,8 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if fromIndex != -1 && targetIndex != -1 {
 				// Move the todo via AST to achieve the visual position
 				if err := m.FileModel.MoveTodoItemToPosition(fromIndex, targetIndex, insertAfter); err == nil {
-					// Rebuild tree from updated AST
+					// Rebuild tree and headings from updated AST
+					m.InvalidateHeadingsCache() // Heading positions may have changed
 					m.InvalidateDocumentTree()
 
 					// Find where the moved todo ended up by matching text
@@ -508,7 +509,8 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if fromIndex != -1 && targetIndex != -1 {
 				// Move the todo via AST to achieve the visual position
 				if err := m.FileModel.MoveTodoItemToPosition(fromIndex, targetIndex, insertAfter); err == nil {
-					// Rebuild tree from updated AST
+					// Rebuild tree and headings from updated AST
+					m.InvalidateHeadingsCache() // Heading positions may have changed
 					m.InvalidateDocumentTree()
 
 					// Find where the moved todo ended up by matching text
