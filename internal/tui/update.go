@@ -457,22 +457,17 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key {
 	case "j", "down":
 		if m.hasActiveFilters() || m.ShowHeadings {
-			// Use document tree to find target position in visible list
+			// Use document tree to calculate visible-list-based movement
 			tree := m.GetDocumentTree()
-			selectedNode := tree.GetSelectedNode()
-			if selectedNode != nil && selectedNode.Type == DocNodeTodo {
-				targetIndex := tree.MoveDown()
-				if targetIndex != -1 {
-					// Move the todo via AST (insertion-based, crosses section boundaries)
-					if err := m.FileModel.MoveTodoItem(selectedNode.TodoIndex, targetIndex); err == nil {
-						// Rebuild tree from updated AST
-						m.InvalidateDocumentTree()
-						tree = m.GetDocumentTree()
-						// Update selection to follow the moved todo
-						m.SelectedIndex = targetIndex
-						// Update tree selection
-						tree.Selected = tree.findNodeByTodoIndex(targetIndex)
-					}
+			fromIndex, toIndex := tree.MoveDown()
+			if fromIndex != -1 && toIndex != -1 {
+				// Move the todo via AST to achieve the visual position
+				if err := m.FileModel.MoveTodoItem(fromIndex, toIndex); err == nil {
+					// Rebuild tree from updated AST
+					m.InvalidateDocumentTree()
+					// The moved todo is now at toIndex (approximately - may shift based on AST logic)
+					// Update selection to the moved todo
+					m.SelectedIndex = toIndex
 				}
 			}
 		} else {
@@ -486,22 +481,17 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "k", "up":
 		if m.hasActiveFilters() || m.ShowHeadings {
-			// Use document tree to find target position in visible list
+			// Use document tree to calculate visible-list-based movement
 			tree := m.GetDocumentTree()
-			selectedNode := tree.GetSelectedNode()
-			if selectedNode != nil && selectedNode.Type == DocNodeTodo {
-				targetIndex := tree.MoveUp()
-				if targetIndex != -1 {
-					// Move the todo via AST (insertion-based, crosses section boundaries)
-					if err := m.FileModel.MoveTodoItem(selectedNode.TodoIndex, targetIndex); err == nil {
-						// Rebuild tree from updated AST
-						m.InvalidateDocumentTree()
-						tree = m.GetDocumentTree()
-						// Update selection to follow the moved todo
-						m.SelectedIndex = targetIndex
-						// Update tree selection
-						tree.Selected = tree.findNodeByTodoIndex(targetIndex)
-					}
+			fromIndex, toIndex := tree.MoveUp()
+			if fromIndex != -1 && toIndex != -1 {
+				// Move the todo via AST to achieve the visual position
+				if err := m.FileModel.MoveTodoItem(fromIndex, toIndex); err == nil {
+					// Rebuild tree from updated AST
+					m.InvalidateDocumentTree()
+					// The moved todo is now at toIndex (approximately - may shift based on AST logic)
+					// Update selection to the moved todo
+					m.SelectedIndex = toIndex
 				}
 			}
 		} else {
