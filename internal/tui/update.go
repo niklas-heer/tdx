@@ -200,8 +200,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "n":
+		// Insert new todo after cursor position (like vim's 'o')
 		m.saveHistory()
 		m.InputMode = true
+		m.InsertAfterCursor = true
+		m.InputBuffer = ""
+		m.CursorPos = 0
+
+	case "N":
+		// Append new todo at end of file (like vim's 'O' but at end)
+		m.saveHistory()
+		m.InputMode = true
+		m.InsertAfterCursor = false
 		m.InputBuffer = ""
 		m.CursorPos = 0
 
@@ -677,10 +687,17 @@ func (m *Model) saveHistory() {
 }
 
 func (m *Model) addNewTodo() {
-	m.FileModel.AddTodoItem(m.InputBuffer, false)
+	if m.InsertAfterCursor && len(m.FileModel.Todos) > 0 {
+		// Insert after current cursor position
+		newIndex := m.FileModel.InsertTodoItemAfter(m.SelectedIndex, m.InputBuffer, false)
+		m.SelectedIndex = newIndex
+	} else {
+		// Append to end of file (also used when list is empty)
+		m.FileModel.AddTodoItem(m.InputBuffer, false)
+		m.SelectedIndex = len(m.FileModel.Todos) - 1
+	}
 	m.InvalidateHeadingsCache() // New todo may affect heading positions
 	m.writeIfPersist()
-	m.SelectedIndex = len(m.FileModel.Todos) - 1
 }
 
 func (m *Model) deleteCurrent() {

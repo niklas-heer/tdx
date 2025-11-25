@@ -74,7 +74,8 @@ tdx
 | `gg` | Go to first item |
 | `G` | Go to last item |
 | `Space` / `Enter` | Toggle completion |
-| `n` | New todo |
+| `n` | New todo after cursor |
+| `N` | New todo at end of file |
 | `e` | Edit todo |
 | `d` | Delete todo |
 | `c` | Copy to clipboard |

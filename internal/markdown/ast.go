@@ -507,6 +507,95 @@ func (doc *ASTDocument) AddTodo(todoText string, checked bool) error {
 	return nil
 }
 
+// InsertTodoAfter inserts a new todo after the specified index
+// If afterIndex is -1, inserts at the beginning of the first todo list
+func (doc *ASTDocument) InsertTodoAfter(afterIndex int, todoText string, checked bool) error {
+	// Append new text to source
+	newTodoText := []byte(todoText)
+	sourceStart := len(doc.Source)
+	doc.Source = append(doc.Source, newTodoText...)
+
+	// Create new list item with checkbox and text
+	newListItem := ast.NewListItem(0)
+	para := ast.NewParagraph()
+	newListItem.AppendChild(newListItem, para)
+	checkbox := extast.NewTaskCheckBox(checked)
+	para.AppendChild(para, checkbox)
+	textNode := ast.NewText()
+	textNode.Segment = text.NewSegment(sourceStart, sourceStart+len(newTodoText))
+	para.AppendChild(para, textNode)
+
+	if afterIndex < 0 {
+		// Insert at the beginning of the first todo list
+		var firstList *ast.List
+		ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+			if entering {
+				if list, ok := node.(*ast.List); ok {
+					hasTaskItems := false
+					for child := list.FirstChild(); child != nil; child = child.NextSibling() {
+						if listItem, ok := child.(*ast.ListItem); ok {
+							ast.Walk(listItem, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+								if entering && n.Kind() == extast.KindTaskCheckBox {
+									hasTaskItems = true
+									return ast.WalkStop, nil
+								}
+								return ast.WalkContinue, nil
+							})
+							if hasTaskItems {
+								break
+							}
+						}
+					}
+					if hasTaskItems {
+						firstList = list
+						return ast.WalkStop, nil
+					}
+				}
+			}
+			return ast.WalkContinue, nil
+		})
+
+		if firstList == nil {
+			// No existing list, create one
+			firstList = ast.NewList(0)
+			firstList.Marker = '-'
+			doc.AST.AppendChild(doc.AST, firstList)
+			firstList.AppendChild(firstList, newListItem)
+		} else {
+			// Insert before the first child
+			firstChild := firstList.FirstChild()
+			if firstChild != nil {
+				firstList.InsertBefore(firstList, firstChild, newListItem)
+			} else {
+				firstList.AppendChild(firstList, newListItem)
+			}
+		}
+		return nil
+	}
+
+	// Find the todo node at afterIndex
+	node, err := doc.FindTodoNode(afterIndex)
+	if err != nil {
+		return err
+	}
+
+	// Get the parent list
+	parentList := node.ListItem.Parent()
+	if parentList == nil {
+		return fmt.Errorf("list item has no parent")
+	}
+
+	// Insert after the found list item
+	nextSibling := node.ListItem.NextSibling()
+	if nextSibling != nil {
+		parentList.InsertBefore(parentList, nextSibling, newListItem)
+	} else {
+		parentList.AppendChild(parentList, newListItem)
+	}
+
+	return nil
+}
+
 // SwapTodos swaps two todos in the AST
 // MoveTodo moves a todo from fromIndex to toIndex (shifts other todos)
 func (doc *ASTDocument) MoveTodo(fromIndex, toIndex int) error {

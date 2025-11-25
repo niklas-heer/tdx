@@ -39,6 +39,7 @@ type Model struct {
 	FileModel           markdown.FileModel
 	SelectedIndex       int
 	InputMode           bool
+	InsertAfterCursor   bool // true = insert after cursor (n), false = append to end (N)
 	EditMode            bool
 	MoveMode            bool
 	HelpMode            bool

@@ -212,7 +212,7 @@ func (fm *FileModel) syncTodosToAST() {
 	fm.dirty = false
 }
 
-// AddTodoItem adds a new todo to the FileModel
+// AddTodoItem adds a new todo at the end of the file
 func (fm *FileModel) AddTodoItem(text string, checked bool) {
 	if fm.ast != nil {
 		// Use AST for adding
@@ -230,6 +230,26 @@ func (fm *FileModel) AddTodoItem(text string, checked bool) {
 		fm.Todos = append(fm.Todos, newTodo)
 		fm.Lines = append(fm.Lines, fmt.Sprintf("- [%s] %s", map[bool]string{true: "x", false: " "}[checked], text))
 	}
+}
+
+// InsertTodoItemAfter inserts a new todo after the specified index
+// If afterIndex is -1, inserts at the beginning
+// Returns the index of the newly inserted todo
+func (fm *FileModel) InsertTodoItemAfter(afterIndex int, text string, checked bool) int {
+	if fm.ast != nil {
+		// Use AST for inserting
+		fm.ast.InsertTodoAfter(afterIndex, text, checked)
+		// Re-extract todos to keep cache in sync
+		fm.Todos = fm.ast.ExtractTodos()
+		// Return the new index (afterIndex + 1, or 0 if inserting at beginning)
+		if afterIndex < 0 {
+			return 0
+		}
+		return afterIndex + 1
+	}
+	// Legacy fallback - just append
+	fm.AddTodoItem(text, checked)
+	return len(fm.Todos) - 1
 }
 
 // UpdateTodoItem updates an existing todo
