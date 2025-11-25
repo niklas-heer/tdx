@@ -39,8 +39,8 @@ show-headings: true
 
 ## fix bugs
 
-- [ ] fix move bug that it sometimes (I don't know when - previous move?) doesn't add it to the bottom of the next heading group - seems to be the case if filter-done: true is active
-- [ ] fix delete should move the cursor to the nearest task also if the done tasks are hidden. We should seriously check that the ui handles hiddden stuff well. maybe we do another tree or something for what is visible.
+- [x] fix move bug that it sometimes (I don't know when - previous move?) doesn't add it to the bottom of the next heading group - seems to be the case if filter-done: true is active
+- [x] fix delete should move the cursor to the nearest task also if the done tasks are hidden. We should seriously check that the ui handles hiddden stuff well. maybe we do another tree or something for what is visible.
 - [x] fix new entry should also respent word-wrap
 - [x] make sure we don't delete frontmatter
 
