@@ -18,7 +18,9 @@
       "Bash(git show:*)",
       "Bash(gh release view:*)",
       "Bash(curl:*)",
-      "Bash(./scripts/update-homebrew.sh:*)"
+      "Bash(./scripts/update-homebrew.sh:*)",
+      "Bash(go mod vendor:*)",
+      "Bash(gh issue comment:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,4 +1,5 @@
 ---
+filter-done: true
 max-visible: 0
 show-headings: true
 ---
@@ -22,7 +23,7 @@ show-headings: true
 - [x] add command to set max-visible while running
 - [x] add markdown metadata for options (persit: false, filter-done: true, ...)
 - [ ] add functionality to edit pervious seen files (saved in locale share or config)
-- [ ] add frontmatter for hide done/filter-done
+- [x] add frontmatter for hide done/filter-done
 
 ## Reddit requests
 
@@ -30,7 +31,21 @@ show-headings: true
 - [ ] add priorities and a priority-sort command (p1, p2, ...)
 - [x] add tags and f shortcut to filter for tags (#tag)
 
+## Other features
+
+- [x] make wrap the default
+- [ ] add new items after cursor (maybe command option to set after cursor or end of file)
+- [ ] add command or keyboard shortcut (# or h) to add a heading before? after? the current cursor maybe that should go together with the insert setting?
+
+## fix bugs
+
+- [ ] fix move bug that it sometimes (I don't know when - previous move?) doesn't add it to the bottom of the next heading group - seems to be the case if filter-done: true is active
+- [ ] fix new entry should also respent word-wrap
+- [x] make sure we don't delete frontmatter
+
 ## Maybe
 
 - [ ] add tui theme picker via command ": theme" which live previews
 - [ ] add keyboard shortcut h to toggle hide for the done tasks (+config)
+- [ ] expose all commands in frontmatter
+- [ ] provide a way to render code segments which can be copied and are rendered as code maybe line code? maybe ctrl/cmd+shift+c
