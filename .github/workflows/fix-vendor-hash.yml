@@ -6,8 +6,10 @@ on:
     paths:
       - "go.mod"
       - "go.sum"
-      - "tdx.toml"
-      - "**/*.go"
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   update-hash:
@@ -23,32 +25,51 @@ jobs:
       - name: Set up nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v6
 
-      - name: Try to build (expect vendorHash mismatch)
+      - name: Try to build and extract hash
+        id: build
         run: |
           set +e
           nix build .#tdx 2>&1 | tee build.log
-          echo "Exit: $?"
-
-      - name: Extract correct vendorHash
-        id: extract_hash
-        run: |
+          BUILD_EXIT=$?
+          
+          if [ $BUILD_EXIT -eq 0 ]; then
+            echo "✅ Build succeeded, no hash update needed"
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
           HASH=$(grep -oP 'got:.*sha256-[0-9A-Za-z+/=]+' build.log | grep -oP 'sha256-[0-9A-Za-z+/=]+' | head -n1)
-          echo "Extracted HASH: $HASH"
+          
+          if [ -z "$HASH" ]; then
+            echo "❌ Failed to extract vendorHash from build output"
+            cat build.log
+            exit 1
+          fi
+          
+          echo "Extracted hash: $HASH"
           echo "hash=$HASH" >> $GITHUB_OUTPUT
+          echo "needs_update=true" >> $GITHUB_OUTPUT
 
-      - name: Print extracted hash for debugging
+      - name: Update vendorHash in flake.nix
+        if: steps.build.outputs.needs_update == 'true'
         run: |
-          printf "Correct hash: '%s'\n" "${{ steps.extract_hash.outputs.hash }}"
+          sed -i "s|vendorHash = \".*\"|vendorHash = \"${{ steps.build.outputs.hash }}\"|g" flake.nix
 
-      - name: Replace vendorHash in flake.nix
+      - name: Verify build works with new hash
+        if: steps.build.outputs.needs_update == 'true'
         run: |
-          sed -i "s|vendorHash = \".*\"|vendorHash = \"${{ steps.extract_hash.outputs.hash }}\"|g" flake.nix
+          nix build .#tdx
+          echo "✅ Build successful with updated vendorHash"
 
-      - name: Commit and push updated vendorHash
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add flake.nix
-          git commit -m "update vendorHash to ${{ steps.extract_hash.outputs.hash }}" || echo "No changes to commit"
-          git push || echo "No push needed"
-
+      - name: Create Pull Request
+        if: steps.build.outputs.needs_update == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(nix): update vendorHash to ${{ steps.build.outputs.hash }}"
+          title: "chore(nix): update vendorHash"
+          body: |
+            Automated update of Nix flake vendorHash due to changes in go.mod/go.sum.
+            
+            New hash: `${{ steps.build.outputs.hash }}`
+          branch: nix/update-vendor-hash
+          delete-branch: true
