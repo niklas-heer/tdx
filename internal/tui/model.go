@@ -38,6 +38,7 @@ type Model struct {
 	FilePath            string
 	FileModel           markdown.FileModel
 	SelectedIndex       int
+	SavedCursorIndex    int // Saved cursor position for move mode cancel
 	InputMode           bool
 	InsertAfterCursor   bool // true = insert after cursor (n), false = append to end (N)
 	EditMode            bool

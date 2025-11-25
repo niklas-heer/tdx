@@ -183,6 +183,23 @@ EOF
 
 test_case "Move A1 to bottom (multiple moves)" "/tmp/input7.md" "mjmj\r\x1b" "/tmp/expected7.md"
 
+# Test 8: Cancel move - cursor should return to original position
+cat > /tmp/input8.md << 'EOF'
+## Section A
+- [ ] Task A1
+- [ ] Task A2
+- [ ] Task A3
+EOF
+
+cat > /tmp/expected8.md << 'EOF'
+## Section A
+- [ ] Task A1
+- [ ] Task A2
+- [ ] Task A3
+EOF
+
+test_case "Cancel move returns cursor to original position" "/tmp/input8.md" "jmk\x1b" "/tmp/expected8.md"
+
 # Summary
 echo ""
 echo "================================"

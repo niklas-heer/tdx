@@ -231,6 +231,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "m":
 		if len(m.FileModel.Todos) > 0 {
 			m.saveHistory()
+			m.SavedCursorIndex = m.SelectedIndex // Save cursor position for cancel
 			m.MoveMode = true
 		}
 
@@ -540,7 +541,10 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.FileModel = *m.History
 			m.History = nil
 			m.InvalidateDocumentTree()
+			m.InvalidateHeadingsCache()
 		}
+		// Restore cursor to position before entering move mode
+		m.SelectedIndex = m.SavedCursorIndex
 		m.MoveMode = false
 	}
 
