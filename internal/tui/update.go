@@ -459,15 +459,15 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.hasActiveFilters() || m.ShowHeadings {
 			// Use document tree to calculate visible-list-based movement
 			tree := m.GetDocumentTree()
-			fromIndex, toIndex := tree.MoveDown()
-			if fromIndex != -1 && toIndex != -1 {
+			fromIndex, targetIndex, insertAfter := tree.MoveDown()
+			if fromIndex != -1 && targetIndex != -1 {
 				// Move the todo via AST to achieve the visual position
-				if err := m.FileModel.MoveTodoItem(fromIndex, toIndex); err == nil {
+				if err := m.FileModel.MoveTodoItemToPosition(fromIndex, targetIndex, insertAfter); err == nil {
 					// Rebuild tree from updated AST
 					m.InvalidateDocumentTree()
-					// The moved todo is now at toIndex (approximately - may shift based on AST logic)
-					// Update selection to the moved todo
-					m.SelectedIndex = toIndex
+					// Find where the moved todo ended up
+					tree = m.GetDocumentTree()
+					m.SelectedIndex = fromIndex // Selection follows the moved todo
 				}
 			}
 		} else {
@@ -483,15 +483,15 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.hasActiveFilters() || m.ShowHeadings {
 			// Use document tree to calculate visible-list-based movement
 			tree := m.GetDocumentTree()
-			fromIndex, toIndex := tree.MoveUp()
-			if fromIndex != -1 && toIndex != -1 {
+			fromIndex, targetIndex, insertAfter := tree.MoveUp()
+			if fromIndex != -1 && targetIndex != -1 {
 				// Move the todo via AST to achieve the visual position
-				if err := m.FileModel.MoveTodoItem(fromIndex, toIndex); err == nil {
+				if err := m.FileModel.MoveTodoItemToPosition(fromIndex, targetIndex, insertAfter); err == nil {
 					// Rebuild tree from updated AST
 					m.InvalidateDocumentTree()
-					// The moved todo is now at toIndex (approximately - may shift based on AST logic)
-					// Update selection to the moved todo
-					m.SelectedIndex = toIndex
+					// Find where the moved todo ended up
+					tree = m.GetDocumentTree()
+					m.SelectedIndex = fromIndex // Selection follows the moved todo
 				}
 			}
 		} else {

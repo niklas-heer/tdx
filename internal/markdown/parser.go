@@ -328,6 +328,29 @@ func (fm *FileModel) DeleteTodoItem(index int) error {
 	return nil
 }
 
+// MoveTodoItemToPosition moves a todo by removing and inserting at target position
+func (fm *FileModel) MoveTodoItemToPosition(fromIndex, targetIndex int, insertAfter bool) error {
+	if fromIndex < 0 || fromIndex >= len(fm.Todos) || targetIndex < 0 || targetIndex >= len(fm.Todos) {
+		return fmt.Errorf("invalid todo indices: %d, %d", fromIndex, targetIndex)
+	}
+
+	if fromIndex == targetIndex {
+		return nil // No-op
+	}
+
+	if fm.ast != nil {
+		// Move via AST using explicit insert position
+		if err := fm.ast.MoveTodoToPosition(fromIndex, targetIndex, insertAfter); err != nil {
+			return err
+		}
+		// Re-extract todos to keep cache in sync
+		fm.Todos = fm.ast.ExtractTodos()
+	} else {
+		return fmt.Errorf("AST not available for position-based move")
+	}
+	return nil
+}
+
 // MoveTodoItem moves a todo from fromIndex to toIndex (shifts other todos)
 func (fm *FileModel) MoveTodoItem(fromIndex, toIndex int) error {
 	if fromIndex < 0 || fromIndex >= len(fm.Todos) || toIndex < 0 || toIndex >= len(fm.Todos) {

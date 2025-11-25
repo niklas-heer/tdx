@@ -256,11 +256,12 @@ func (tree *DocumentTree) NavigateToBottom() {
 }
 
 // MoveUp moves the selected todo up ONE POSITION in the visible list
-// Returns (fromTodoIndex, toTodoIndex) for the AST move operation, or (-1, -1) if cannot move
-func (tree *DocumentTree) MoveUp() (int, int) {
+// Returns (fromTodoIndex, targetTodoIndex, insertAfter) for the AST move operation
+// Returns (-1, -1, false) if cannot move
+func (tree *DocumentTree) MoveUp() (int, int, bool) {
 	selectedNode := tree.GetSelectedNode()
 	if selectedNode == nil || selectedNode.Type != DocNodeTodo || !selectedNode.Visible {
-		return -1, -1
+		return -1, -1, false
 	}
 
 	// Find previous visible item in the flat list (can be heading or todo)
@@ -273,46 +274,48 @@ func (tree *DocumentTree) MoveUp() (int, int) {
 	}
 
 	if targetVisualPos == -1 {
-		return -1, -1 // Already at top of visible list
+		return -1, -1, false // Already at top of visible list
 	}
 
 	targetNode := tree.Flat[targetVisualPos]
 
 	if targetNode.Type == DocNodeTodo {
-		// Simple case: target is a todo, insert before it
-		return selectedNode.TodoIndex, targetNode.TodoIndex
+		// Target is a todo - insert BEFORE it
+		return selectedNode.TodoIndex, targetNode.TodoIndex, false
 	} else {
-		// Target is a heading - we want to appear above it (just before the heading)
+		// Target is a heading - we want to appear just before it
 		// Find the last todo BEFORE this heading
-		insertAfterTodoIndex := -1
+		lastTodoBeforeHeading := -1
 		for i := targetVisualPos - 1; i >= 0; i-- {
 			if tree.Flat[i].Type == DocNodeTodo {
-				insertAfterTodoIndex = tree.Flat[i].TodoIndex
+				lastTodoBeforeHeading = tree.Flat[i].TodoIndex
 				break
 			}
 		}
 
-		if insertAfterTodoIndex == -1 {
-			// No todos before heading - insert at beginning (position 0)
-			return selectedNode.TodoIndex, 0
+		if lastTodoBeforeHeading == -1 {
+			// No todos before heading - need to insert at very beginning
+			// Find first todo in the document to insert before
+			for i := 0; i < len(tree.Flat); i++ {
+				if tree.Flat[i].Type == DocNodeTodo && tree.Flat[i].TodoIndex != selectedNode.TodoIndex {
+					return selectedNode.TodoIndex, tree.Flat[i].TodoIndex, false
+				}
+			}
+			return -1, -1, false // Can't find target
 		}
 
-		// We want to insert AFTER the last todo before the heading
-		// MoveTodo with fromIndex > toIndex inserts BEFORE toIndex
-		// MoveTodo with fromIndex < toIndex inserts AFTER toIndex
-		// Since we want to insert AFTER insertAfterTodoIndex, and our fromIndex is likely > insertAfterTodoIndex,
-		// we need to return it such that the AST operation does the right thing
-		// Actually, just return the todo we want to insert after - the handler will figure it out
-		return selectedNode.TodoIndex, insertAfterTodoIndex
+		// Insert AFTER the last todo before the heading
+		return selectedNode.TodoIndex, lastTodoBeforeHeading, true
 	}
 }
 
 // MoveDown moves the selected todo down ONE POSITION in the visible list
-// Returns (fromTodoIndex, toTodoIndex) for the AST move operation, or (-1, -1) if cannot move
-func (tree *DocumentTree) MoveDown() (int, int) {
+// Returns (fromTodoIndex, targetTodoIndex, insertAfter) for the AST move operation
+// Returns (-1, -1, false) if cannot move
+func (tree *DocumentTree) MoveDown() (int, int, bool) {
 	selectedNode := tree.GetSelectedNode()
 	if selectedNode == nil || selectedNode.Type != DocNodeTodo || !selectedNode.Visible {
-		return -1, -1
+		return -1, -1, false
 	}
 
 	// Find next visible item in the flat list (can be heading or todo)
@@ -325,42 +328,38 @@ func (tree *DocumentTree) MoveDown() (int, int) {
 	}
 
 	if targetVisualPos == -1 {
-		return -1, -1 // Already at bottom of visible list
+		return -1, -1, false // Already at bottom of visible list
 	}
-
-	// Now we know: selectedNode should visually appear at position targetVisualPos
-	// We need to determine where in the FILE this todo should be inserted
 
 	targetNode := tree.Flat[targetVisualPos]
 
-	// If target is a heading, we can't move "onto" a heading when moving down
-	// We need to skip to the first todo under that heading, or the next item after it
-
-	if targetNode.Type == DocNodeHeading {
-		// Find the first todo under this heading, or the next visible item
-		insertAfterTodoIndex := -1
+	if targetNode.Type == DocNodeTodo {
+		// Target is a todo - insert AFTER it
+		return selectedNode.TodoIndex, targetNode.TodoIndex, true
+	} else {
+		// Target is a heading - we want to appear just after it (first item in that section)
+		// Find the first todo AFTER this heading
+		firstTodoAfterHeading := -1
 		for i := targetVisualPos + 1; i < len(tree.Flat); i++ {
 			if tree.Flat[i].Type == DocNodeTodo {
-				// Insert after this todo (which is under the heading)
-				insertAfterTodoIndex = tree.Flat[i].TodoIndex
+				firstTodoAfterHeading = tree.Flat[i].TodoIndex
 				break
 			}
-			if tree.Flat[i].Visible && tree.Flat[i].Type == DocNodeHeading {
-				// Hit another heading - insert before the first todo under it
-				// Actually, this means we should keep looking
-				continue
+		}
+
+		if firstTodoAfterHeading == -1 {
+			// No todos after heading - need to insert at very end
+			// Find last todo in the document to insert after
+			for i := len(tree.Flat) - 1; i >= 0; i-- {
+				if tree.Flat[i].Type == DocNodeTodo && tree.Flat[i].TodoIndex != selectedNode.TodoIndex {
+					return selectedNode.TodoIndex, tree.Flat[i].TodoIndex, true
+				}
 			}
+			return -1, -1, false // Can't find target
 		}
 
-		if insertAfterTodoIndex == -1 {
-			// No todos found - insert at end
-			return selectedNode.TodoIndex, len(tree.Flat) - 1
-		}
-
-		return selectedNode.TodoIndex, insertAfterTodoIndex
-	} else {
-		// Target is a todo - insert after it (to appear below it visually)
-		return selectedNode.TodoIndex, targetNode.TodoIndex
+		// Insert BEFORE the first todo after the heading
+		return selectedNode.TodoIndex, firstTodoAfterHeading, false
 	}
 }
 

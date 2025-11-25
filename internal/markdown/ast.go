@@ -597,7 +597,42 @@ func (doc *ASTDocument) InsertTodoAfter(afterIndex int, todoText string, checked
 }
 
 // SwapTodos swaps two todos in the AST
+// MoveTodoToPosition moves a todo by removing it and inserting before/after another todo
+// insertAfter: if true, insert after targetIndex; if false, insert before targetIndex
+func (doc *ASTDocument) MoveTodoToPosition(fromIndex, targetIndex int, insertAfter bool) error {
+	if fromIndex == targetIndex {
+		return nil // No-op
+	}
+
+	// Get the node to move
+	nodeFrom, err := doc.FindTodoNode(fromIndex)
+	if err != nil {
+		return err
+	}
+
+	// Get the target node
+	nodeTarget, err := doc.FindTodoNode(targetIndex)
+	if err != nil {
+		return err
+	}
+
+	// Remove from current parent
+	parentFrom := nodeFrom.ListItem.Parent()
+	parentFrom.RemoveChild(parentFrom, nodeFrom.ListItem)
+
+	// Insert at target position
+	parentTarget := nodeTarget.ListItem.Parent()
+	if insertAfter {
+		parentTarget.InsertAfter(parentTarget, nodeTarget.ListItem, nodeFrom.ListItem)
+	} else {
+		parentTarget.InsertBefore(parentTarget, nodeTarget.ListItem, nodeFrom.ListItem)
+	}
+
+	return nil
+}
+
 // MoveTodo moves a todo from fromIndex to toIndex (shifts other todos)
+// Deprecated: Use MoveTodoToPosition for more explicit control
 func (doc *ASTDocument) MoveTodo(fromIndex, toIndex int) error {
 	if fromIndex == toIndex {
 		return nil // No-op
