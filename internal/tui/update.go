@@ -445,31 +445,37 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "j", "down":
-		// Move down one position in the actual list
-		if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-			if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex+1); err == nil {
-				m.SelectedIndex++
-				// If the new position is filtered, keep moving cursor to next visible
-				if m.FilterDone || len(m.FilteredTags) > 0 {
-					nextVisible := m.findNextVisibleTodo(m.SelectedIndex - 1)
-					if nextVisible != -1 {
-						m.SelectedIndex = nextVisible
-					}
+		// When filters are active, find next visible todo to move to
+		if m.FilterDone || len(m.FilteredTags) > 0 {
+			nextIdx := m.findNextVisibleTodo(m.SelectedIndex)
+			if nextIdx != -1 {
+				if err := m.moveTodo(m.SelectedIndex, nextIdx); err == nil {
+					m.SelectedIndex = nextIdx
+				}
+			}
+		} else {
+			// No filters - move to next position
+			if m.SelectedIndex < len(m.FileModel.Todos)-1 {
+				if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex+1); err == nil {
+					m.SelectedIndex++
 				}
 			}
 		}
 
 	case "k", "up":
-		// Move up one position in the actual list
-		if m.SelectedIndex > 0 {
-			if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex-1); err == nil {
-				m.SelectedIndex--
-				// If the new position is filtered, keep cursor at previous visible
-				if m.FilterDone || len(m.FilteredTags) > 0 {
-					prevVisible := m.findPreviousVisibleTodo(m.SelectedIndex + 1)
-					if prevVisible != -1 {
-						m.SelectedIndex = prevVisible
-					}
+		// When filters are active, find previous visible todo to move to
+		if m.FilterDone || len(m.FilteredTags) > 0 {
+			prevIdx := m.findPreviousVisibleTodo(m.SelectedIndex)
+			if prevIdx != -1 {
+				if err := m.moveTodo(m.SelectedIndex, prevIdx); err == nil {
+					m.SelectedIndex = prevIdx
+				}
+			}
+		} else {
+			// No filters - move to previous position
+			if m.SelectedIndex > 0 {
+				if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex-1); err == nil {
+					m.SelectedIndex--
 				}
 			}
 		}
@@ -951,337 +957,61 @@ func (m *Model) adjustSelectionForFilter() {
 	m.SelectedIndex = bestIdx
 }
 
+// byteToKeyMsg converts a raw byte to a tea.KeyMsg for unified input handling
+func byteToKeyMsg(b byte) tea.KeyMsg {
+	switch b {
+	case '\r', '\n':
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case 27: // Escape
+		return tea.KeyMsg{Type: tea.KeyEsc}
+	case 127, 8: // Backspace (DEL and BS)
+		return tea.KeyMsg{Type: tea.KeyBackspace}
+	case '\t':
+		return tea.KeyMsg{Type: tea.KeyTab}
+	case 4: // Ctrl+D
+		return tea.KeyMsg{Type: tea.KeyCtrlD}
+	default:
+		if b >= 32 && b < 127 { // Printable ASCII
+			return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{rune(b)}}
+		}
+		// Non-printable, return empty
+		return tea.KeyMsg{}
+	}
+}
+
 // ProcessPipedInput handles input byte-by-byte for testing/scripting
+// It converts bytes to tea.KeyMsg and delegates to the unified handlers
 func (m *Model) ProcessPipedInput(input []byte) {
 	for i := 0; i < len(input); i++ {
 		b := input[i]
+		msg := byteToKeyMsg(b)
 
-		// Handle input/edit mode
-		if m.InputMode || m.EditMode {
-			switch b {
-			case '\r', '\n': // Enter
-				if m.InputMode {
-					if m.InputBuffer != "" {
-						m.addNewTodo()
-						m.InputMode = false
-					}
-				} else if m.EditMode {
-					if m.InputBuffer != "" {
-						todo := m.FileModel.Todos[m.SelectedIndex]
-						m.FileModel.UpdateTodoItem(m.SelectedIndex, m.InputBuffer, todo.Checked)
-						m.writeIfPersist()
-					}
-					m.EditMode = false
-				}
-			case 27: // Escape
-				m.InputMode = false
-				m.EditMode = false
-			case 127, 8: // Backspace
-				if m.CursorPos > 0 {
-					m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
-					m.CursorPos--
-				}
-			default:
-				if b >= 32 && b < 127 { // Printable ASCII
-					m.InputBuffer = m.InputBuffer[:m.CursorPos] + string(b) + m.InputBuffer[m.CursorPos:]
-					m.CursorPos++
-				}
-			}
+		// Skip empty messages (non-printable bytes)
+		if msg.Type == 0 && len(msg.Runes) == 0 {
 			continue
 		}
 
-		// Handle max-visible input mode
-		if m.MaxVisibleInputMode {
-			switch b {
-			case '\r', '\n': // Enter
-				if m.InputBuffer != "" {
-					if num, err := strconv.Atoi(m.InputBuffer); err == nil && num >= 0 {
-						m.MaxVisibleOverride = num
-					}
-				}
-				m.MaxVisibleInputMode = false
-				m.InputBuffer = ""
-			case 27: // Escape
-				m.MaxVisibleInputMode = false
-				m.InputBuffer = ""
-			case 127, 8: // Backspace
-				if m.CursorPos > 0 {
-					m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
-					m.CursorPos--
-				}
-			default:
-				// Only allow digits
-				if b >= '0' && b <= '9' {
-					m.InputBuffer = m.InputBuffer[:m.CursorPos] + string(b) + m.InputBuffer[m.CursorPos:]
-					m.CursorPos++
-				}
+		// Check for quit in normal mode (q or esc without other modes active)
+		if !m.InputMode && !m.EditMode && !m.SearchMode && !m.CommandMode &&
+			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode {
+			if b == 'q' || b == 27 {
+				return
 			}
-			continue
 		}
 
-		// Handle search mode
-		if m.SearchMode {
-			switch b {
-			case '\r', '\n': // Enter - select current result
-				if len(m.SearchResults) > 0 && m.SearchCursor < len(m.SearchResults) {
-					m.SelectedIndex = m.SearchResults[m.SearchCursor]
-				}
-				m.SearchMode = false
-				m.InputBuffer = ""
-				m.SearchResults = nil
-			case 27: // Escape - cancel search
-				m.SearchMode = false
-				m.InputBuffer = ""
-				m.SearchResults = nil
-			case 127, 8: // Backspace
-				if m.CursorPos > 0 {
-					m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
-					m.CursorPos--
-					m.updateSearchResults()
-				}
-			default:
-				if b >= 32 && b < 127 { // Printable ASCII
-					m.InputBuffer = m.InputBuffer[:m.CursorPos] + string(b) + m.InputBuffer[m.CursorPos:]
-					m.CursorPos++
-					m.updateSearchResults()
-				}
-			}
-			continue
-		}
+		// Delegate to the unified Update handler
+		newModel, _ := m.Update(msg)
+		*m = newModel.(Model)
 
-		// Handle command mode
-		if m.CommandMode {
-			switch b {
-			case '\r', '\n': // Enter - execute command
-				if len(m.FilteredCmds) > 0 && m.CommandCursor < len(m.FilteredCmds) {
-					cmdIdx := m.FilteredCmds[m.CommandCursor]
-					m.Commands[cmdIdx].Handler(m)
-				}
-				m.CommandMode = false
-				// Only clear buffer if we didn't switch to input or maxVisibleInput mode
-				if !m.InputMode && !m.MaxVisibleInputMode {
-					m.InputBuffer = ""
-				}
-				m.FilteredCmds = nil
-			case '\t': // Tab - complete command
-				if len(m.FilteredCmds) > 0 && m.CommandCursor < len(m.FilteredCmds) {
-					cmdIdx := m.FilteredCmds[m.CommandCursor]
-					m.InputBuffer = m.Commands[cmdIdx].Name
-					m.CursorPos = len(m.InputBuffer)
-					m.updateFilteredCommands()
-				}
-			case 27: // Escape - cancel
-				m.CommandMode = false
-				m.InputBuffer = ""
-				m.FilteredCmds = nil
-			case 127, 8: // Backspace
-				if m.CursorPos > 0 {
-					m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
-					m.CursorPos--
-					m.updateFilteredCommands()
-				}
-			default:
-				if b >= 32 && b < 127 { // Printable ASCII
-					m.InputBuffer = m.InputBuffer[:m.CursorPos] + string(b) + m.InputBuffer[m.CursorPos:]
-					m.CursorPos++
-					m.updateFilteredCommands()
-				}
+		// In piped mode, execute debounced updates synchronously
+		// (normally these would be triggered by tea.Tick after a delay)
+		if m.searchPending {
+			if m.SearchMode {
+				m.updateSearchResults()
+			} else if m.CommandMode {
+				m.updateFilteredCommands()
 			}
-			continue
-		}
-
-		// Handle move mode
-		if m.MoveMode {
-			switch b {
-			case 'j':
-				// When filters are active, find next visible todo to move to
-				if m.FilterDone || len(m.FilteredTags) > 0 {
-					nextIdx := m.findNextVisibleTodo(m.SelectedIndex)
-					if nextIdx != -1 {
-						if err := m.moveTodo(m.SelectedIndex, nextIdx); err == nil {
-							m.SelectedIndex = nextIdx
-						}
-					}
-				} else {
-					// No filters - move to next position
-					if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-						if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex+1); err == nil {
-							m.SelectedIndex++
-						}
-					}
-				}
-			case 'k':
-				// When filters are active, find previous visible todo to move to
-				if m.FilterDone || len(m.FilteredTags) > 0 {
-					prevIdx := m.findPreviousVisibleTodo(m.SelectedIndex)
-					if prevIdx != -1 {
-						if err := m.moveTodo(m.SelectedIndex, prevIdx); err == nil {
-							m.SelectedIndex = prevIdx
-						}
-					}
-				} else {
-					// No filters - move to previous position
-					if m.SelectedIndex > 0 {
-						if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex-1); err == nil {
-							m.SelectedIndex--
-						}
-					}
-				}
-			case '\r', '\n':
-				m.writeIfPersist()
-				m.MoveMode = false
-			case 27:
-				m.MoveMode = false
-			}
-			continue
-		}
-
-		// Normal mode
-		switch b {
-		case 'q', 27: // Quit
-			return
-		case 'j':
-			count := m.getCount()
-			if m.FilterDone || len(m.FilteredTags) > 0 {
-				// Navigate within visible todos only
-				visible := m.getVisibleTodos()
-				if len(visible) > 0 {
-					currentPos := 0
-					for i, idx := range visible {
-						if idx == m.SelectedIndex {
-							currentPos = i
-							break
-						}
-					}
-					newPos := util.Min(currentPos+count, len(visible)-1)
-					m.SelectedIndex = visible[newPos]
-				}
-			} else {
-				m.SelectedIndex = util.Min(m.SelectedIndex+count, len(m.FileModel.Todos)-1)
-				if m.SelectedIndex < 0 {
-					m.SelectedIndex = 0
-				}
-			}
-		case 'k':
-			count := m.getCount()
-			if m.FilterDone || len(m.FilteredTags) > 0 {
-				// Navigate within visible todos only
-				visible := m.getVisibleTodos()
-				if len(visible) > 0 {
-					currentPos := 0
-					for i, idx := range visible {
-						if idx == m.SelectedIndex {
-							currentPos = i
-							break
-						}
-					}
-					newPos := util.Max(currentPos-count, 0)
-					m.SelectedIndex = visible[newPos]
-				}
-			} else {
-				m.SelectedIndex = util.Max(m.SelectedIndex-count, 0)
-			}
-		case ' ', '\r', '\n':
-			if len(m.FileModel.Todos) > 0 {
-				m.saveHistory()
-				todo := m.FileModel.Todos[m.SelectedIndex]
-				m.FileModel.UpdateTodoItem(m.SelectedIndex, todo.Text, !todo.Checked)
-				m.writeIfPersist()
-				// Adjust selection if item is now hidden by filter
-				if m.FilterDone && m.FileModel.Todos[m.SelectedIndex].Checked {
-					m.adjustSelectionForFilter()
-				}
-			}
-		case 'n':
-			m.saveHistory()
-			m.InputMode = true
-			m.InputBuffer = ""
-			m.CursorPos = 0
-		case 'e':
-			if len(m.FileModel.Todos) > 0 {
-				m.saveHistory()
-				m.EditMode = true
-				m.InputBuffer = m.FileModel.Todos[m.SelectedIndex].Text
-				m.CursorPos = len(m.InputBuffer)
-			}
-		case 'd':
-			if len(m.FileModel.Todos) > 0 {
-				m.saveHistory()
-				m.deleteCurrent()
-			}
-		case 'm':
-			if len(m.FileModel.Todos) > 0 {
-				m.saveHistory()
-				m.MoveMode = true
-			}
-		case 'u':
-			if m.History != nil {
-				m.FileModel = *m.History
-				m.History = nil
-				m.writeIfPersist()
-				if m.SelectedIndex >= len(m.FileModel.Todos) {
-					m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
-				}
-			}
-		case 'c':
-			if len(m.FileModel.Todos) > 0 {
-				util.CopyToClipboard(m.FileModel.Todos[m.SelectedIndex].Text)
-			}
-		case '?':
-			m.HelpMode = !m.HelpMode
-		case '/':
-			if len(m.FileModel.Todos) > 0 {
-				m.SearchMode = true
-				m.InputBuffer = ""
-				m.CursorPos = 0
-				m.SearchCursor = 0
-				// Initialize with all todos
-				m.SearchResults = nil
-				for i := range m.FileModel.Todos {
-					m.SearchResults = append(m.SearchResults, i)
-				}
-			}
-		case ':':
-			m.CommandMode = true
-			m.InputBuffer = ""
-			m.CursorPos = 0
-			m.CommandCursor = 0
-			// Initialize with all commands
-			m.FilteredCmds = nil
-			for i := range m.Commands {
-				m.FilteredCmds = append(m.FilteredCmds, i)
-			}
-		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			m.NumberBuffer += string(b)
-		case 'G':
-			// Go to bottom (vim-style)
-			if m.FilterDone || len(m.FilteredTags) > 0 {
-				visible := m.getVisibleTodos()
-				if len(visible) > 0 {
-					m.SelectedIndex = visible[len(visible)-1]
-				}
-			} else if len(m.FileModel.Todos) > 0 {
-				m.SelectedIndex = len(m.FileModel.Todos) - 1
-			}
-			m.gPressed = false
-		case 'g':
-			// gg - go to top
-			if m.gPressed {
-				if m.FilterDone || len(m.FilteredTags) > 0 {
-					visible := m.getVisibleTodos()
-					if len(visible) > 0 {
-						m.SelectedIndex = visible[0]
-					}
-				} else if len(m.FileModel.Todos) > 0 {
-					m.SelectedIndex = 0
-				}
-				m.gPressed = false
-			} else {
-				m.gPressed = true
-			}
-		default:
-			// Reset g-pressed state on any other key
-			m.gPressed = false
+			m.searchPending = false
 		}
 	}
 }
