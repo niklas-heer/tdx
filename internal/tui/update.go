@@ -395,39 +395,31 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "j", "down":
-		// When filters are active, find next visible todo to move to
-		if m.FilterDone || len(m.FilteredTags) > 0 {
-			nextIdx := m.findNextVisibleTodo(m.SelectedIndex)
-			if nextIdx != -1 {
-				if err := m.moveTodo(m.SelectedIndex, nextIdx); err == nil {
-					// After moving down, the todo will be at nextIdx position
-					m.SelectedIndex = nextIdx
-				}
-			}
-		} else {
-			// No filters - move to next position
-			if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-				if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex+1); err == nil {
-					m.SelectedIndex++
+		// Move down one position in the actual list
+		if m.SelectedIndex < len(m.FileModel.Todos)-1 {
+			if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex+1); err == nil {
+				m.SelectedIndex++
+				// If the new position is filtered, keep moving cursor to next visible
+				if m.FilterDone || len(m.FilteredTags) > 0 {
+					nextVisible := m.findNextVisibleTodo(m.SelectedIndex - 1)
+					if nextVisible != -1 {
+						m.SelectedIndex = nextVisible
+					}
 				}
 			}
 		}
 
 	case "k", "up":
-		// When filters are active, find previous visible todo to move to
-		if m.FilterDone || len(m.FilteredTags) > 0 {
-			prevIdx := m.findPreviousVisibleTodo(m.SelectedIndex)
-			if prevIdx != -1 {
-				if err := m.moveTodo(m.SelectedIndex, prevIdx); err == nil {
-					// After moving up, the todo will be at prevIdx position
-					m.SelectedIndex = prevIdx
-				}
-			}
-		} else {
-			// No filters - move to previous position
-			if m.SelectedIndex > 0 {
-				if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex-1); err == nil {
-					m.SelectedIndex--
+		// Move up one position in the actual list
+		if m.SelectedIndex > 0 {
+			if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex-1); err == nil {
+				m.SelectedIndex--
+				// If the new position is filtered, keep cursor at previous visible
+				if m.FilterDone || len(m.FilteredTags) > 0 {
+					prevVisible := m.findPreviousVisibleTodo(m.SelectedIndex + 1)
+					if prevVisible != -1 {
+						m.SelectedIndex = prevVisible
+					}
 				}
 			}
 		}
