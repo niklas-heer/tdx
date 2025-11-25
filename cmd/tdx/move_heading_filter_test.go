@@ -336,14 +336,25 @@ func TestMoveWithFilterDone_Reversibility(t *testing.T) {
 	t.Logf("Initial:\n%s", initialContent)
 
 	// Do move down then up in SINGLE session
+	// Down: Task A inserted after Task B -> Done 1, Task B, Task A
+	// Up: Task A inserted before Task B -> Done 1, Task A, Task B (NOT original)
 	runPiped(t, file, ":filter-done\rmjk\r")
 
 	afterUpDown := readTestFile(t, file)
 	t.Logf("After move down then up:\n%s", afterUpDown)
 
-	// With visible-swap in single session, down then up should return to original
-	if afterUpDown != initialContent {
-		t.Error("Move down then up should return to original position")
+	todos := getTodos(t, file)
+
+	// With insertion-based movement, down then up does NOT return to original
+	// Expected: Done 1, Task A, Task B
+	if !strings.Contains(todos[0], "Done 1") {
+		t.Errorf("First todo should be 'Done 1', got: %s", todos[0])
+	}
+	if !strings.Contains(todos[1], "Task A") {
+		t.Errorf("Second todo should be 'Task A', got: %s", todos[1])
+	}
+	if !strings.Contains(todos[2], "Task B") {
+		t.Errorf("Third todo should be 'Task B', got: %s", todos[2])
 	}
 }
 

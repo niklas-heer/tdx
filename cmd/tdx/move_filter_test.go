@@ -76,7 +76,7 @@ func TestMoveWithFilterDone_SavesProperly(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	// Enable filter-done, move First down (swaps with Second - next visible)
+	// Enable filter-done, move First down (inserts after Second - next visible)
 	runPiped(t, file, ":filter-done\rmj\r")
 
 	todos := getTodos(t, file)
@@ -85,15 +85,15 @@ func TestMoveWithFilterDone_SavesProperly(t *testing.T) {
 		t.Fatalf("Expected 3 todos, got %d", len(todos))
 	}
 
-	// Should be: Second, Done, First (First swapped with Second)
-	if !strings.Contains(todos[0], "Second") {
-		t.Errorf("First todo should be 'Second', got: %s", todos[0])
+	// Should be: Done, Second, First (First inserted after Second)
+	if !strings.Contains(todos[0], "Done") {
+		t.Errorf("First todo should be 'Done' (hidden, stays in place), got: %s", todos[0])
 	}
-	if !strings.Contains(todos[1], "Done") {
-		t.Errorf("Second todo should be 'Done' (hidden, unchanged), got: %s", todos[1])
+	if !strings.Contains(todos[1], "Second") {
+		t.Errorf("Second todo should be 'Second' (now first visible), got: %s", todos[1])
 	}
 	if !strings.Contains(todos[2], "First") {
-		t.Errorf("Third todo should be 'First', got: %s", todos[2])
+		t.Errorf("Third todo should be 'First' (inserted after Second), got: %s", todos[2])
 	}
 }
 
@@ -109,7 +109,7 @@ func TestMoveWithFilterDone_SingleMove(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	// Enable filter-done, move First down ONCE (visible-swap with Second)
+	// Enable filter-done, move First down ONCE (inserts after Second)
 	runPiped(t, file, ":filter-done\rmj\r")
 
 	todos := getTodos(t, file)
@@ -118,12 +118,12 @@ func TestMoveWithFilterDone_SingleMove(t *testing.T) {
 		t.Fatalf("Expected 3 todos, got %d", len(todos))
 	}
 
-	// Should be: Second, Done, First (First swapped with Second - next visible)
-	if !strings.Contains(todos[0], "Second") {
-		t.Errorf("First todo should be 'Second', got: %s", todos[0])
+	// Should be: Done, Second, First (First inserted after Second)
+	if !strings.Contains(todos[0], "Done") {
+		t.Errorf("First todo should be 'Done', got: %s", todos[0])
 	}
-	if !strings.Contains(todos[1], "Done") {
-		t.Errorf("Second todo should be 'Done', got: %s", todos[1])
+	if !strings.Contains(todos[1], "Second") {
+		t.Errorf("Second todo should be 'Second', got: %s", todos[1])
 	}
 	if !strings.Contains(todos[2], "First") {
 		t.Errorf("Third todo should be 'First', got: %s", todos[2])
@@ -266,7 +266,7 @@ func TestMoveWithFilterDone_MoveUpSwapsWithPreviousVisible(t *testing.T) {
 	}
 }
 
-// TestMoveWithFilterDone_Reversible tests that down then up returns to original
+// TestMoveWithFilterDone_Reversible tests insertion-based movement behavior
 func TestMoveWithFilterDone_Reversible(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -277,20 +277,30 @@ func TestMoveWithFilterDone_Reversible(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	initialTodos := getTodos(t, file)
-
 	// Enable filter-done, move down then up (in single session)
+	// Visible: A, B, C
+	// Move A down: inserts A after B -> Hidden, B, A, C
+	// Move A up: inserts A before B -> Hidden, A, B, C
 	runPiped(t, file, ":filter-done\rmjk\r")
 
 	afterTodos := getTodos(t, file)
 
-	// Should return to original order
-	if len(initialTodos) != len(afterTodos) {
-		t.Fatalf("Todo count changed: %d -> %d", len(initialTodos), len(afterTodos))
+	// With insertion-based movement, down+up does NOT return to original
+	// Expected: Hidden, A, B, C (A moved past Hidden)
+	if len(afterTodos) != 4 {
+		t.Fatalf("Expected 4 todos, got %d", len(afterTodos))
 	}
-	for i := range initialTodos {
-		if initialTodos[i] != afterTodos[i] {
-			t.Errorf("Todo %d changed: %s -> %s", i, initialTodos[i], afterTodos[i])
-		}
+
+	if !strings.Contains(afterTodos[0], "[x] Hidden") {
+		t.Errorf("Todo 0 should be Hidden, got: %s", afterTodos[0])
+	}
+	if !strings.Contains(afterTodos[1], "[ ] A") {
+		t.Errorf("Todo 1 should be A, got: %s", afterTodos[1])
+	}
+	if !strings.Contains(afterTodos[2], "[ ] B") {
+		t.Errorf("Todo 2 should be B, got: %s", afterTodos[2])
+	}
+	if !strings.Contains(afterTodos[3], "[ ] C") {
+		t.Errorf("Todo 3 should be C, got: %s", afterTodos[3])
 	}
 }

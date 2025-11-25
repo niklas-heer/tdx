@@ -776,14 +776,23 @@ func (m *Model) deleteCurrent() {
 		tree := m.GetDocumentTree()
 		deletedIdx := tree.DeleteSelected()
 		if deletedIdx >= 0 {
+			// Capture the new selection BEFORE invalidating/deleting
+			// DeleteSelected has already updated tree.Selected to point to the next visible node
+			newSelectedTodoIndex := -1
+			if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
+				newSelectedTodoIndex = selectedNode.TodoIndex
+			}
+
 			m.FileModel.DeleteTodoItem(deletedIdx)
 			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 
-			// Rebuild tree and update selection
-			tree = m.GetDocumentTree()
-			if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
-				m.SelectedIndex = selectedNode.TodoIndex
+			// Update model selection based on what we captured
+			// Adjust for the deletion: if new selection was after deleted item, decrement by 1
+			if newSelectedTodoIndex > deletedIdx {
+				m.SelectedIndex = newSelectedTodoIndex - 1
+			} else if newSelectedTodoIndex >= 0 {
+				m.SelectedIndex = newSelectedTodoIndex
 			} else if len(m.FileModel.Todos) > 0 {
 				m.SelectedIndex = 0
 			}

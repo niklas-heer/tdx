@@ -68,12 +68,12 @@ func TestTUI_MoveWithFilterDone_ReallySimple(t *testing.T) {
 	t.Log("Initial state: A, [x]B, C")
 
 	// Enable filter-done, then move A down
-	// With visible-swap: A swaps with C (next visible), B stays in place
-	// Result: C, B, A
+	// With insertion: A is inserted after C (next visible)
+	// Result: B, C, A
 	runPiped(t, file, ":filter-done\rmj\r")
 
 	content := readTestFile(t, file)
-	t.Logf("After filter-done visible-swap:\n%s", content)
+	t.Logf("After filter-done insertion move:\n%s", content)
 
 	todos := getTodos(t, file)
 
@@ -81,12 +81,12 @@ func TestTUI_MoveWithFilterDone_ReallySimple(t *testing.T) {
 		t.Fatalf("Expected 3 todos, got %d", len(todos))
 	}
 
-	// Expected: C, B, A (A swapped with C - the next visible item)
-	if todos[0] != "- [ ] C" {
-		t.Errorf("First todo should be '[ ] C', got: %s", todos[0])
+	// Expected: B, C, A (A inserted after C)
+	if todos[0] != "- [x] B" {
+		t.Errorf("First todo should be '[x] B', got: %s", todos[0])
 	}
-	if todos[1] != "- [x] B" {
-		t.Errorf("Second todo should be '[x] B', got: %s", todos[1])
+	if todos[1] != "- [ ] C" {
+		t.Errorf("Second todo should be '[ ] C', got: %s", todos[1])
 	}
 	if todos[2] != "- [ ] A" {
 		t.Errorf("Third todo should be '[ ] A', got: %s", todos[2])
@@ -108,14 +108,25 @@ func TestTUI_MoveWithFilterDone_MoveBackUp(t *testing.T) {
 	t.Logf("Initial:\n%s", initial)
 
 	// Enable filter-done, move down then up (in single session)
+	// Down: A inserted after C -> B, C, A
+	// Up: A inserted before C -> B, A, C (NOT original)
 	runPiped(t, file, ":filter-done\rmjk\r")
 
 	after := readTestFile(t, file)
 	t.Logf("After down then up:\n%s", after)
 
-	// Should return to original state
-	if initial != after {
-		t.Error("Moving down then up should return to original position")
+	todos := getTodos(t, file)
+
+	// With insertion-based movement, down then up does NOT return to original
+	// Expected: B, A, C
+	if todos[0] != "- [x] B" {
+		t.Errorf("First todo should be '[x] B', got: %s", todos[0])
+	}
+	if todos[1] != "- [ ] A" {
+		t.Errorf("Second todo should be '[ ] A', got: %s", todos[1])
+	}
+	if todos[2] != "- [ ] C" {
+		t.Errorf("Third todo should be '[ ] C', got: %s", todos[2])
 	}
 }
 

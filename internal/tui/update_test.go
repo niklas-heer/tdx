@@ -827,25 +827,25 @@ func TestHandleMoveKey_WithFilterDone_MoveDown(t *testing.T) {
 	m.SelectedIndex = 0 // Task A (visible)
 
 	// Visible: [0, 3] (Task A, Task D)
-	// With visible-swap movement, 'j' swaps with next VISIBLE item (Task D)
+	// With insertion movement, 'j' inserts Task A AFTER Task D
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
-	// Cursor should be at index 3 (where Task A went after swapping with Task D)
+	// Cursor should be at index 3 (where Task A went after being inserted after Task D)
 	if m.SelectedIndex != 3 {
-		t.Errorf("After swap with next visible, cursor should be at 3, got %d", m.SelectedIndex)
+		t.Errorf("After insertion move, cursor should be at 3, got %d", m.SelectedIndex)
 	}
 
-	// Task A should now be at index 3 (swapped with Task D)
+	// Task A should now be at index 3 (inserted after Task D)
 	if m.FileModel.Todos[3].Text != "Task A" {
-		t.Errorf("Task A should be at index 3 after swap, found %s", m.FileModel.Todos[3].Text)
+		t.Errorf("Task A should be at index 3 after insertion, found %s", m.FileModel.Todos[3].Text)
 	}
 
-	// Task D should now be at index 0
-	if m.FileModel.Todos[0].Text != "Task D" {
-		t.Errorf("Task D should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
+	// Task B should now be at index 0 (moved up when A was removed)
+	if m.FileModel.Todos[0].Text != "Task B" {
+		t.Errorf("Task B should be at index 0, found %s", m.FileModel.Todos[0].Text)
 	}
 }
 
@@ -861,25 +861,25 @@ func TestHandleMoveKey_WithFilterDone_MoveUp(t *testing.T) {
 	m.SelectedIndex = 3 // Task D (visible)
 
 	// Visible: [0, 3] (Task A, Task D)
-	// With visible-swap movement, 'k' swaps with previous VISIBLE item (Task A)
+	// With insertion movement, 'k' inserts Task D BEFORE Task A
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
-	// Cursor should be at index 0 (where Task D went after swapping with Task A)
+	// Cursor should be at index 0 (where Task D went after being inserted before Task A)
 	if m.SelectedIndex != 0 {
-		t.Errorf("After swap with previous visible, cursor should be at 0, got %d", m.SelectedIndex)
+		t.Errorf("After insertion move, cursor should be at 0, got %d", m.SelectedIndex)
 	}
 
-	// Task D should now be at index 0 (swapped with Task A)
+	// Task D should now be at index 0 (inserted before Task A)
 	if m.FileModel.Todos[0].Text != "Task D" {
-		t.Errorf("Task D should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
+		t.Errorf("Task D should be at index 0 after insertion, found %s", m.FileModel.Todos[0].Text)
 	}
 
-	// Task A should now be at index 3
-	if m.FileModel.Todos[3].Text != "Task A" {
-		t.Errorf("Task A should be at index 3 after swap, found %s", m.FileModel.Todos[3].Text)
+	// Task A should now be at index 1 (Task D inserted before it)
+	if m.FileModel.Todos[1].Text != "Task A" {
+		t.Errorf("Task A should be at index 1, found %s", m.FileModel.Todos[1].Text)
 	}
 }
 
@@ -999,25 +999,25 @@ func TestHandleMoveKey_WithTagFilter_MoveDown(t *testing.T) {
 	m.SelectedIndex = 0 // Task A #work
 
 	// Visible: [0, 2] (Task A, Task C - both have #work)
-	// With visible-swap movement, 'j' swaps with next VISIBLE item (Task C)
+	// With insertion movement, 'j' inserts Task A AFTER Task C
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
-	// Cursor should be at index 2 (where Task A went after swapping with Task C)
+	// Cursor should be at index 2 (where Task A went after being inserted after Task C)
 	if m.SelectedIndex != 2 {
-		t.Errorf("After swap with next visible, cursor should be at 2, got %d", m.SelectedIndex)
+		t.Errorf("After insertion move, cursor should be at 2, got %d", m.SelectedIndex)
 	}
 
-	// Task A should now be at index 2 (swapped with Task C)
+	// Task A should now be at index 2 (inserted after Task C)
 	if m.FileModel.Todos[2].Text != "Task A #work" {
-		t.Errorf("Task A should be at index 2 after swap, found %s", m.FileModel.Todos[2].Text)
+		t.Errorf("Task A should be at index 2 after insertion, found %s", m.FileModel.Todos[2].Text)
 	}
 
-	// Task C should now be at index 0
-	if m.FileModel.Todos[0].Text != "Task C #work" {
-		t.Errorf("Task C should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
+	// Task B should now be at index 0 (moved up when A was removed)
+	if m.FileModel.Todos[0].Text != "Task B #home" {
+		t.Errorf("Task B #home should be at index 0, found %s", m.FileModel.Todos[0].Text)
 	}
 }
 

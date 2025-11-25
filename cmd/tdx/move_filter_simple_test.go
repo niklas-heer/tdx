@@ -7,7 +7,7 @@ import (
 )
 
 // TestMoveWithFilterDone_Simple tests basic move with filter-done (no headings)
-// With visible-swap movement, one 'j' swaps with the next VISIBLE item
+// With insertion-based movement, one 'j' inserts AFTER the next VISIBLE item
 func TestMoveWithFilterDone_Simple(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -22,23 +22,24 @@ func TestMoveWithFilterDone_Simple(t *testing.T) {
 
 	// Enable filter-done, then move A down
 	// Visible: A, C (B is hidden)
-	// With visible-swap: A swaps with C, B stays in place
+	// With insertion: A is inserted AFTER C (the next visible item)
 	runPiped(t, file, ":filter-done\rmj\r")
 
 	content := readTestFile(t, file)
-	t.Logf("After visible-swap move:\n%s", content)
+	t.Logf("After insertion move:\n%s", content)
 
 	todos := getTodos(t, file)
 
-	// Expected order: C, B, A (A swapped with C - the next visible item)
-	if !strings.Contains(todos[0], "C") {
-		t.Errorf("First todo should be C (swapped to front), got: %s", todos[0])
+	// Expected order: B, C, A (A inserted after C)
+	// B stays in original position, C moves to first visible position, A goes after C
+	if !strings.Contains(todos[0], "B") {
+		t.Errorf("First todo should be B (hidden, unchanged position), got: %s", todos[0])
 	}
-	if !strings.Contains(todos[1], "B") {
-		t.Errorf("Second todo should be B (hidden, unchanged), got: %s", todos[1])
+	if !strings.Contains(todos[1], "C") {
+		t.Errorf("Second todo should be C (now first visible), got: %s", todos[1])
 	}
 	if !strings.Contains(todos[2], "A") {
-		t.Errorf("Third todo should be A (swapped to back), got: %s", todos[2])
+		t.Errorf("Third todo should be A (inserted after C), got: %s", todos[2])
 	}
 }
 
@@ -55,20 +56,35 @@ func TestMoveWithFilterDone_MoveDownThenUp(t *testing.T) {
 	initialTodos := getTodos(t, file)
 
 	// Enable filter-done, move down then up (in single session)
+	// A down: inserts A after C -> B, C, A
+	// A up: inserts A before C -> B, A, C
+	// But wait, after first move, cursor should be on A at position 2
+	// Moving up from position 2 (A) inserts before C at position 1
+	// Result: B, A, C (not original, but that's expected with insertion-based movement)
 	runPiped(t, file, ":filter-done\rmjk\r")
 
 	afterTodos := getTodos(t, file)
 	t.Logf("Initial todos: %v", initialTodos)
 	t.Logf("After todos: %v", afterTodos)
 
-	// Should return to original order
+	// With insertion-based movement, down then up does NOT return to original
+	// because each move is an insertion operation, not a swap
+	// After down: B, C, A (A after C)
+	// After up: B, A, C (A before C)
+	// This is expected behavior
 	if len(initialTodos) != len(afterTodos) {
 		t.Fatalf("Todo count changed: %d -> %d", len(initialTodos), len(afterTodos))
 	}
-	for i := range initialTodos {
-		if initialTodos[i] != afterTodos[i] {
-			t.Errorf("Todo %d changed: %s -> %s", i, initialTodos[i], afterTodos[i])
-		}
+
+	// Expected order: B, A, C
+	if !strings.Contains(afterTodos[0], "B") {
+		t.Errorf("Todo 0 should be B, got: %s", afterTodos[0])
+	}
+	if !strings.Contains(afterTodos[1], "A") {
+		t.Errorf("Todo 1 should be A, got: %s", afterTodos[1])
+	}
+	if !strings.Contains(afterTodos[2], "C") {
+		t.Errorf("Todo 2 should be C, got: %s", afterTodos[2])
 	}
 }
 
