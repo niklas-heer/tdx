@@ -1,0 +1,54 @@
+name: Update vendorHash
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "go.mod"
+      - "go.sum"
+      - "tdx.toml"
+      - "**/*.go"
+
+jobs:
+  update-hash:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install nix
+        uses: DeterminateSystems/nix-installer-action@v11
+
+      - name: Set up nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v6
+
+      - name: Try to build (expect vendorHash mismatch)
+        run: |
+          set +e
+          nix build .#tdx 2>&1 | tee build.log
+          echo "Exit: $?"
+
+      - name: Extract correct vendorHash
+        id: extract_hash
+        run: |
+          HASH=$(grep -oP 'got:.*sha256-[0-9A-Za-z+/=]+' build.log | grep -oP 'sha256-[0-9A-Za-z+/=]+' | head -n1)
+          echo "Extracted HASH: $HASH"
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Print extracted hash for debugging
+        run: |
+          printf "Correct hash: '%s'\n" "${{ steps.extract_hash.outputs.hash }}"
+
+      - name: Replace vendorHash in flake.nix
+        run: |
+          sed -i "s|vendorHash = \".*\"|vendorHash = \"${{ steps.extract_hash.outputs.hash }}\"|g" flake.nix
+
+      - name: Commit and push updated vendorHash
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add flake.nix
+          git commit -m "update vendorHash to ${{ steps.extract_hash.outputs.hash }}" || echo "No changes to commit"
+          git push || echo "No push needed"
+
