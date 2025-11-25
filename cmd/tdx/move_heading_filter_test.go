@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestMoveWithFilterDone_IntoEmptyHeadingGroup tests that a task can be moved
-// into a heading group that appears empty due to filter-done hiding all its tasks
+// TestMoveWithFilterDone_IntoEmptyHeadingGroup tests that visible items swap correctly
+// even when there are heading groups with only hidden tasks in between
 func TestMoveWithFilterDone_IntoEmptyHeadingGroup(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -31,27 +31,37 @@ filter-done: true
 	t.Log("Initial visible tasks: Task A (Section A), Task C (Section C)")
 	t.Log("Section B appears empty because all tasks are done")
 
-	// Move Task A down - with current behavior it might skip Section B entirely
-	// Expected behavior: Task A should be movable into Section B
+	// Move Task A down - with visible-swap, it swaps with Task C
 	runPiped(t, file, "mj\r")
 
 	content := readTestFile(t, file)
-	t.Logf("After first move down:\n%s", content)
+	t.Logf("After visible-swap:\n%s", content)
 
-	// Move down again
-	runPiped(t, file, "mj\r")
+	// Extract visible todos
+	todos := getTodos(t, file)
+	visible := []string{}
+	for _, todo := range todos {
+		if strings.Contains(todo, "[ ]") {
+			visible = append(visible, todo)
+		}
+	}
 
-	content = readTestFile(t, file)
-	t.Logf("After second move down:\n%s", content)
+	if len(visible) != 2 {
+		t.Fatalf("Expected 2 visible todos, got %d", len(visible))
+	}
 
-	// Task A should now be in or past Section B
-	// The key is that it should be possible to move INTO Section B,
-	// not just skip over it to Section C
+	// Visible order should be: Task C, Task A (swapped)
+	if !strings.Contains(visible[0], "Task C") {
+		t.Errorf("First visible should be Task C, got: %s", visible[0])
+	}
+	if !strings.Contains(visible[1], "Task A") {
+		t.Errorf("Second visible should be Task A, got: %s", visible[1])
+	}
 }
 
-// TestMoveWithFilterDone_GranularMovement tests that move operations
-// happen one position at a time, not jumping over hidden items
-func TestMoveWithFilterDone_GranularMovement(t *testing.T) {
+// TestMoveWithFilterDone_VisibleSwapMovement tests that move operations
+// swap visible items predictably, regardless of hidden items between them
+func TestMoveWithFilterDone_VisibleSwapMovement(t *testing.T) {
 	file := tempTestFile(t)
 
 	initial := `# Tasks
@@ -72,25 +82,26 @@ func TestMoveWithFilterDone_GranularMovement(t *testing.T) {
 
 	todos := getTodos(t, file)
 	content := readTestFile(t, file)
-	t.Logf("After one move down:\n%s", content)
+	t.Logf("After one visible-swap:\n%s", content)
 
-	// Find positions of Task A
-	taskAPos := -1
-	for i, todo := range todos {
-		if strings.Contains(todo, "Task A") {
-			taskAPos = i
-			break
+	// Extract visible todos
+	visible := []string{}
+	for _, todo := range todos {
+		if strings.Contains(todo, "[ ]") {
+			visible = append(visible, todo)
 		}
 	}
 
-	t.Logf("Task A is now at position %d", taskAPos)
+	if len(visible) != 2 {
+		t.Fatalf("Expected 2 visible todos, got %d", len(visible))
+	}
 
-	// With granular movement, Task A should move ONE position at a time
-	// So after one 'j', it should be at index 1 (swapped with Done 1)
-	// NOT at index 4 (jumped over all done tasks)
-	if taskAPos == 4 {
-		t.Error("Task A jumped over all hidden tasks instead of moving one position at a time")
-		t.Log("Expected granular movement: Task A should move one array position per keypress")
+	// Visible order should be: Task B, Task A (swapped)
+	if !strings.Contains(visible[0], "Task B") {
+		t.Errorf("First visible should be Task B (swapped), got: %s", visible[0])
+	}
+	if !strings.Contains(visible[1], "Task A") {
+		t.Errorf("Second visible should be Task A (swapped), got: %s", visible[1])
 	}
 }
 
@@ -109,31 +120,41 @@ func TestMoveWithFilterDone_ConsecutiveMovesArePredictable(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	// Do all moves in a SINGLE session to test consecutive behavior
-	// Enable filter-done, then move down 4 times, confirming each
-	runPiped(t, file, ":filter-done\rmjjjj\r")
+	// Visible: Task A, Task B, Task C
+	// Move Task A down twice (in single session)
+	// First swap: Task A <-> Task B → B, A, C
+	// Second swap: Task A <-> Task C → B, C, A
+	runPiped(t, file, ":filter-done\rmjj\r")
 
 	content := readTestFile(t, file)
-	t.Logf("After 4 consecutive moves down:\n%s", content)
+	t.Logf("After 2 consecutive visible-swaps:\n%s", content)
 
 	todos := getTodos(t, file)
-
-	// Task A should have moved down 4 positions (to the end)
-	// Original: A(0), Done1(1), B(2), Done2(3), C(4)
-	// After 4 moves: Done1(0), B(1), Done2(2), C(3), A(4)
-	if len(todos) != 5 {
-		t.Fatalf("Expected 5 todos, got %d", len(todos))
+	visible := []string{}
+	for _, todo := range todos {
+		if strings.Contains(todo, "[ ]") {
+			visible = append(visible, todo)
+		}
 	}
 
-	// Task A should be at the end
-	lastTodo := todos[len(todos)-1]
-	if !strings.Contains(lastTodo, "Task A") {
-		t.Errorf("Task A should be at the end after 4 moves, got: %s", lastTodo)
+	if len(visible) != 3 {
+		t.Fatalf("Expected 3 visible todos, got %d", len(visible))
+	}
+
+	// Visible order should be: Task B, Task C, Task A
+	if !strings.Contains(visible[0], "Task B") {
+		t.Errorf("First visible should be Task B, got: %s", visible[0])
+	}
+	if !strings.Contains(visible[1], "Task C") {
+		t.Errorf("Second visible should be Task C, got: %s", visible[1])
+	}
+	if !strings.Contains(visible[2], "Task A") {
+		t.Errorf("Third visible should be Task A, got: %s", visible[2])
 	}
 }
 
 // TestMoveWithFilterDone_CursorStaysOnMovedItem tests that the cursor
-// follows the moved item, even when moving past hidden items
+// follows the moved item after a swap
 func TestMoveWithFilterDone_CursorStaysOnMovedItem(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -147,13 +168,13 @@ func TestMoveWithFilterDone_CursorStaysOnMovedItem(t *testing.T) {
 	os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move Task A down, then immediately delete
-	// If cursor stayed on Task A, the delete should remove Task A
+	// If cursor stayed on Task A (now at Task B's old position), delete removes Task A
 	runPiped(t, file, ":filter-done\rmj\rd")
 
 	content := readTestFile(t, file)
-	t.Logf("After move and delete:\n%s", content)
+	t.Logf("After swap and delete:\n%s", content)
 
-	// Task A should be deleted (cursor was on it after move)
+	// Task A should be deleted (cursor was on it after swap)
 	if strings.Contains(content, "Task A") {
 		t.Error("Task A should have been deleted - cursor should have stayed on moved item")
 	}
@@ -164,8 +185,8 @@ func TestMoveWithFilterDone_CursorStaysOnMovedItem(t *testing.T) {
 	}
 }
 
-// TestMoveWithFilterDone_MoveUpIntoEmptySection tests moving UP into
-// a section that appears empty due to filtering
+// TestMoveWithFilterDone_MoveUpIntoEmptySection tests moving UP when there
+// are empty sections (due to filtering) between visible items
 func TestMoveWithFilterDone_MoveUpIntoEmptySection(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -188,27 +209,35 @@ filter-done: true
 
 	t.Log("Starting with cursor on Task C (last visible task)")
 
-	// Move to Task C (j moves to next visible), then move up once
-	// With granular movement, it should move one position at a time
+	// Move to Task C (j), then move it up (swaps with Task A)
 	runPiped(t, file, "jmk\r")
 
 	content := readTestFile(t, file)
-	t.Logf("After moving Task C up once:\n%s", content)
+	t.Logf("After moving Task C up:\n%s", content)
 
-	// Task C should now be just above Done B2 (moved one position up)
-	// Check that Task C is now in Section B
-	if !strings.Contains(content, "## Section B") {
-		t.Error("Section B should still exist")
+	todos := getTodos(t, file)
+	visible := []string{}
+	for _, todo := range todos {
+		if strings.Contains(todo, "[ ]") {
+			visible = append(visible, todo)
+		}
 	}
 
-	// Move up more times to get into Section B
-	runPiped(t, file, "mkk\r")
-	content = readTestFile(t, file)
-	t.Logf("After moving Task C up two more times:\n%s", content)
+	// Visible order should be: Task C, Task A (swapped)
+	if len(visible) != 2 {
+		t.Fatalf("Expected 2 visible todos, got %d", len(visible))
+	}
+
+	if !strings.Contains(visible[0], "Task C") {
+		t.Errorf("First visible should be Task C, got: %s", visible[0])
+	}
+	if !strings.Contains(visible[1], "Task A") {
+		t.Errorf("Second visible should be Task A, got: %s", visible[1])
+	}
 }
 
-// TestMoveWithFilterDone_HeadingBoundaries tests that moving respects
-// heading boundaries and places items correctly within sections
+// TestMoveWithFilterDone_HeadingBoundaries tests that swapping works correctly
+// when items are in different heading sections
 func TestMoveWithFilterDone_HeadingBoundaries(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -226,14 +255,36 @@ func TestMoveWithFilterDone_HeadingBoundaries(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	// Enable filter-done, move Work Task 1 to end of Work section
+	// Enable filter-done
+	// Visible: Work Task 1, Work Task 2, Personal Task 1, Personal Task 2
+	// Move Work Task 1 down twice (swap with Work Task 2, then with Personal Task 1)
 	runPiped(t, file, ":filter-done\rmjj\r")
 
 	content := readTestFile(t, file)
-	t.Logf("After moving Work Task 1 down twice:\n%s", content)
+	t.Logf("After two visible-swaps:\n%s", content)
 
-	// Check that Work Task 1 is still in the Work section or moved to Personal
-	// It should have passed through the hidden "Work Done" task
+	todos := getTodos(t, file)
+	visible := []string{}
+	for _, todo := range todos {
+		if strings.Contains(todo, "[ ]") {
+			visible = append(visible, todo)
+		}
+	}
+
+	if len(visible) != 4 {
+		t.Fatalf("Expected 4 visible todos, got %d", len(visible))
+	}
+
+	// Visible order should be: Work Task 2, Personal Task 1, Work Task 1, Personal Task 2
+	if !strings.Contains(visible[0], "Work Task 2") {
+		t.Errorf("First visible should be Work Task 2, got: %s", visible[0])
+	}
+	if !strings.Contains(visible[1], "Personal Task 1") {
+		t.Errorf("Second visible should be Personal Task 1, got: %s", visible[1])
+	}
+	if !strings.Contains(visible[2], "Work Task 1") {
+		t.Errorf("Third visible should be Work Task 1, got: %s", visible[2])
+	}
 }
 
 // TestMoveNoFilter_AdjacentSwap verifies baseline behavior without filters
@@ -248,7 +299,7 @@ func TestMoveNoFilter_AdjacentSwap(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	// Move A down (no filter active)
+	// Move A down (no filter active) - swaps with adjacent B
 	runPiped(t, file, "mj\r")
 
 	todos := getTodos(t, file)
@@ -268,9 +319,9 @@ func TestMoveNoFilter_AdjacentSwap(t *testing.T) {
 	}
 }
 
-// TestMoveWithFilterDone_MoveDownThenUp tests that moving down then up
-// returns to the original position (in single session)
-func TestMoveWithFilterDone_MoveDownThenUp(t *testing.T) {
+// TestMoveWithFilterDone_Reversibility tests that moving down then up
+// returns to the original position
+func TestMoveWithFilterDone_Reversibility(t *testing.T) {
 	file := tempTestFile(t)
 
 	initial := `# Tasks
@@ -290,30 +341,91 @@ func TestMoveWithFilterDone_MoveDownThenUp(t *testing.T) {
 	afterUpDown := readTestFile(t, file)
 	t.Logf("After move down then up:\n%s", afterUpDown)
 
-	// With granular movement in single session, down then up should return to original
+	// With visible-swap in single session, down then up should return to original
 	if afterUpDown != initialContent {
 		t.Error("Move down then up should return to original position")
 	}
 }
 
-// TestMoveWithTagFilter_IntoEmptyTagGroup tests moving with tag filters
-// (similar issue to filter-done)
-func TestMoveWithTagFilter_IntoEmptyTagGroup(t *testing.T) {
+// Note: Tag filter tests are handled in unit tests where we can set FilteredTags directly
+// The TUI uses a filter overlay mode (press 't') rather than a command for tag filtering
+
+// TestMoveWithFilterDone_StopsAtEnd tests that you can't move past the last visible item
+func TestMoveWithFilterDone_StopsAtEnd(t *testing.T) {
 	file := tempTestFile(t)
 
 	initial := `# Tasks
 
-- [ ] Task A #work
-- [ ] Task B #home
-- [ ] Task C #home
-- [ ] Task D #work
+- [ ] Task A
+- [x] Hidden
+- [ ] Task B
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	t.Log("Filtering for #work: visible are Task A and Task D")
-	t.Log("Tasks B and C with #home are hidden")
+	// Enable filter-done, try to move Task A down multiple times
+	// Should only swap once (with Task B), then stop
+	runPiped(t, file, ":filter-done\rmjjjjj\r")
 
-	// This test documents expected behavior with tag filtering
-	// When moving Task A down, it should be possible to move past B and C
-	// one position at a time, not just jump to Task D
+	content := readTestFile(t, file)
+	t.Logf("After multiple move attempts:\n%s", content)
+
+	todos := getTodos(t, file)
+	visible := []string{}
+	for _, todo := range todos {
+		if strings.Contains(todo, "[ ]") {
+			visible = append(visible, todo)
+		}
+	}
+
+	// Visible order should be: Task B, Task A (just one swap happened)
+	if len(visible) != 2 {
+		t.Fatalf("Expected 2 visible todos, got %d", len(visible))
+	}
+
+	if !strings.Contains(visible[0], "Task B") {
+		t.Errorf("First visible should be Task B, got: %s", visible[0])
+	}
+	if !strings.Contains(visible[1], "Task A") {
+		t.Errorf("Second visible should be Task A, got: %s", visible[1])
+	}
+}
+
+// TestMoveWithFilterDone_CantMovePastStart tests that you can't move past the first visible item
+func TestMoveWithFilterDone_CantMovePastStart(t *testing.T) {
+	file := tempTestFile(t)
+
+	initial := `# Tasks
+
+- [ ] Task A
+- [x] Hidden
+- [ ] Task B
+`
+	os.WriteFile(file, []byte(initial), 0644)
+
+	// Enable filter-done, move to Task B, try to move it up multiple times
+	// Should only swap once (with Task A), then stop
+	runPiped(t, file, ":filter-done\rjmkkkkk\r")
+
+	content := readTestFile(t, file)
+	t.Logf("After multiple move up attempts:\n%s", content)
+
+	todos := getTodos(t, file)
+	visible := []string{}
+	for _, todo := range todos {
+		if strings.Contains(todo, "[ ]") {
+			visible = append(visible, todo)
+		}
+	}
+
+	// Visible order should be: Task B, Task A (just one swap happened)
+	if len(visible) != 2 {
+		t.Fatalf("Expected 2 visible todos, got %d", len(visible))
+	}
+
+	if !strings.Contains(visible[0], "Task B") {
+		t.Errorf("First visible should be Task B (moved up), got: %s", visible[0])
+	}
+	if !strings.Contains(visible[1], "Task A") {
+		t.Errorf("Second visible should be Task A, got: %s", visible[1])
+	}
 }
