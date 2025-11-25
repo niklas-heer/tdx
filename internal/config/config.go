@@ -9,16 +9,17 @@ import (
 
 // Config represents the global configuration for tdx
 type Config struct {
-	FilterDone   *bool `yaml:"filter-done,omitempty"`   // Filter out completed tasks
-	MaxVisible   *int  `yaml:"max-visible,omitempty"`   // Maximum visible tasks
-	ShowHeadings *bool `yaml:"show-headings,omitempty"` // Show headings between tasks
-	ReadOnly     *bool `yaml:"read-only,omitempty"`     // Open in read-only mode
-	WordWrap     *bool `yaml:"word-wrap,omitempty"`     // Enable word wrapping
+	FilterDone     *bool `yaml:"filter-done,omitempty"`      // Filter out completed tasks
+	MaxVisible     *int  `yaml:"max-visible,omitempty"`      // Maximum visible tasks
+	ShowHeadings   *bool `yaml:"show-headings,omitempty"`    // Show headings between tasks
+	ReadOnly       *bool `yaml:"read-only,omitempty"`        // Open in read-only mode
+	WordWrap       *bool `yaml:"word-wrap,omitempty"`        // Enable word wrapping
+	MaxRecentFiles *int  `yaml:"max-recent-files,omitempty"` // Maximum number of recent files to track
 }
 
-// GetConfigPath returns the path to the config file
+// GetConfigDir returns the tdx config directory
 // Follows XDG Base Directory specification on Unix-like systems
-func GetConfigPath() (string, error) {
+func GetConfigDir() (string, error) {
 	var configDir string
 
 	// Check XDG_CONFIG_HOME first
@@ -33,7 +34,17 @@ func GetConfigPath() (string, error) {
 		configDir = filepath.Join(homeDir, ".config")
 	}
 
-	return filepath.Join(configDir, "tdx", "config.yaml"), nil
+	return filepath.Join(configDir, "tdx"), nil
+}
+
+// GetConfigPath returns the path to the config file
+// Follows XDG Base Directory specification on Unix-like systems
+func GetConfigPath() (string, error) {
+	configDir, err := GetConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, "config.yaml"), nil
 }
 
 // Load loads the global config file
@@ -93,6 +104,10 @@ func (c *Config) GetInt(field string, defaultValue int) int {
 	case "max-visible":
 		if c.MaxVisible != nil {
 			return *c.MaxVisible
+		}
+	case "max-recent-files":
+		if c.MaxRecentFiles != nil {
+			return *c.MaxRecentFiles
 		}
 	}
 	return defaultValue
