@@ -34,13 +34,14 @@ show-headings: true
 ## Other features
 
 - [x] make wrap the default
-- [ ] add new items after cursor (maybe command option to set after cursor or end of file)
+- [x] add new items after cursor (maybe command option to set after cursor or end of file)
 - [ ] add command or keyboard shortcut (# or h) to add a heading before? after? the current cursor maybe that should go together with the insert setting?
 
 ## fix bugs
 
 - [ ] fix move bug that it sometimes (I don't know when - previous move?) doesn't add it to the bottom of the next heading group - seems to be the case if filter-done: true is active
-- [ ] fix new entry should also respent word-wrap
+- [ ] fix delete should move the cursor to the nearest task also if the done tasks are hidden. We should seriously check that the ui handles hiddden stuff well. maybe we do another tree or something for what is visible.
+- [x] fix new entry should also respent word-wrap
 - [x] make sure we don't delete frontmatter
 
 ## Maybe

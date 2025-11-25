@@ -113,8 +113,8 @@ func (m Model) renderMainContent() string {
 		var currentPos int
 		if m.SearchMode {
 			currentPos = m.SearchCursor
-		} else if m.InputMode {
-			// When adding new task, scroll to show last items before the input
+		} else if m.InputMode && !m.InsertAfterCursor {
+			// When appending new task at end, scroll to show last items before the input
 			currentPos = totalCount - 1
 		} else {
 			// Find position of selectedIndex in todosToShow
@@ -201,10 +201,14 @@ func (m Model) renderMainContent() string {
 			actualIdx := startIdx + displayIdx
 			isSelected = actualIdx == m.SearchCursor
 			relIndex = actualIdx - m.SearchCursor
-		} else if m.InputMode {
-			// When adding new task, all existing items are above (negative indices)
+		} else if m.InputMode && !m.InsertAfterCursor {
+			// When appending at end, all existing items are above (negative indices)
 			isSelected = false
 			relIndex = (startIdx + displayIdx) - totalCount
+		} else if m.InputMode && m.InsertAfterCursor {
+			// When inserting after cursor, show selection arrow on cursor item
+			isSelected = todoIdx == m.SelectedIndex
+			relIndex = (startIdx + displayIdx) - selectedVisiblePos
 		} else {
 			isSelected = todoIdx == m.SelectedIndex
 			// Use position in visible list for relative index
@@ -222,10 +226,14 @@ func (m Model) renderMainContent() string {
 			}
 		}
 
-		// Arrow - don't show on existing items when in input mode
+		// Arrow - don't show on existing items when in input mode (arrow goes on input line)
 		arrow := "   "
 		if isSelected && !m.InputMode {
 			arrow = styles.Cyan(" " + config.Display.SelectMarker + " ")
+		}
+		// In insert-after-cursor mode, don't show arrow on the item we're inserting after
+		if m.InputMode && m.InsertAfterCursor && isSelected {
+			arrow = "   "
 		}
 
 		// Checkbox
@@ -298,16 +306,16 @@ func (m Model) renderMainContent() string {
 			m.WordWrap, m.TermWidth, prefixWidth,
 			styles.Magenta, styles.Cyan, styles.Code, styles.Dim,
 		))
+
+		// If in input mode with insert-after-cursor, show input line after selected item
+		if m.InputMode && m.InsertAfterCursor && isSelected {
+			b.WriteString(m.renderInputLine(styles, config))
+		}
 	}
 
-	// Input mode - show new task as part of the visible window
-	if m.InputMode {
-		arrow := styles.Cyan(" " + config.Display.SelectMarker + " ")
-		checkbox := styles.Dim("[ ]")
-		before := m.InputBuffer[:m.CursorPos]
-		after := m.InputBuffer[m.CursorPos:]
-		cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-		b.WriteString(fmt.Sprintf("%s%s%s %s%s%s\n", styles.Dim("  0"), arrow, checkbox, before, cursor, after))
+	// Input mode at end - show new task at end when not inserting after cursor
+	if m.InputMode && !m.InsertAfterCursor {
+		b.WriteString(m.renderInputLine(styles, config))
 	}
 
 	// Show indicator for items below (always reserve space when max_visible is set)
@@ -327,6 +335,46 @@ func (m Model) renderMainContent() string {
 
 	b.WriteString("\n")
 
+	return b.String()
+}
+
+// renderInputLine renders the new task input line with word wrap support
+func (m Model) renderInputLine(styles *StyleFuncsType, config *ConfigType) string {
+	var b strings.Builder
+
+	arrow := styles.Cyan(" " + config.Display.SelectMarker + " ")
+	checkbox := styles.Dim("[ ]")
+	indexStr := styles.Dim("  0")
+
+	// Build prefix
+	prefix := fmt.Sprintf("%s%s%s ", indexStr, arrow, checkbox)
+	prefixWidth := 3 + 3 + 3 + 1 // index(3) + arrow(3) + checkbox(3) + space(1)
+
+	before := m.InputBuffer[:m.CursorPos]
+	after := m.InputBuffer[m.CursorPos:]
+	cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
+
+	// Apply word wrap if enabled
+	if m.WordWrap && m.TermWidth > 0 {
+		textWithCursor := before + cursor + after
+		availWidth := m.TermWidth - prefixWidth
+		if availWidth > 10 {
+			indent := strings.Repeat(" ", prefixWidth)
+			wrappedLines := util.WrapText(textWithCursor, availWidth, indent)
+
+			for i, line := range wrappedLines {
+				if i == 0 {
+					b.WriteString(prefix + line + "\n")
+				} else {
+					b.WriteString(line + "\n")
+				}
+			}
+			return b.String()
+		}
+	}
+
+	// No wrapping - simple output
+	b.WriteString(fmt.Sprintf("%s%s%s%s\n", prefix, before, cursor, after))
 	return b.String()
 }
 
