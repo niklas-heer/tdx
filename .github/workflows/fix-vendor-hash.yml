@@ -1,0 +1,52 @@
+name: Auto-fix vendorHash
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - 'flake.nix'
+
+jobs:
+  fixHash:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+
+      - name: Attempt Nix build to provoke hash error
+        run: |
+          set +e
+          nix build .#default 2>&1 | tee build.log
+          set -e
+
+      - name: Parse correct hash
+        id: extract_hash
+        run: |
+          HASH=$(grep -o 'got: *sha256-[0-9a-zA-Z+/=]*' build.log | sed 's/.*got: *//')
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Print extracted hash for debugging
+        run: echo "Correct hash: ${{ steps.extract_hash.outputs.hash }}"
+
+      - name: Replace vendorHash in flake.nix
+        run: |
+          sed -i "s|vendorHash = \".*\";|vendorHash = \"${{ steps.extract_hash.outputs.hash }}\";|" flake.nix
+
+      - name: Commit and push if changed
+        run: |
+          if [[ -n "$(git status --porcelain flake.nix)" ]]; then
+            git config --global user.name "github-actions"
+            git config --global user.email "actions@github.com"
+            git add flake.nix
+            git commit -m "Update vendorHash to ${{ steps.extract_hash.outputs.hash }}"
+            git push
+          else
+            echo "No change to vendorHash"
+          fi
+
