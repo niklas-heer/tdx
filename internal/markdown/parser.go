@@ -287,7 +287,18 @@ func (fm *FileModel) DeleteTodoItem(index int) error {
 		fm.Lines = newLines
 		// Re-parse to update line numbers
 		content := strings.Join(fm.Lines, "\n")
+
+		// Preserve metadata before re-parsing
+		oldMetadata := fm.Metadata
+		oldFilePath := fm.FilePath
+		oldModTime := fm.ModTime
+
 		*fm = *ParseMarkdown(content)
+
+		// Restore preserved fields
+		fm.Metadata = oldMetadata
+		fm.FilePath = oldFilePath
+		fm.ModTime = oldModTime
 	}
 	return nil
 }

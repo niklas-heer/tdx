@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/niklas-heer/tdx/internal/markdown"
+	"github.com/niklas-heer/tdx/internal/util"
 	overlay "github.com/rmhubbert/bubbletea-overlay"
 )
 
@@ -256,8 +257,19 @@ func (m Model) renderMainContent() string {
 			checkbox = StyleFuncs.Dim("[ ]")
 		}
 
+		// Move indicator (check before building prefix)
+		if m.MoveMode && isSelected {
+			arrow = StyleFuncs.Yellow(" ≡ ")
+		}
+
+		// Build the line prefix (needed early for edit mode wrapping)
+		prefix := fmt.Sprintf("%s%s%s ", StyleFuncs.Dim(indexStr), arrow, checkbox)
+		prefixWidth := 3 + 3 + 3 + 1 // index(3) + arrow(3) + checkbox(3) + space(1)
+
 		// Text with inline code rendering and tag colorization
 		var text string
+		var plainText string = todo.Text
+
 		if m.SearchMode && m.InputBuffer != "" {
 			// Highlight matches during search
 			text = HighlightMatches(todo.Text, m.InputBuffer, StyleFuncs.Green)
@@ -269,23 +281,40 @@ func (m Model) renderMainContent() string {
 
 		// Show edit cursor if in edit mode on this item
 		if m.EditMode && isSelected && !m.SearchMode {
-			before := m.InputBuffer[:m.CursorPos]
-			after := m.InputBuffer[m.CursorPos:]
-			text = before + lipgloss.NewStyle().Reverse(true).Render(" ") + after
-		}
+			plainText = m.InputBuffer
 
-		// Move indicator
-		if m.MoveMode && isSelected {
-			arrow = StyleFuncs.Yellow(" ≡ ")
-		}
+			// If wrapping is enabled, insert cursor and wrap the text
+			if m.WordWrap && m.TermWidth > 0 {
+				before := m.InputBuffer[:m.CursorPos]
+				after := m.InputBuffer[m.CursorPos:]
+				cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
+				textWithCursor := before + cursor + after
 
-		// Build the line prefix (index + arrow + checkbox + space)
-		prefix := fmt.Sprintf("%s%s%s ", StyleFuncs.Dim(indexStr), arrow, checkbox)
-		prefixWidth := 3 + 3 + 3 + 1 // index(3) + arrow(3) + checkbox(3) + space(1)
+				// Wrap text with cursor included
+				availWidth := m.TermWidth - prefixWidth
+				indent := strings.Repeat(" ", prefixWidth)
+				wrappedLines := util.WrapText(textWithCursor, availWidth, indent)
+
+				// Render wrapped lines
+				for i, line := range wrappedLines {
+					if i == 0 {
+						b.WriteString(prefix + line + "\n")
+					} else {
+						b.WriteString(line + "\n")
+					}
+				}
+				continue // Skip normal rendering
+			} else {
+				// No wrapping - simple cursor insertion
+				before := m.InputBuffer[:m.CursorPos]
+				after := m.InputBuffer[m.CursorPos:]
+				text = before + lipgloss.NewStyle().Reverse(true).Render(" ") + after
+			}
+		}
 
 		// Render the todo line
 		b.WriteString(RenderTodoLine(
-			prefix, text, todo.Text,
+			prefix, text, plainText,
 			m.SearchMode, m.InputBuffer, todo.Checked,
 			m.WordWrap, m.TermWidth, prefixWidth,
 			StyleFuncs.Magenta, StyleFuncs.Cyan, StyleFuncs.Code, StyleFuncs.Dim,

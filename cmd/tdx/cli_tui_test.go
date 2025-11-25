@@ -217,6 +217,98 @@ func TestTUI_EditTodo(t *testing.T) {
 	}
 }
 
+func TestTUI_EditTodoWithInlineCode(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "Fix bug")
+
+	// Simulate: e (edit), clear existing, type text with inline code, enter
+	runPiped(t, file, "e\x7f\x7f\x7f\x7f\x7f\x7f\x7fUpdate `config.yaml`\r")
+
+	todos := getTodos(t, file)
+	if len(todos) != 1 {
+		t.Errorf("Expected 1 todo, got %d", len(todos))
+	}
+	expected := "- [ ] Update `config.yaml`"
+	if todos[0] != expected {
+		t.Errorf("Expected '%s', got: %s", expected, todos[0])
+	}
+
+	// Edit again to verify inline code is preserved
+	runPiped(t, file, "e\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7fFix `main.go` error\r")
+
+	todos = getTodos(t, file)
+	expected = "- [ ] Fix `main.go` error"
+	if todos[0] != expected {
+		t.Errorf("Expected '%s', got: %s", expected, todos[0])
+	}
+}
+
+func TestTUI_EditTodoWithMultipleCodeSpans(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "Simple task")
+
+	// Simulate: e (edit), clear existing, type text with multiple code spans, enter
+	runPiped(t, file, "e\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7fUpdate `file1.go` and `file2.go`\r")
+
+	todos := getTodos(t, file)
+	if len(todos) != 1 {
+		t.Errorf("Expected 1 todo, got %d", len(todos))
+	}
+	expected := "- [ ] Update `file1.go` and `file2.go`"
+	if todos[0] != expected {
+		t.Errorf("Expected '%s', got: %s", expected, todos[0])
+	}
+}
+
+func TestTUI_EditTodoWithSpecialChars(t *testing.T) {
+	file := tempTestFile(t)
+
+	runCLI(t, file, "add", "Task")
+
+	// Simulate: e (edit), clear existing, type text with quotes and special chars, enter
+	runPiped(t, file, "e\x7f\x7f\x7f\x7fAdd \"quotes\" test\r")
+
+	todos := getTodos(t, file)
+	if len(todos) != 1 {
+		t.Errorf("Expected 1 todo, got %d", len(todos))
+	}
+	expected := "- [ ] Add \"quotes\" test"
+	if todos[0] != expected {
+		t.Errorf("Expected '%s', got: %s", expected, todos[0])
+	}
+}
+
+func TestTUI_EditTodoPreservesExistingInlineCode(t *testing.T) {
+	file := tempTestFile(t)
+
+	// Add a todo with inline code using CLI
+	runCLI(t, file, "add", "Fix bug in `main.go` file")
+
+	// Simulate: e (edit) to enter edit mode, then immediately confirm without changes
+	// This tests that the InputBuffer correctly contains the backticks
+	runPiped(t, file, "e\r")
+
+	todos := getTodos(t, file)
+	if len(todos) != 1 {
+		t.Errorf("Expected 1 todo, got %d", len(todos))
+	}
+	expected := "- [ ] Fix bug in `main.go` file"
+	if todos[0] != expected {
+		t.Errorf("Expected '%s', got: %s", expected, todos[0])
+	}
+
+	// Now edit it to change the filename
+	runPiped(t, file, "e\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7fFix `utils.go` instead\r")
+
+	todos = getTodos(t, file)
+	expected = "- [ ] Fix `utils.go` instead"
+	if todos[0] != expected {
+		t.Errorf("Expected '%s', got: %s", expected, todos[0])
+	}
+}
+
 func TestTUI_DeleteTodo(t *testing.T) {
 	file := tempTestFile(t)
 

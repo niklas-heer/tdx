@@ -318,34 +318,110 @@ func (doc *ASTDocument) UpdateTodoText(todoIndex int, newText string) error {
 		return err
 	}
 
-	// Strategy: Append the new text to source and update the text node segment
-	newTodoText := []byte(newText)
-	sourceStart := len(doc.Source)
-	doc.Source = append(doc.Source, newTodoText...)
-
-	// Find the text node in the TextBlock (paragraph)
-	textBlock := node.CheckBox.Parent()
-	if textBlock == nil {
-		return fmt.Errorf("checkbox has no parent")
+	// Get the list item and its parent
+	listItem := node.ListItem
+	parentList := listItem.Parent()
+	if parentList == nil {
+		return fmt.Errorf("list item has no parent")
 	}
 
-	// Remove all existing text nodes (there might be multiple after previous edits)
-	var textNodesToRemove []ast.Node
-	for child := textBlock.FirstChild(); child != nil; child = child.NextSibling() {
-		if _, ok := child.(*ast.Text); ok {
-			textNodesToRemove = append(textNodesToRemove, child)
+	// Find the position of this list item in its parent
+	var prevSibling ast.Node
+	for child := parentList.FirstChild(); child != nil; child = child.NextSibling() {
+		if child == listItem {
+			break
 		}
-	}
-	for _, tn := range textNodesToRemove {
-		textBlock.RemoveChild(textBlock, tn)
+		prevSibling = child
 	}
 
-	// Create a new text node with the updated text
-	textNode := ast.NewText()
-	textNode.Segment = text.NewSegment(sourceStart, len(doc.Source))
-	textBlock.AppendChild(textBlock, textNode)
+	// Create a complete markdown list item with checkbox to parse properly
+	var tempMarkdown string
+	if node.CheckBox.IsChecked {
+		tempMarkdown = "- [x] " + newText
+	} else {
+		tempMarkdown = "- [ ] " + newText
+	}
+
+	// Append to source
+	sourceStart := len(doc.Source)
+	doc.Source = append(doc.Source, []byte(tempMarkdown)...)
+
+	// Parse as a complete list item to get proper inline element handling
+	md := goldmark.New(
+		goldmark.WithExtensions(
+			extension.GFM,
+		),
+	)
+	tempDoc := md.Parser().Parse(text.NewReader([]byte(tempMarkdown)))
+
+	// Find the parsed list item
+	var newListItem *ast.ListItem
+	ast.Walk(tempDoc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || newListItem != nil {
+			return ast.WalkContinue, nil
+		}
+
+		if li, ok := n.(*ast.ListItem); ok {
+			// Verify it has a checkbox
+			hasCheckbox := false
+			ast.Walk(li, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
+				if entering && child.Kind() == extast.KindTaskCheckBox {
+					hasCheckbox = true
+					return ast.WalkStop, nil
+				}
+				return ast.WalkContinue, nil
+			})
+			if hasCheckbox {
+				newListItem = li
+				return ast.WalkStop, nil
+			}
+		}
+
+		return ast.WalkContinue, nil
+	})
+
+	if newListItem == nil {
+		return fmt.Errorf("failed to parse new todo text")
+	}
+
+	// Detach from temp document
+	if newListItem.Parent() != nil {
+		newListItem.Parent().RemoveChild(newListItem.Parent(), newListItem)
+	}
+
+	// Adjust all segments to point to our source
+	adjustNodeSegments(newListItem, sourceStart)
+
+	// Replace old list item with new one
+	parentList.RemoveChild(parentList, listItem)
+
+	if prevSibling == nil {
+		// Insert at beginning
+		if parentList.FirstChild() != nil {
+			parentList.InsertBefore(parentList, parentList.FirstChild(), newListItem)
+		} else {
+			parentList.AppendChild(parentList, newListItem)
+		}
+	} else {
+		// Insert after previous sibling
+		parentList.InsertAfter(parentList, prevSibling, newListItem)
+	}
 
 	return nil
+}
+
+// adjustNodeSegments recursively adjusts all segment positions in a node tree
+func adjustNodeSegments(node ast.Node, offset int) {
+	// Adjust this node's segment if it has one
+	if n, ok := node.(*ast.Text); ok {
+		seg := n.Segment
+		n.Segment = text.NewSegment(seg.Start+offset, seg.Stop+offset)
+	}
+
+	// Recursively adjust children
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		adjustNodeSegments(child, offset)
+	}
 }
 
 // DeleteTodo removes a todo from the AST
