@@ -1,53 +1,52 @@
-name: Auto-fix vendorHash
-
+name: Update vendorHash
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'go.mod'
-      - 'go.sum'
-      - 'flake.nix'
+      - "go.mod"
+      - "go.sum"
+      - "tdx.toml"
+      - "**/*.go"
 
 jobs:
-  fixHash:
+  update-hash:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: cachix/install-nix-action@v27
+      - name: Install nix
+        uses: DeterminateSystems/nix-installer-action@v11
 
-      - name: Attempt Nix build to provoke hash error
+      - name: Set up nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v6
+
+      - name: Try to build (expect vendorHash mismatch)
         run: |
           set +e
-          nix build .#default 2>&1 | tee build.log
-          set -e
+          nix build .#tdx 2>&1 | tee build.log
+          echo "Exit: $?"
 
-      - name: Extract new vendor hash
+      - name: Extract correct vendorHash
         id: extract_hash
         run: |
-          HASH=$(grep -oP 'sha256-[0-9A-Za-z+/=]+' flake.nix | head -n 1)
-          echo "hash=${HASH}" >> $GITHUB_OUTPUT
-          
+          HASH=$(grep -oP 'got:.*sha256-[0-9A-Za-z+/=]+' build.log | grep -oP 'sha256-[0-9A-Za-z+/=]+' | head -n1)
+          echo "Extracted HASH: $HASH"
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
       - name: Print extracted hash for debugging
         run: |
-          echo "Correct hash: ${{ steps.extract_hash.outputs.hash }}"
+          printf "Correct hash: '%s'\n" "${{ steps.extract_hash.outputs.hash }}"
 
       - name: Replace vendorHash in flake.nix
         run: |
-          sed -i "s|vendorHash = \".*\";|vendorHash = \"${{ steps.extract_hash.outputs.hash }}\";|" flake.nix
+          sed -i "s|vendorHash = \".*\"|vendorHash = \"${{ steps.extract_hash.outputs.hash }}\"|g" flake.nix
 
-      - name: Commit and push if changed
+      - name: Commit and push updated vendorHash
         run: |
-          if [[ -n "$(git status --porcelain flake.nix)" ]]; then
-            git config --global user.name "github-actions"
-            git config --global user.email "actions@github.com"
-            git add flake.nix
-            git commit -m "Update vendorHash to ${{ steps.extract_hash.outputs.hash }}"
-            git push
-          else
-            echo "No change to vendorHash"
-          fi
-
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add flake.nix
+          git commit -m "update vendorHash to ${{ steps.extract_hash.outputs.hash }}" || echo "No changes to commit"
+          git push || echo "No push needed"
