@@ -459,15 +459,28 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.hasActiveFilters() || m.ShowHeadings {
 			// Use document tree to calculate visible-list-based movement
 			tree := m.GetDocumentTree()
+			selectedNode := tree.GetSelectedNode()
+			if selectedNode == nil || selectedNode.Type != DocNodeTodo {
+				break
+			}
+
+			// Remember the todo text so we can find it after the move
+			movedTodoText := m.FileModel.Todos[selectedNode.TodoIndex].Text
+
 			fromIndex, targetIndex, insertAfter := tree.MoveDown()
 			if fromIndex != -1 && targetIndex != -1 {
 				// Move the todo via AST to achieve the visual position
 				if err := m.FileModel.MoveTodoItemToPosition(fromIndex, targetIndex, insertAfter); err == nil {
 					// Rebuild tree from updated AST
 					m.InvalidateDocumentTree()
-					// Find where the moved todo ended up
-					tree = m.GetDocumentTree()
-					m.SelectedIndex = fromIndex // Selection follows the moved todo
+
+					// Find where the moved todo ended up by matching text
+					for i, todo := range m.FileModel.Todos {
+						if todo.Text == movedTodoText {
+							m.SelectedIndex = i
+							break
+						}
+					}
 				}
 			}
 		} else {
@@ -483,15 +496,28 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.hasActiveFilters() || m.ShowHeadings {
 			// Use document tree to calculate visible-list-based movement
 			tree := m.GetDocumentTree()
+			selectedNode := tree.GetSelectedNode()
+			if selectedNode == nil || selectedNode.Type != DocNodeTodo {
+				break
+			}
+
+			// Remember the todo text so we can find it after the move
+			movedTodoText := m.FileModel.Todos[selectedNode.TodoIndex].Text
+
 			fromIndex, targetIndex, insertAfter := tree.MoveUp()
 			if fromIndex != -1 && targetIndex != -1 {
 				// Move the todo via AST to achieve the visual position
 				if err := m.FileModel.MoveTodoItemToPosition(fromIndex, targetIndex, insertAfter); err == nil {
 					// Rebuild tree from updated AST
 					m.InvalidateDocumentTree()
-					// Find where the moved todo ended up
-					tree = m.GetDocumentTree()
-					m.SelectedIndex = fromIndex // Selection follows the moved todo
+
+					// Find where the moved todo ended up by matching text
+					for i, todo := range m.FileModel.Todos {
+						if todo.Text == movedTodoText {
+							m.SelectedIndex = i
+							break
+						}
+					}
 				}
 			}
 		} else {
