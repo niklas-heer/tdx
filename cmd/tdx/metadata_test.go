@@ -30,7 +30,7 @@ func TestMetadataParsing_EmptyFrontmatter(t *testing.T) {
 
 func TestMetadataParsing_WithFrontmatter(t *testing.T) {
 	content := `---
-persist: false
+read-only: false
 max-visible: 10
 show-headings: true
 ---
@@ -43,8 +43,8 @@ show-headings: true
 		t.Fatalf("expected no error, got: %v", err)
 	}
 
-	if metadata.Persist == nil || *metadata.Persist != false {
-		t.Errorf("expected persist: false")
+	if metadata.ReadOnly == nil || *metadata.ReadOnly != false {
+		t.Errorf("expected read-only: false")
 	}
 
 	if metadata.MaxVisible == nil || *metadata.MaxVisible != 10 {
@@ -66,7 +66,6 @@ show-headings: true
 
 func TestMetadataParsing_AllFields(t *testing.T) {
 	content := `---
-persist: true
 filter-done: true
 max-visible: 20
 show-headings: false
@@ -78,10 +77,6 @@ word-wrap: false
 	metadata, _, err := markdown.ParseMetadata(content)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
-	}
-
-	if metadata.Persist == nil || *metadata.Persist != true {
-		t.Errorf("expected persist: true")
 	}
 
 	if metadata.FilterDone == nil || *metadata.FilterDone != true {
@@ -130,7 +125,7 @@ this is not: valid: yaml
 
 func TestMetadataParsing_UnknownField(t *testing.T) {
 	content := `---
-persist: false
+read-only: false
 unknown-field: value
 ---
 # Todos
@@ -152,10 +147,10 @@ func TestMetadataSerialization_Empty(t *testing.T) {
 }
 
 func TestMetadataSerialization_WithFields(t *testing.T) {
-	persistFalse := false
+	readOnlyFalse := false
 	maxVis := 10
 	metadata := &markdown.Metadata{
-		Persist:    &persistFalse,
+		ReadOnly:   &readOnlyFalse,
 		MaxVisible: &maxVis,
 	}
 	content := "# Todos\n"
@@ -173,8 +168,8 @@ func TestMetadataSerialization_WithFields(t *testing.T) {
 		t.Fatalf("failed to re-parse serialized metadata: %v", err)
 	}
 
-	if parsed.Persist == nil || *parsed.Persist != false {
-		t.Errorf("expected persist: false after round-trip")
+	if parsed.ReadOnly == nil || *parsed.ReadOnly != false {
+		t.Errorf("expected read-only: false after round-trip")
 	}
 
 	if parsed.MaxVisible == nil || *parsed.MaxVisible != 10 {
@@ -192,7 +187,7 @@ func TestMetadataIntegration_ReadWriteFile(t *testing.T) {
 
 	// Create file with metadata
 	content := `---
-persist: false
+filter-done: false
 max-visible: 15
 ---
 # Test Todos
@@ -216,8 +211,8 @@ max-visible: 15
 		t.Fatalf("expected metadata to be parsed")
 	}
 
-	if fm.Metadata.Persist == nil || *fm.Metadata.Persist != false {
-		t.Errorf("expected persist: false from file")
+	if fm.Metadata.FilterDone == nil || *fm.Metadata.FilterDone != false {
+		t.Errorf("expected filter-done: false from file")
 	}
 
 	if fm.Metadata.MaxVisible == nil || *fm.Metadata.MaxVisible != 15 {
@@ -256,7 +251,7 @@ max-visible: 15
 	}
 
 	// Verify metadata was preserved
-	if fm2.Metadata.Persist == nil || *fm2.Metadata.Persist != false {
+	if fm2.Metadata.FilterDone == nil || *fm2.Metadata.FilterDone != false {
 		t.Errorf("metadata not preserved after write")
 	}
 
@@ -272,14 +267,14 @@ func TestMetadataGetters(t *testing.T) {
 	maxVis := 25
 
 	metadata := &markdown.Metadata{
-		Persist:      &falseVal,
+		FilterDone:   &falseVal,
 		ShowHeadings: &trueVal,
 		MaxVisible:   &maxVis,
 	}
 
 	// Test GetBool with set value
-	if metadata.GetBool("persist", true) != false {
-		t.Errorf("expected persist to return false")
+	if metadata.GetBool("filter-done", true) != false {
+		t.Errorf("expected filter-done to return false")
 	}
 
 	// Test GetBool with default
@@ -311,8 +306,8 @@ func TestMetadataIsEmpty(t *testing.T) {
 
 	// Test with one field set
 	trueVal := true
-	metadata.Persist = &trueVal
+	metadata.FilterDone = &trueVal
 	if metadata.IsEmpty() {
-		t.Errorf("expected metadata with persist field to not be empty")
+		t.Errorf("expected metadata with filter-done field to not be empty")
 	}
 }
