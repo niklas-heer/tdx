@@ -71,6 +71,8 @@ tdx
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Move down / up |
+| `gg` | Go to first item |
+| `G` | Go to last item |
 | `Space` / `Enter` | Toggle completion |
 | `n` | New todo |
 | `e` | Edit todo |
@@ -115,9 +117,11 @@ tdx -r checklist.md
 
 Use `:save` to manually save when ready, or `:read-only` to turn auto-save back on.
 
-**Vim-style jumps:**
+**Vim-style navigation:**
 - `5j` - Move down 5 lines
 - `3k` - Move up 3 lines
+- `gg` - Jump to first item
+- `G` - Jump to last item
 
 **Fuzzy Search:**
 Press `/` to enter search mode. Type to filter todos with live highlighting. Press `Enter` to select or `Esc` to cancel.
@@ -323,6 +327,24 @@ Read File → Goldmark Parser → AST (in-memory tree)
 - ✅ **Tag support** - HashtagExtraction built into AST traversal
 - ✅ **Heading-aware** - Knows which todos belong under which headings
 
+### Performance Optimizations
+
+tdx is built for speed with several key optimizations:
+
+- **Search debouncing** - Search operations are debounced (50ms) to avoid scoring all todos on every keystroke
+- **Heading caching** - Heading positions are cached and only recomputed when todos change
+- **Zero-allocation navigation** - Finding next/previous visible items allocates no memory (~8ns)
+- **Unified input handling** - TUI and piped input share the same handlers, reducing code and bugs
+
+**Benchmark results** (Apple M4):
+```
+FuzzyScore (exact match):     5.6ns/op    0 allocs
+FuzzyScore (fuzzy match):    33.4ns/op    0 allocs
+Cached headings:              1.0ns/op    0 allocs
+Search 100 todos:             9.8µs/op  114 allocs
+Navigation (visible todo):    8.0ns/op    0 allocs
+```
+
 ### Project Structure
 
 ```
@@ -342,12 +364,16 @@ tdx/
 │   │   ├── update.go    # Event handling
 │   │   ├── view.go      # Rendering
 │   │   ├── commands.go  # Command palette
-│   │   └── render.go    # Display logic
+│   │   ├── render.go    # Display logic
+│   │   └── *_test.go    # Unit & benchmark tests
 │   ├── cmd/             # CLI command handlers
 │   │   └── cli.go       # List, add, toggle, etc.
+│   ├── config/          # Configuration handling
+│   │   └── config.go    # Global config loader
 │   └── util/            # Utilities
-│       ├── text.go      # Text processing
-│       └── clipboard.go # Clipboard operations
+│       ├── text.go      # Text processing, fuzzy search
+│       ├── clipboard.go # Clipboard operations
+│       └── text_test.go # Unit & benchmark tests
 └── scripts/             # Development & release tools
 ```
 
