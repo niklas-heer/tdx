@@ -370,13 +370,10 @@ func TestHandleSearchKey_SelectResult(t *testing.T) {
 }
 
 func TestHandleMoveKey_MoveDown(t *testing.T) {
-	fm := &markdown.FileModel{
-		Todos: []markdown.Todo{
-			{Text: "Task 1", Checked: false},
-			{Text: "Task 2", Checked: false},
-			{Text: "Task 3", Checked: false},
-		},
-	}
+	content := `- [ ] Task 1
+- [ ] Task 2
+- [ ] Task 3`
+	fm := markdown.ParseMarkdown(content)
 	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
 	m.MoveMode = true
 	m.SelectedIndex = 0
@@ -389,12 +386,15 @@ func TestHandleMoveKey_MoveDown(t *testing.T) {
 		t.Errorf("SelectedIndex = %d, want 1", m.SelectedIndex)
 	}
 	if m.FileModel.Todos[1].Text != "Task 1" {
-		t.Errorf("Task 1 should have moved to position 1")
+		t.Errorf("Task 1 should have moved to position 1, got %s", m.FileModel.Todos[1].Text)
 	}
 }
 
 func TestHandleMoveKey_ExitOnEnter(t *testing.T) {
-	m := testModel([]string{"Task 1", "Task 2"})
+	content := `- [ ] Task 1
+- [ ] Task 2`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
 	m.MoveMode = true
 	m.ReadOnly = true // Prevent actual write
 
@@ -827,25 +827,25 @@ func TestHandleMoveKey_WithFilterDone_MoveDown(t *testing.T) {
 	m.SelectedIndex = 0 // Task A (visible)
 
 	// Visible: [0, 3] (Task A, Task D)
-	// With granular movement, one 'j' moves one position (swaps with Task B)
+	// With visible-swap movement, 'j' swaps with next VISIBLE item (Task D)
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
-	// Verify cursor moved to index 1 (granular movement)
-	if m.SelectedIndex != 1 {
-		t.Errorf("After one move, cursor should be at 1, got %d", m.SelectedIndex)
+	// Cursor should be at index 3 (where Task A went after swapping with Task D)
+	if m.SelectedIndex != 3 {
+		t.Errorf("After swap with next visible, cursor should be at 3, got %d", m.SelectedIndex)
 	}
 
-	// Task A should now be at index 1 (swapped with Task B)
-	if m.FileModel.Todos[1].Text != "Task A" {
-		t.Errorf("Task A should be at index 1 after one move, found %s", m.FileModel.Todos[1].Text)
+	// Task A should now be at index 3 (swapped with Task D)
+	if m.FileModel.Todos[3].Text != "Task A" {
+		t.Errorf("Task A should be at index 3 after swap, found %s", m.FileModel.Todos[3].Text)
 	}
 
-	// Task B should now be at index 0
-	if m.FileModel.Todos[0].Text != "Task B" {
-		t.Errorf("Task B should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
+	// Task D should now be at index 0
+	if m.FileModel.Todos[0].Text != "Task D" {
+		t.Errorf("Task D should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
 	}
 }
 
@@ -861,25 +861,25 @@ func TestHandleMoveKey_WithFilterDone_MoveUp(t *testing.T) {
 	m.SelectedIndex = 3 // Task D (visible)
 
 	// Visible: [0, 3] (Task A, Task D)
-	// With granular movement, one 'k' moves one position (swaps with Task C)
+	// With visible-swap movement, 'k' swaps with previous VISIBLE item (Task A)
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
-	// Verify cursor moved to index 2 (granular movement)
-	if m.SelectedIndex != 2 {
-		t.Errorf("After one move up, cursor should be at 2, got %d", m.SelectedIndex)
+	// Cursor should be at index 0 (where Task D went after swapping with Task A)
+	if m.SelectedIndex != 0 {
+		t.Errorf("After swap with previous visible, cursor should be at 0, got %d", m.SelectedIndex)
 	}
 
-	// Task D should now be at index 2 (swapped with Task C)
-	if m.FileModel.Todos[2].Text != "Task D" {
-		t.Errorf("Task D should be at index 2 after one move, found %s", m.FileModel.Todos[2].Text)
+	// Task D should now be at index 0 (swapped with Task A)
+	if m.FileModel.Todos[0].Text != "Task D" {
+		t.Errorf("Task D should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
 	}
 
-	// Task C should now be at index 3
-	if m.FileModel.Todos[3].Text != "Task C" {
-		t.Errorf("Task C should be at index 3 after swap, found %s", m.FileModel.Todos[3].Text)
+	// Task A should now be at index 3
+	if m.FileModel.Todos[3].Text != "Task A" {
+		t.Errorf("Task A should be at index 3 after swap, found %s", m.FileModel.Todos[3].Text)
 	}
 }
 
@@ -895,34 +895,36 @@ func TestHandleMoveKey_WithFilterDone_ConsecutiveMoves(t *testing.T) {
 	m.SelectedIndex = 0 // Task A
 
 	// Visible: [0, 2, 3] (Task A, Task C, Task D)
-	// With granular movement, need 3 moves to get Task A to the end
+	// With visible-swap movement, each 'j' swaps with next visible item
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 
-	// First move: Task A swaps with Task B (index 0 -> 1)
+	// First move: Task A swaps with Task C (next visible at index 2)
+	// After: Task C(0), Task B(1), Task A(2), Task D(3)
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
-	if m.SelectedIndex != 1 {
-		t.Errorf("After first move, cursor should be at 1, got %d", m.SelectedIndex)
-	}
-
-	// Second move: Task A swaps with Task C (index 1 -> 2)
-	result, _ = m.handleMoveKey(msg)
-	m = result.(Model)
 	if m.SelectedIndex != 2 {
-		t.Errorf("After second move, cursor should be at 2, got %d", m.SelectedIndex)
+		t.Errorf("After first move, cursor should be at 2, got %d", m.SelectedIndex)
 	}
 
-	// Third move: Task A swaps with Task D (index 2 -> 3)
+	// Second move: Task A (now at 2) swaps with Task D (next visible at index 3)
+	// After: Task C(0), Task B(1), Task D(2), Task A(3)
 	result, _ = m.handleMoveKey(msg)
 	m = result.(Model)
 	if m.SelectedIndex != 3 {
-		t.Errorf("After third move, cursor should be at 3, got %d", m.SelectedIndex)
+		t.Errorf("After second move, cursor should be at 3, got %d", m.SelectedIndex)
+	}
+
+	// Third move: Task A is at end of visible list, can't move further
+	result, _ = m.handleMoveKey(msg)
+	m = result.(Model)
+	if m.SelectedIndex != 3 {
+		t.Errorf("After third move, cursor should still be at 3 (end), got %d", m.SelectedIndex)
 	}
 
 	// Task A should now be at the end
 	if m.FileModel.Todos[3].Text != "Task A" {
-		t.Errorf("Task A should be at index 3 after three moves, found %s", m.FileModel.Todos[3].Text)
+		t.Errorf("Task A should be at index 3 after moves, found %s", m.FileModel.Todos[3].Text)
 	}
 }
 
@@ -997,25 +999,25 @@ func TestHandleMoveKey_WithTagFilter_MoveDown(t *testing.T) {
 	m.SelectedIndex = 0 // Task A #work
 
 	// Visible: [0, 2] (Task A, Task C - both have #work)
-	// With granular movement, one 'j' moves one position (swaps with Task B)
+	// With visible-swap movement, 'j' swaps with next VISIBLE item (Task C)
 
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
-	// Cursor should be at index 1 (granular movement)
-	if m.SelectedIndex != 1 {
-		t.Errorf("After one move, cursor should be at 1, got %d", m.SelectedIndex)
+	// Cursor should be at index 2 (where Task A went after swapping with Task C)
+	if m.SelectedIndex != 2 {
+		t.Errorf("After swap with next visible, cursor should be at 2, got %d", m.SelectedIndex)
 	}
 
-	// Task A should now be at index 1 (swapped with Task B)
-	if m.FileModel.Todos[1].Text != "Task A #work" {
-		t.Errorf("Task A should be at index 1 after one move, found %s", m.FileModel.Todos[1].Text)
+	// Task A should now be at index 2 (swapped with Task C)
+	if m.FileModel.Todos[2].Text != "Task A #work" {
+		t.Errorf("Task A should be at index 2 after swap, found %s", m.FileModel.Todos[2].Text)
 	}
 
-	// Task B should now be at index 0
-	if m.FileModel.Todos[0].Text != "Task B #home" {
-		t.Errorf("Task B should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
+	// Task C should now be at index 0
+	if m.FileModel.Todos[0].Text != "Task C #work" {
+		t.Errorf("Task C should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
 	}
 }
 
@@ -1098,27 +1100,26 @@ func TestMovePreservesVisibleOrder(t *testing.T) {
 		t.Fatalf("Expected 3 visible items, got %d", len(initial))
 	}
 
-	// Move Task 1 down once (granular: swaps with Done A at index 1)
+	// Move Task 1 down once (visible-swap: swaps with Task 2 at index 2)
 	m.SelectedIndex = m.getVisibleTodos()[0] // First visible (index 0)
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
-	// After granular move: Done A(0), Task 1(1), Task 2(2), Done B(3), Task 3(4)
-	// Visible order is still: Task 1, Task 2, Task 3 (Task 1 just moved past hidden Done A)
+	// After visible-swap: Task 2(0), Done A(1), Task 1(2), Done B(3), Task 3(4)
+	// Visible order is now: Task 2, Task 1, Task 3
 	after := getVisibleTexts()
 
-	// With granular movement, visible order stays the same after one move
-	// because Task 1 only swapped with a hidden item (Done A)
-	expected := []string{"Task 1", "Task 2", "Task 3"}
+	// With visible-swap movement, visible order changes predictably
+	expected := []string{"Task 2", "Task 1", "Task 3"}
 	for i, exp := range expected {
 		if after[i] != exp {
 			t.Errorf("After move, visible position %d: expected %s, got %s", i, exp, after[i])
 		}
 	}
 
-	// Task 1 should now be at index 1
-	if m.FileModel.Todos[1].Text != "Task 1" {
-		t.Errorf("Task 1 should be at index 1, found %s", m.FileModel.Todos[1].Text)
+	// Task 1 should now be at index 2 (former position of Task 2)
+	if m.FileModel.Todos[2].Text != "Task 1" {
+		t.Errorf("Task 1 should be at index 2, found %s", m.FileModel.Todos[2].Text)
 	}
 }

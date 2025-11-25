@@ -459,20 +459,42 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "j", "down":
-		// Always move to adjacent position for granular, predictable movement
-		// The moved item is always visible (it's what we're moving), so cursor stays valid
-		if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-			if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex+1); err == nil {
-				m.SelectedIndex++
+		if m.hasActiveFilters() {
+			// With filters: swap with next VISIBLE item for predictable visual movement
+			visible := m.getVisibleTodos()
+			currentVisiblePos := m.findVisiblePosition(visible)
+			if currentVisiblePos >= 0 && currentVisiblePos < len(visible)-1 {
+				nextIdx := visible[currentVisiblePos+1]
+				if err := m.swapTodos(m.SelectedIndex, nextIdx); err == nil {
+					m.SelectedIndex = nextIdx
+				}
+			}
+		} else {
+			// No filters: swap with adjacent item
+			if m.SelectedIndex < len(m.FileModel.Todos)-1 {
+				if err := m.swapTodos(m.SelectedIndex, m.SelectedIndex+1); err == nil {
+					m.SelectedIndex++
+				}
 			}
 		}
 
 	case "k", "up":
-		// Always move to adjacent position for granular, predictable movement
-		// The moved item is always visible (it's what we're moving), so cursor stays valid
-		if m.SelectedIndex > 0 {
-			if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex-1); err == nil {
-				m.SelectedIndex--
+		if m.hasActiveFilters() {
+			// With filters: swap with previous VISIBLE item for predictable visual movement
+			visible := m.getVisibleTodos()
+			currentVisiblePos := m.findVisiblePosition(visible)
+			if currentVisiblePos > 0 {
+				prevIdx := visible[currentVisiblePos-1]
+				if err := m.swapTodos(m.SelectedIndex, prevIdx); err == nil {
+					m.SelectedIndex = prevIdx
+				}
+			}
+		} else {
+			// No filters: swap with adjacent item
+			if m.SelectedIndex > 0 {
+				if err := m.swapTodos(m.SelectedIndex, m.SelectedIndex-1); err == nil {
+					m.SelectedIndex--
+				}
 			}
 		}
 
@@ -927,6 +949,16 @@ type reloadedMsg struct {
 	model Model
 }
 
+// findVisiblePosition returns the position of SelectedIndex in the visible list, or -1 if not found
+func (m *Model) findVisiblePosition(visible []int) int {
+	for i, idx := range visible {
+		if idx == m.SelectedIndex {
+			return i
+		}
+	}
+	return -1
+}
+
 // isTodoVisible returns true if the todo at the given index is visible given current filters
 func (m *Model) isTodoVisible(idx int) bool {
 	if idx < 0 || idx >= len(m.FileModel.Todos) {
@@ -1080,7 +1112,34 @@ func (m *Model) getCount() int {
 // RunPiped runs the TUI with piped input for testing
 func RunPiped(filePath string, input []byte, readOnly bool) string {
 	fm, _ := markdown.ReadFile(filePath)
-	m := New(filePath, fm, readOnly, false, -1, Config, StyleFuncs, Version)
+
+	// Apply frontmatter settings for showHeadings and maxVisible
+	showHeadings := false
+	maxVisible := -1
+	if fm.Metadata != nil {
+		if fm.Metadata.ShowHeadings != nil {
+			showHeadings = *fm.Metadata.ShowHeadings
+		}
+		if fm.Metadata.MaxVisible != nil {
+			maxVisible = *fm.Metadata.MaxVisible
+		}
+		if fm.Metadata.ReadOnly != nil {
+			readOnly = *fm.Metadata.ReadOnly
+		}
+	}
+
+	m := New(filePath, fm, readOnly, showHeadings, maxVisible, Config, StyleFuncs, Version)
+
+	// Apply additional frontmatter settings
+	if fm.Metadata != nil {
+		if fm.Metadata.FilterDone != nil {
+			m.FilterDone = *fm.Metadata.FilterDone
+		}
+		if fm.Metadata.WordWrap != nil {
+			m.WordWrap = *fm.Metadata.WordWrap
+		}
+	}
+
 	m.ProcessPipedInput(input)
 	return m.View()
 }
