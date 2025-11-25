@@ -177,13 +177,42 @@ Todos are stored in `todo.md` using standard Markdown:
 Other markdown content is preserved.
 ```
 
-### Per-File Configuration
+### Configuration
+
+tdx supports three levels of configuration with the following priority:
+
+**Priority Order:** CLI flags > Frontmatter > Global config > Defaults
+
+#### Global Configuration
+
+Create `~/.config/tdx/config.yaml` (or `$XDG_CONFIG_HOME/tdx/config.yaml`) to set defaults:
+
+```yaml
+# Global defaults for all todo files
+read-only: false
+filter-done: false
+max-visible: 0
+show-headings: false
+word-wrap: true  # Enabled by default
+```
+
+**Available options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `read-only` | boolean | false | Prevent all edits (view-only mode) |
+| `filter-done` | boolean | false | Hide completed tasks by default |
+| `max-visible` | number | 0 | Limit visible tasks (0 = unlimited) |
+| `show-headings` | boolean | false | Show markdown headings between tasks |
+| `word-wrap` | boolean | true | Enable word wrapping for long lines |
+
+#### Per-File Configuration
 
 Add YAML frontmatter to customize behavior for specific files:
 
 ```markdown
 ---
-persist: false
+read-only: false
 max-visible: 10
 show-headings: true
 ---
@@ -192,23 +221,12 @@ show-headings: true
 - [ ] Task one
 ```
 
-**Available options:**
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `persist` | boolean | Enable/disable auto-save (false = read-only mode) |
-| `filter-done` | boolean | Hide completed tasks by default |
-| `max-visible` | number | Limit visible tasks (0 = unlimited) |
-| `show-headings` | boolean | Show markdown headings between tasks |
-| `read-only` | boolean | Prevent all edits (view-only mode) |
-| `word-wrap` | boolean | Enable word wrapping |
-
 **Examples:**
 
 Read-only checklist:
 ```markdown
 ---
-persist: false
+read-only: true
 ---
 # Shopping List
 - [ ] Milk
@@ -219,6 +237,7 @@ Project tracker with headings:
 ---
 show-headings: true
 max-visible: 15
+filter-done: true
 ---
 # Project Tasks
 
@@ -229,16 +248,23 @@ max-visible: 15
 - [ ] UI components
 ```
 
-Read-only reference:
-```markdown
----
-read-only: true
----
-# Company Standards
-- [x] Use linter
-```
+#### Configuration Priority
 
-Per-file settings override command-line flags and config file defaults.
+Settings are applied in this order (highest to lowest priority):
+
+1. **CLI flags** - `tdx -r --show-headings todo.md`
+2. **Frontmatter** - YAML at top of individual todo files
+3. **Global config** - `~/.config/tdx/config.yaml`
+4. **Defaults** - Built-in defaults (word-wrap: true, others: false/0)
+
+**Example:**
+```bash
+# Global config sets word-wrap: false
+# Frontmatter sets read-only: true
+# CLI flag: --show-headings
+# Result: word-wrap=false, read-only=true, show-headings=true
+tdx --show-headings todo.md
+```
 
 ## Architecture
 
@@ -359,18 +385,17 @@ just fmt        # Format code
 just clean      # Clean artifacts
 ```
 
-## Configuration
+## Theme Customization
 
-### Config File
+### Theme Config File
 
-Create `~/.config/tdx/config.toml` to customize tdx:
+Create `~/.config/tdx/config.toml` to customize themes and display:
 
 ```toml
 [theme]
 name = "tokyo-night"  # or any builtin theme
 
 [display]
-max_visible = 10       # limit visible todos (0 = unlimited)
 check_symbol = "✓"     # symbol for completed items
 select_marker = "➜"    # symbol for selected item
 
@@ -384,6 +409,8 @@ Warning = "#e0af68"
 Important = "#bb9af7"
 AlertError = "#f7768e"
 ```
+
+Note: Theme config is in TOML format (`config.toml`), while todo behavior config is in YAML format (`config.yaml`). Both files live in `~/.config/tdx/`.
 
 ### Builtin Themes
 

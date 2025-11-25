@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/niklas-heer/tdx/internal/util"
 )
@@ -1261,7 +1262,29 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		return
 	}
 
-	// Apply metadata settings (override command-line flags if set)
+	// Load global config (lowest priority after defaults)
+	globalConfig, _ := config.Load()
+
+	// Apply global config defaults if not set by CLI flags
+	// Note: We check if values are at their defaults before applying global config
+	// Priority: CLI flags > frontmatter > global config > defaults
+
+	// For readOnly, false is the default, so only apply global config if still false
+	if !readOnly && globalConfig != nil && globalConfig.ReadOnly != nil {
+		readOnly = *globalConfig.ReadOnly
+	}
+
+	// For showHeadings, false is the default
+	if !showHeadings && globalConfig != nil && globalConfig.ShowHeadings != nil {
+		showHeadings = *globalConfig.ShowHeadings
+	}
+
+	// For maxVisible, 0 is the default
+	if maxVisible == 0 && globalConfig != nil && globalConfig.MaxVisible != nil {
+		maxVisible = *globalConfig.MaxVisible
+	}
+
+	// Apply frontmatter settings (higher priority than global config)
 	if fm.Metadata != nil {
 		if fm.Metadata.ReadOnly != nil {
 			readOnly = *fm.Metadata.ReadOnly
@@ -1272,13 +1295,30 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		if fm.Metadata.MaxVisible != nil {
 			maxVisible = *fm.Metadata.MaxVisible
 		}
-		// Handle persist: false by setting readOnly to true
-		if fm.Metadata.Persist != nil && !*fm.Metadata.Persist {
-			readOnly = true
-		}
 	}
 
 	m := New(filePath, fm, readOnly, showHeadings, maxVisible)
+
+	// Apply additional settings with same priority order
+	// Start with global config defaults
+	if globalConfig != nil {
+		if globalConfig.FilterDone != nil {
+			m.FilterDone = *globalConfig.FilterDone
+		}
+		if globalConfig.WordWrap != nil {
+			m.WordWrap = *globalConfig.WordWrap
+		}
+	}
+
+	// Frontmatter overrides global config
+	if fm.Metadata != nil {
+		if fm.Metadata.FilterDone != nil {
+			m.FilterDone = *fm.Metadata.FilterDone
+		}
+		if fm.Metadata.WordWrap != nil {
+			m.WordWrap = *fm.Metadata.WordWrap
+		}
+	}
 
 	// Check if we have a TTY
 	stat, _ := os.Stdin.Stat()

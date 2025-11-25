@@ -10,7 +10,6 @@ import (
 
 // Metadata represents per-file configuration options from YAML frontmatter
 type Metadata struct {
-	Persist      *bool `yaml:"persist,omitempty"`       // Whether to persist changes to disk
 	FilterDone   *bool `yaml:"filter-done,omitempty"`   // Filter out completed tasks
 	MaxVisible   *int  `yaml:"max-visible,omitempty"`   // Maximum visible tasks
 	ShowHeadings *bool `yaml:"show-headings,omitempty"` // Show headings between tasks
@@ -72,8 +71,7 @@ func SerializeMetadata(metadata *Metadata, content string) string {
 
 // IsEmpty returns true if all metadata fields are nil
 func (m *Metadata) IsEmpty() bool {
-	return m.Persist == nil &&
-		m.FilterDone == nil &&
+	return m.FilterDone == nil &&
 		m.MaxVisible == nil &&
 		m.ShowHeadings == nil &&
 		m.ReadOnly == nil &&
@@ -83,10 +81,6 @@ func (m *Metadata) IsEmpty() bool {
 // GetBool returns the value of a bool pointer or the default if nil
 func (m *Metadata) GetBool(field string, defaultValue bool) bool {
 	switch field {
-	case "persist":
-		if m.Persist != nil {
-			return *m.Persist
-		}
 	case "filter-done":
 		if m.FilterDone != nil {
 			return *m.FilterDone

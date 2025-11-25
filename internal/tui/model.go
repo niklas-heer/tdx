@@ -70,6 +70,7 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 		LocallyModified:    make(map[string]bool),
 		AvailableTags:      availableTags,
 		FilteredTags:       []string{},
+		WordWrap:           true, // Default to true for better UX
 	}
 }
 
