@@ -624,3 +624,501 @@ func TestFindPreviousVisibleTodo(t *testing.T) {
 		t.Errorf("Previous visible before 3 should be 0 (skipping checked), got %d", prev)
 	}
 }
+
+func TestIsTodoVisible_NoFilters(t *testing.T) {
+	fm := &markdown.FileModel{
+		Todos: []markdown.Todo{
+			{Text: "Task 1", Checked: false},
+			{Text: "Task 2", Checked: true},
+		},
+	}
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+
+	if !m.isTodoVisible(0) {
+		t.Error("Unchecked todo should be visible without filters")
+	}
+	if !m.isTodoVisible(1) {
+		t.Error("Checked todo should be visible without filters")
+	}
+}
+
+func TestIsTodoVisible_FilterDone(t *testing.T) {
+	fm := &markdown.FileModel{
+		Todos: []markdown.Todo{
+			{Text: "Task 1", Checked: false},
+			{Text: "Task 2", Checked: true},
+		},
+	}
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.FilterDone = true
+
+	if !m.isTodoVisible(0) {
+		t.Error("Unchecked todo should be visible with FilterDone")
+	}
+	if m.isTodoVisible(1) {
+		t.Error("Checked todo should NOT be visible with FilterDone")
+	}
+}
+
+func TestIsTodoVisible_TagFilters(t *testing.T) {
+	fm := &markdown.FileModel{
+		Todos: []markdown.Todo{
+			{Text: "Task 1 #work", Checked: false, Tags: []string{"work"}},
+			{Text: "Task 2 #home", Checked: false, Tags: []string{"home"}},
+			{Text: "Task 3", Checked: false, Tags: []string{}},
+		},
+	}
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.FilteredTags = []string{"work"}
+
+	if !m.isTodoVisible(0) {
+		t.Error("Task with #work tag should be visible when filtering for work")
+	}
+	if m.isTodoVisible(1) {
+		t.Error("Task with #home tag should NOT be visible when filtering for work")
+	}
+	if m.isTodoVisible(2) {
+		t.Error("Task without tags should NOT be visible when filtering for work")
+	}
+}
+
+func TestIsTodoVisible_BothFilters(t *testing.T) {
+	fm := &markdown.FileModel{
+		Todos: []markdown.Todo{
+			{Text: "Task 1 #work", Checked: false, Tags: []string{"work"}},
+			{Text: "Task 2 #work", Checked: true, Tags: []string{"work"}},
+			{Text: "Task 3 #home", Checked: false, Tags: []string{"home"}},
+		},
+	}
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.FilterDone = true
+	m.FilteredTags = []string{"work"}
+
+	if !m.isTodoVisible(0) {
+		t.Error("Unchecked task with #work should be visible")
+	}
+	if m.isTodoVisible(1) {
+		t.Error("Checked task with #work should NOT be visible (FilterDone)")
+	}
+	if m.isTodoVisible(2) {
+		t.Error("Task with #home should NOT be visible (wrong tag)")
+	}
+}
+
+func TestHasActiveFilters(t *testing.T) {
+	fm := &markdown.FileModel{Todos: []markdown.Todo{}}
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+
+	if m.hasActiveFilters() {
+		t.Error("Should return false with no filters")
+	}
+
+	m.FilterDone = true
+	if !m.hasActiveFilters() {
+		t.Error("Should return true with FilterDone")
+	}
+
+	m.FilterDone = false
+	m.FilteredTags = []string{"work"}
+	if !m.hasActiveFilters() {
+		t.Error("Should return true with FilteredTags")
+	}
+
+	m.FilterDone = true
+	if !m.hasActiveFilters() {
+		t.Error("Should return true with both filters")
+	}
+}
+
+func TestGetVisibleTodos_TagFilters(t *testing.T) {
+	fm := &markdown.FileModel{
+		Todos: []markdown.Todo{
+			{Text: "Task 1 #work", Checked: false, Tags: []string{"work"}},
+			{Text: "Task 2 #home", Checked: false, Tags: []string{"home"}},
+			{Text: "Task 3 #work", Checked: false, Tags: []string{"work"}},
+		},
+	}
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.FilteredTags = []string{"work"}
+
+	visible := m.getVisibleTodos()
+
+	if len(visible) != 2 {
+		t.Errorf("With tag filter, should show 2 todos with #work, got %d", len(visible))
+	}
+	if visible[0] != 0 || visible[1] != 2 {
+		t.Errorf("Expected indices [0, 2], got %v", visible)
+	}
+}
+
+func TestDeleteCurrent_WithFilterDone_MovesToNearestVisible(t *testing.T) {
+	content := `- [ ] Task 1
+- [ ] Task 2
+- [x] Task 3
+- [x] Task 4
+- [ ] Task 5`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.FilterDone = true
+	m.SelectedIndex = 1 // "Task 2"
+
+	// Delete Task 2 - cursor should move to a visible task
+	// because Task 3 and Task 4 are hidden
+	m.deleteCurrent()
+
+	// After deletion: Task 1 (0), Task 3 (1, hidden), Task 4 (2, hidden), Task 5 (3)
+	// Visible: 0, 3. Cursor was at 1, nearest visible is 0 or 3
+	if !m.isTodoVisible(m.SelectedIndex) {
+		t.Errorf("After delete, cursor at %d is not visible", m.SelectedIndex)
+	}
+}
+
+func TestDeleteCurrent_WithTagFilter_MovesToNearestVisible(t *testing.T) {
+	content := `- [ ] Task 1 #work
+- [ ] Task 2 #work
+- [ ] Task 3 #home
+- [ ] Task 4 #work`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.FilteredTags = []string{"work"}
+	m.SelectedIndex = 1 // "Task 2 #work"
+
+	m.deleteCurrent()
+
+	// After deletion: Task 1 (0), Task 3 (1, hidden), Task 4 (2)
+	// Cursor should be on a visible task
+	if !m.isTodoVisible(m.SelectedIndex) {
+		t.Errorf("After delete, cursor at %d is not visible", m.SelectedIndex)
+	}
+}
+
+func TestDeleteCurrent_LastVisibleTask_MovesToPreviousVisible(t *testing.T) {
+	content := `- [ ] Task 1
+- [x] Task 2
+- [ ] Task 3`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.FilterDone = true
+	m.SelectedIndex = 2 // "Task 3" - last visible
+
+	m.deleteCurrent()
+
+	// After deletion: Task 1 (0), Task 2 (1, hidden)
+	// Cursor should move to Task 1 (0)
+	if m.SelectedIndex != 0 {
+		t.Errorf("After deleting last visible, cursor should be 0, got %d", m.SelectedIndex)
+	}
+	if !m.isTodoVisible(m.SelectedIndex) {
+		t.Errorf("Cursor at %d is not visible", m.SelectedIndex)
+	}
+}
+
+// ==================== Move Tests with Filters ====================
+
+func TestHandleMoveKey_WithFilterDone_MoveDown(t *testing.T) {
+	content := `- [ ] Task A
+- [x] Task B
+- [x] Task C
+- [ ] Task D`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.MoveMode = true
+	m.FilterDone = true
+	m.SelectedIndex = 0 // Task A (visible)
+
+	// Visible: [0, 3] (Task A, Task D)
+	// With granular movement, one 'j' moves one position (swaps with Task B)
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	result, _ := m.handleMoveKey(msg)
+	m = result.(Model)
+
+	// Verify cursor moved to index 1 (granular movement)
+	if m.SelectedIndex != 1 {
+		t.Errorf("After one move, cursor should be at 1, got %d", m.SelectedIndex)
+	}
+
+	// Task A should now be at index 1 (swapped with Task B)
+	if m.FileModel.Todos[1].Text != "Task A" {
+		t.Errorf("Task A should be at index 1 after one move, found %s", m.FileModel.Todos[1].Text)
+	}
+
+	// Task B should now be at index 0
+	if m.FileModel.Todos[0].Text != "Task B" {
+		t.Errorf("Task B should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
+	}
+}
+
+func TestHandleMoveKey_WithFilterDone_MoveUp(t *testing.T) {
+	content := `- [ ] Task A
+- [x] Task B
+- [x] Task C
+- [ ] Task D`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.MoveMode = true
+	m.FilterDone = true
+	m.SelectedIndex = 3 // Task D (visible)
+
+	// Visible: [0, 3] (Task A, Task D)
+	// With granular movement, one 'k' moves one position (swaps with Task C)
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	result, _ := m.handleMoveKey(msg)
+	m = result.(Model)
+
+	// Verify cursor moved to index 2 (granular movement)
+	if m.SelectedIndex != 2 {
+		t.Errorf("After one move up, cursor should be at 2, got %d", m.SelectedIndex)
+	}
+
+	// Task D should now be at index 2 (swapped with Task C)
+	if m.FileModel.Todos[2].Text != "Task D" {
+		t.Errorf("Task D should be at index 2 after one move, found %s", m.FileModel.Todos[2].Text)
+	}
+
+	// Task C should now be at index 3
+	if m.FileModel.Todos[3].Text != "Task C" {
+		t.Errorf("Task C should be at index 3 after swap, found %s", m.FileModel.Todos[3].Text)
+	}
+}
+
+func TestHandleMoveKey_WithFilterDone_ConsecutiveMoves(t *testing.T) {
+	content := `- [ ] Task A
+- [x] Task B
+- [ ] Task C
+- [ ] Task D`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.MoveMode = true
+	m.FilterDone = true
+	m.SelectedIndex = 0 // Task A
+
+	// Visible: [0, 2, 3] (Task A, Task C, Task D)
+	// With granular movement, need 3 moves to get Task A to the end
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+
+	// First move: Task A swaps with Task B (index 0 -> 1)
+	result, _ := m.handleMoveKey(msg)
+	m = result.(Model)
+	if m.SelectedIndex != 1 {
+		t.Errorf("After first move, cursor should be at 1, got %d", m.SelectedIndex)
+	}
+
+	// Second move: Task A swaps with Task C (index 1 -> 2)
+	result, _ = m.handleMoveKey(msg)
+	m = result.(Model)
+	if m.SelectedIndex != 2 {
+		t.Errorf("After second move, cursor should be at 2, got %d", m.SelectedIndex)
+	}
+
+	// Third move: Task A swaps with Task D (index 2 -> 3)
+	result, _ = m.handleMoveKey(msg)
+	m = result.(Model)
+	if m.SelectedIndex != 3 {
+		t.Errorf("After third move, cursor should be at 3, got %d", m.SelectedIndex)
+	}
+
+	// Task A should now be at the end
+	if m.FileModel.Todos[3].Text != "Task A" {
+		t.Errorf("Task A should be at index 3 after three moves, found %s", m.FileModel.Todos[3].Text)
+	}
+}
+
+func TestHandleMoveKey_WithFilterDone_MoveDownThenUp(t *testing.T) {
+	content := `- [ ] Task A
+- [x] Task B
+- [ ] Task C`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.MoveMode = true
+	m.FilterDone = true
+	m.SelectedIndex = 0 // Task A
+
+	// Visible: [0, 2] (Task A, Task C)
+
+	// Move down
+	msgDown := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	result, _ := m.handleMoveKey(msgDown)
+	m = result.(Model)
+
+	// Move back up
+	msgUp := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	result, _ = m.handleMoveKey(msgUp)
+	m = result.(Model)
+
+	if !m.isTodoVisible(m.SelectedIndex) {
+		t.Errorf("After move down then up, cursor at %d is not visible", m.SelectedIndex)
+	}
+
+	// Task A should be back at the first visible position
+	visible := m.getVisibleTodos()
+	firstVisibleIdx := visible[0]
+
+	if m.FileModel.Todos[firstVisibleIdx].Text != "Task A" {
+		t.Errorf("Task A should be first visible after move down then up, but found %s",
+			m.FileModel.Todos[firstVisibleIdx].Text)
+	}
+}
+
+func TestHandleMoveKey_CursorStaysOnMovedItem(t *testing.T) {
+	content := `- [ ] Task A
+- [x] Task B
+- [ ] Task C
+- [x] Task D
+- [ ] Task E`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.MoveMode = true
+	m.FilterDone = true
+	m.SelectedIndex = 0 // Task A
+
+	// Move down
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	result, _ := m.handleMoveKey(msg)
+	m = result.(Model)
+
+	// The cursor should be on Task A (the moved item), not some other item
+	if m.FileModel.Todos[m.SelectedIndex].Text != "Task A" {
+		t.Errorf("Cursor should stay on moved item 'Task A', but is on '%s' at index %d",
+			m.FileModel.Todos[m.SelectedIndex].Text, m.SelectedIndex)
+	}
+}
+
+func TestHandleMoveKey_WithTagFilter_MoveDown(t *testing.T) {
+	content := `- [ ] Task A #work
+- [ ] Task B #home
+- [ ] Task C #work`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.MoveMode = true
+	m.FilteredTags = []string{"work"}
+	m.SelectedIndex = 0 // Task A #work
+
+	// Visible: [0, 2] (Task A, Task C - both have #work)
+	// With granular movement, one 'j' moves one position (swaps with Task B)
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	result, _ := m.handleMoveKey(msg)
+	m = result.(Model)
+
+	// Cursor should be at index 1 (granular movement)
+	if m.SelectedIndex != 1 {
+		t.Errorf("After one move, cursor should be at 1, got %d", m.SelectedIndex)
+	}
+
+	// Task A should now be at index 1 (swapped with Task B)
+	if m.FileModel.Todos[1].Text != "Task A #work" {
+		t.Errorf("Task A should be at index 1 after one move, found %s", m.FileModel.Todos[1].Text)
+	}
+
+	// Task B should now be at index 0
+	if m.FileModel.Todos[0].Text != "Task B #home" {
+		t.Errorf("Task B should be at index 0 after swap, found %s", m.FileModel.Todos[0].Text)
+	}
+}
+
+func TestHandleMoveKey_NoFilterActive_NormalBehavior(t *testing.T) {
+	content := `- [ ] Task A
+- [x] Task B
+- [ ] Task C`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.MoveMode = true
+	// No filters active
+	m.SelectedIndex = 0
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	result, _ := m.handleMoveKey(msg)
+	m = result.(Model)
+
+	// Should move to index 1 (adjacent position, not skipping)
+	if m.SelectedIndex != 1 {
+		t.Errorf("Without filters, should move to adjacent position 1, got %d", m.SelectedIndex)
+	}
+
+	if m.FileModel.Todos[1].Text != "Task A" {
+		t.Errorf("Task A should be at index 1, found %s", m.FileModel.Todos[1].Text)
+	}
+}
+
+// ==================== Visibility Index Helpers Tests ====================
+
+func TestGetVisiblePosition(t *testing.T) {
+	content := `- [ ] Task A
+- [x] Task B
+- [ ] Task C
+- [x] Task D
+- [ ] Task E`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.FilterDone = true
+
+	// Visible: [0, 2, 4] (Task A, C, E at visible positions 0, 1, 2)
+	visible := m.getVisibleTodos()
+
+	if len(visible) != 3 {
+		t.Errorf("Expected 3 visible todos, got %d", len(visible))
+	}
+
+	// Verify the mapping
+	expectedVisible := []int{0, 2, 4}
+	for i, expected := range expectedVisible {
+		if visible[i] != expected {
+			t.Errorf("Visible position %d: expected array index %d, got %d", i, expected, visible[i])
+		}
+	}
+}
+
+func TestMovePreservesVisibleOrder(t *testing.T) {
+	content := `- [ ] Task 1
+- [x] Done A
+- [ ] Task 2
+- [x] Done B
+- [ ] Task 3`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.MoveMode = true
+	m.FilterDone = true
+
+	// Initial visible order: Task 1, Task 2, Task 3 (at indices 0, 2, 4)
+
+	// Get initial visible order
+	getVisibleTexts := func() []string {
+		var texts []string
+		for _, idx := range m.getVisibleTodos() {
+			texts = append(texts, m.FileModel.Todos[idx].Text)
+		}
+		return texts
+	}
+
+	initial := getVisibleTexts()
+	if len(initial) != 3 {
+		t.Fatalf("Expected 3 visible items, got %d", len(initial))
+	}
+
+	// Move Task 1 down once (granular: swaps with Done A at index 1)
+	m.SelectedIndex = m.getVisibleTodos()[0] // First visible (index 0)
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	result, _ := m.handleMoveKey(msg)
+	m = result.(Model)
+
+	// After granular move: Done A(0), Task 1(1), Task 2(2), Done B(3), Task 3(4)
+	// Visible order is still: Task 1, Task 2, Task 3 (Task 1 just moved past hidden Done A)
+	after := getVisibleTexts()
+
+	// With granular movement, visible order stays the same after one move
+	// because Task 1 only swapped with a hidden item (Done A)
+	expected := []string{"Task 1", "Task 2", "Task 3"}
+	for i, exp := range expected {
+		if after[i] != exp {
+			t.Errorf("After move, visible position %d: expected %s, got %s", i, exp, after[i])
+		}
+	}
+
+	// Task 1 should now be at index 1
+	if m.FileModel.Todos[1].Text != "Task 1" {
+		t.Errorf("Task 1 should be at index 1, found %s", m.FileModel.Todos[1].Text)
+	}
+}

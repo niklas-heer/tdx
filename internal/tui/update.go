@@ -252,6 +252,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.SelectedIndex >= len(m.FileModel.Todos) {
 				m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
 			}
+			// If filters are active, ensure cursor moves to a visible task
+			if m.hasActiveFilters() {
+				m.adjustSelectionForFilter()
+			}
 		}
 
 	case "?":
@@ -455,38 +459,20 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "j", "down":
-		// When filters are active, find next visible todo to move to
-		if m.FilterDone || len(m.FilteredTags) > 0 {
-			nextIdx := m.findNextVisibleTodo(m.SelectedIndex)
-			if nextIdx != -1 {
-				if err := m.moveTodo(m.SelectedIndex, nextIdx); err == nil {
-					m.SelectedIndex = nextIdx
-				}
-			}
-		} else {
-			// No filters - move to next position
-			if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-				if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex+1); err == nil {
-					m.SelectedIndex++
-				}
+		// Always move to adjacent position for granular, predictable movement
+		// The moved item is always visible (it's what we're moving), so cursor stays valid
+		if m.SelectedIndex < len(m.FileModel.Todos)-1 {
+			if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex+1); err == nil {
+				m.SelectedIndex++
 			}
 		}
 
 	case "k", "up":
-		// When filters are active, find previous visible todo to move to
-		if m.FilterDone || len(m.FilteredTags) > 0 {
-			prevIdx := m.findPreviousVisibleTodo(m.SelectedIndex)
-			if prevIdx != -1 {
-				if err := m.moveTodo(m.SelectedIndex, prevIdx); err == nil {
-					m.SelectedIndex = prevIdx
-				}
-			}
-		} else {
-			// No filters - move to previous position
-			if m.SelectedIndex > 0 {
-				if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex-1); err == nil {
-					m.SelectedIndex--
-				}
+		// Always move to adjacent position for granular, predictable movement
+		// The moved item is always visible (it's what we're moving), so cursor stays valid
+		if m.SelectedIndex > 0 {
+			if err := m.moveTodo(m.SelectedIndex, m.SelectedIndex-1); err == nil {
+				m.SelectedIndex--
 			}
 		}
 
@@ -709,9 +695,14 @@ func (m *Model) deleteCurrent() {
 	m.InvalidateHeadingsCache() // Deletion may affect heading positions
 	m.writeIfPersist()
 
-	// Adjust selection
+	// Adjust selection - ensure it stays within bounds first
 	if m.SelectedIndex >= len(m.FileModel.Todos) {
 		m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
+	}
+
+	// If filters are active, ensure cursor moves to a visible task
+	if m.hasActiveFilters() {
+		m.adjustSelectionForFilter()
 	}
 }
 
@@ -936,13 +927,37 @@ type reloadedMsg struct {
 	model Model
 }
 
+// isTodoVisible returns true if the todo at the given index is visible given current filters
+func (m *Model) isTodoVisible(idx int) bool {
+	if idx < 0 || idx >= len(m.FileModel.Todos) {
+		return false
+	}
+	todo := m.FileModel.Todos[idx]
+
+	// Hidden by filter-done
+	if m.FilterDone && todo.Checked {
+		return false
+	}
+
+	// Hidden by tag filters
+	if len(m.FilteredTags) > 0 && !todo.HasAnyTag(m.FilteredTags) {
+		return false
+	}
+
+	return true
+}
+
+// hasActiveFilters returns true if any visibility filter is active
+func (m *Model) hasActiveFilters() bool {
+	return m.FilterDone || len(m.FilteredTags) > 0
+}
+
 func (m *Model) getVisibleTodos() []int {
 	var visible []int
 	for i := range m.FileModel.Todos {
-		if m.FilterDone && m.FileModel.Todos[i].Checked {
-			continue
+		if m.isTodoVisible(i) {
+			visible = append(visible, i)
 		}
-		visible = append(visible, i)
 	}
 	return visible
 }
@@ -1036,19 +1051,9 @@ func (m *Model) ProcessPipedInput(input []byte) {
 // findNextVisibleTodo finds the next todo that would be visible given current filters
 func (m Model) findNextVisibleTodo(currentIdx int) int {
 	for i := currentIdx + 1; i < len(m.FileModel.Todos); i++ {
-		todo := m.FileModel.Todos[i]
-
-		// Skip if filtered by filter-done
-		if m.FilterDone && todo.Checked {
-			continue
+		if m.isTodoVisible(i) {
+			return i
 		}
-
-		// Skip if filtered by tag filters
-		if len(m.FilteredTags) > 0 && !todo.HasAnyTag(m.FilteredTags) {
-			continue
-		}
-
-		return i
 	}
 	return -1 // No visible todo found
 }
@@ -1056,19 +1061,9 @@ func (m Model) findNextVisibleTodo(currentIdx int) int {
 // findPreviousVisibleTodo finds the previous todo that would be visible given current filters
 func (m Model) findPreviousVisibleTodo(currentIdx int) int {
 	for i := currentIdx - 1; i >= 0; i-- {
-		todo := m.FileModel.Todos[i]
-
-		// Skip if filtered by filter-done
-		if m.FilterDone && todo.Checked {
-			continue
+		if m.isTodoVisible(i) {
+			return i
 		}
-
-		// Skip if filtered by tag filters
-		if len(m.FilteredTags) > 0 && !todo.HasAnyTag(m.FilteredTags) {
-			continue
-		}
-
-		return i
 	}
 	return -1 // No visible todo found
 }
