@@ -87,6 +87,10 @@ type Model struct {
 	// Vim-style multi-key sequence tracking
 	gPressed bool // Whether 'g' was pressed (for gg sequence)
 
+	// Document tree for predictable movement and deletion
+	documentTree *DocumentTree
+	treeDirty    bool // Whether the tree needs rebuilding
+
 	// Injected dependencies (previously global)
 	config     *ConfigType
 	styles     *StyleFuncsType
@@ -107,7 +111,7 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 	// Extract all available tags from todos
 	availableTags := markdown.GetAllTags(fm.Todos)
 
-	return Model{
+	m := Model{
 		FilePath:           filePath,
 		FileModel:          *fm,
 		SelectedIndex:      0,
@@ -121,10 +125,13 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 		WordWrap:           true,  // Default to true for better UX
 		headingsDirty:      true,  // Force initial cache population
 		searchPending:      false, // No pending search on init
+		treeDirty:          true,  // Force initial tree build
 		config:             config,
 		styles:             styles,
 		appVersion:         version,
 	}
+
+	return m
 }
 
 // Config returns the model's configuration (for backward compatibility during transition)
@@ -178,6 +185,21 @@ func (m *Model) GetHeadings() []markdown.Heading {
 // InvalidateHeadingsCache marks the headings cache as needing refresh
 func (m *Model) InvalidateHeadingsCache() {
 	m.headingsDirty = true
+	m.treeDirty = true // Headings affect visible tree
+}
+
+// GetDocumentTree returns the document tree, rebuilding if necessary
+func (m *Model) GetDocumentTree() *DocumentTree {
+	if m.treeDirty || m.documentTree == nil {
+		m.documentTree = m.BuildDocumentTree()
+		m.treeDirty = false
+	}
+	return m.documentTree
+}
+
+// InvalidateDocumentTree marks the document tree as needing rebuild
+func (m *Model) InvalidateDocumentTree() {
+	m.treeDirty = true
 }
 
 // searchDebounceCmd returns a command that triggers search update after a delay

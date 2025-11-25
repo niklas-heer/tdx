@@ -28,6 +28,11 @@ type FileModel struct {
 	Metadata *Metadata    // Per-file configuration from YAML frontmatter
 }
 
+// GetAST returns the underlying AST document
+func (fm *FileModel) GetAST() *ASTDocument {
+	return fm.ast
+}
+
 // ReadFile reads and parses a markdown file using AST
 func ReadFile(filePath string) (*FileModel, error) {
 	fileInfo, err := os.Stat(filePath)

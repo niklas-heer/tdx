@@ -645,59 +645,13 @@ func (doc *ASTDocument) SwapTodos(index1, index2 int) error {
 		return err
 	}
 
-	// Get parents
+	// Get parent (SwapTodos assumes same parent for simplicity)
 	parent1 := node1.ListItem.Parent()
-	parent2 := node2.ListItem.Parent()
 
-	// Handle cross-parent swaps (different sections/headings)
-	if parent1 != parent2 {
-		// Find what comes before each node
-		var prev1, prev2 ast.Node
-		for child := parent1.FirstChild(); child != nil; child = child.NextSibling() {
-			if child.NextSibling() == node1.ListItem {
-				prev1 = child
-				break
-			}
-		}
-		for child := parent2.FirstChild(); child != nil; child = child.NextSibling() {
-			if child.NextSibling() == node2.ListItem {
-				prev2 = child
-				break
-			}
-		}
+	// NOTE: SwapTodos is deprecated in favor of MoveTodo for better UX
+	// MoveTodo provides better insertion behavior and handles cross-parent moves
 
-		// Remove both nodes from their respective parents
-		parent1.RemoveChild(parent1, node1.ListItem)
-		parent2.RemoveChild(parent2, node2.ListItem)
-
-		// Insert node2 where node1 was
-		if prev1 != nil {
-			parent1.InsertAfter(parent1, prev1, node2.ListItem)
-		} else {
-			// node1 was first child
-			if parent1.FirstChild() != nil {
-				parent1.InsertBefore(parent1, parent1.FirstChild(), node2.ListItem)
-			} else {
-				parent1.AppendChild(parent1, node2.ListItem)
-			}
-		}
-
-		// Insert node1 where node2 was
-		if prev2 != nil {
-			parent2.InsertAfter(parent2, prev2, node1.ListItem)
-		} else {
-			// node2 was first child
-			if parent2.FirstChild() != nil {
-				parent2.InsertBefore(parent2, parent2.FirstChild(), node1.ListItem)
-			} else {
-				parent2.AppendChild(parent2, node1.ListItem)
-			}
-		}
-
-		return nil
-	}
-
-	// Same parent - find what comes before each node (these will be our anchors)
+	// Find what comes before each node (these will be our anchors)
 	var prev1, prev2 ast.Node
 	for child := parent1.FirstChild(); child != nil; child = child.NextSibling() {
 		if child.NextSibling() == node1.ListItem {

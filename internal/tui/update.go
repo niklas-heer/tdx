@@ -145,19 +145,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case "j", "down":
-		if m.FilterDone {
-			// Navigate within visible todos only
-			visible := m.getVisibleTodos()
-			if len(visible) > 0 {
-				currentPos := 0
-				for i, idx := range visible {
-					if idx == m.SelectedIndex {
-						currentPos = i
-						break
-					}
-				}
-				newPos := util.Min(currentPos+count, len(visible)-1)
-				m.SelectedIndex = visible[newPos]
+		if m.hasActiveFilters() || m.ShowHeadings {
+			// Use document tree for filtered navigation
+			tree := m.GetDocumentTree()
+			tree.NavigateDown(count)
+			if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
+				m.SelectedIndex = selectedNode.TodoIndex
 			}
 		} else {
 			m.SelectedIndex = util.Min(m.SelectedIndex+count, len(m.FileModel.Todos)-1)
@@ -167,19 +160,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "k", "up":
-		if m.FilterDone {
-			// Navigate within visible todos only
-			visible := m.getVisibleTodos()
-			if len(visible) > 0 {
-				currentPos := 0
-				for i, idx := range visible {
-					if idx == m.SelectedIndex {
-						currentPos = i
-						break
-					}
-				}
-				newPos := util.Max(currentPos-count, 0)
-				m.SelectedIndex = visible[newPos]
+		if m.hasActiveFilters() || m.ShowHeadings {
+			// Use document tree for filtered navigation
+			tree := m.GetDocumentTree()
+			tree.NavigateUp(count)
+			if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
+				m.SelectedIndex = selectedNode.TodoIndex
 			}
 		} else {
 			m.SelectedIndex = util.Max(m.SelectedIndex-count, 0)
@@ -195,7 +181,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.writeIfPersist()
 			// Adjust selection if item is now hidden by filter
 			if m.FilterDone && m.FileModel.Todos[m.SelectedIndex].Checked {
-				m.adjustSelectionForFilter()
+				m.InvalidateDocumentTree()
+				tree := m.GetDocumentTree()
+				if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
+					m.SelectedIndex = selectedNode.TodoIndex
+				}
 			}
 		}
 
@@ -248,13 +238,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.History != nil {
 			m.FileModel = *m.History
 			m.History = nil
+			m.InvalidateDocumentTree()
 			m.writeIfPersist()
 			if m.SelectedIndex >= len(m.FileModel.Todos) {
 				m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
 			}
 			// If filters are active, ensure cursor moves to a visible task
 			if m.hasActiveFilters() {
-				m.adjustSelectionForFilter()
+				tree := m.GetDocumentTree()
+				if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
+					m.SelectedIndex = selectedNode.TodoIndex
+				}
 			}
 		}
 
@@ -282,10 +276,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "G":
 		// Go to bottom (vim-style)
-		if m.FilterDone || len(m.FilteredTags) > 0 {
-			visible := m.getVisibleTodos()
-			if len(visible) > 0 {
-				m.SelectedIndex = visible[len(visible)-1]
+		if m.hasActiveFilters() || m.ShowHeadings {
+			tree := m.GetDocumentTree()
+			tree.NavigateToBottom()
+			if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
+				m.SelectedIndex = selectedNode.TodoIndex
 			}
 		} else if len(m.FileModel.Todos) > 0 {
 			m.SelectedIndex = len(m.FileModel.Todos) - 1
@@ -296,10 +291,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// First g press - wait for second g
 		if m.gPressed {
 			// gg - go to top
-			if m.FilterDone || len(m.FilteredTags) > 0 {
-				visible := m.getVisibleTodos()
-				if len(visible) > 0 {
-					m.SelectedIndex = visible[0]
+			if m.hasActiveFilters() || m.ShowHeadings {
+				tree := m.GetDocumentTree()
+				tree.NavigateToTop()
+				if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
+					m.SelectedIndex = selectedNode.TodoIndex
 				}
 			} else if len(m.FileModel.Todos) > 0 {
 				m.SelectedIndex = 0
@@ -339,6 +335,7 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.InputBuffer != "" {
 				todo := m.FileModel.Todos[m.SelectedIndex]
 				m.FileModel.UpdateTodoItem(m.SelectedIndex, m.InputBuffer, todo.Checked)
+				m.InvalidateDocumentTree() // Text change affects document tree
 				m.writeIfPersist()
 			}
 			m.EditMode = false
@@ -459,40 +456,58 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "j", "down":
-		if m.hasActiveFilters() {
-			// With filters: swap with next VISIBLE item for predictable visual movement
-			visible := m.getVisibleTodos()
-			currentVisiblePos := m.findVisiblePosition(visible)
-			if currentVisiblePos >= 0 && currentVisiblePos < len(visible)-1 {
-				nextIdx := visible[currentVisiblePos+1]
-				if err := m.swapTodos(m.SelectedIndex, nextIdx); err == nil {
-					m.SelectedIndex = nextIdx
+		if m.hasActiveFilters() || m.ShowHeadings {
+			// Use document tree to find target position in visible list
+			tree := m.GetDocumentTree()
+			selectedNode := tree.GetSelectedNode()
+			if selectedNode != nil && selectedNode.Type == DocNodeTodo {
+				targetIndex := tree.MoveDown()
+				if targetIndex != -1 {
+					// Move the todo via AST (insertion-based, crosses section boundaries)
+					if err := m.FileModel.MoveTodoItem(selectedNode.TodoIndex, targetIndex); err == nil {
+						// Rebuild tree from updated AST
+						m.InvalidateDocumentTree()
+						tree = m.GetDocumentTree()
+						// Update selection to follow the moved todo
+						m.SelectedIndex = targetIndex
+						// Update tree selection
+						tree.Selected = tree.findNodeByTodoIndex(targetIndex)
+					}
 				}
 			}
 		} else {
-			// No filters: swap with adjacent item
+			// No filters: simple insertion move
 			if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-				if err := m.swapTodos(m.SelectedIndex, m.SelectedIndex+1); err == nil {
+				if err := m.FileModel.MoveTodoItem(m.SelectedIndex, m.SelectedIndex+1); err == nil {
 					m.SelectedIndex++
 				}
 			}
 		}
 
 	case "k", "up":
-		if m.hasActiveFilters() {
-			// With filters: swap with previous VISIBLE item for predictable visual movement
-			visible := m.getVisibleTodos()
-			currentVisiblePos := m.findVisiblePosition(visible)
-			if currentVisiblePos > 0 {
-				prevIdx := visible[currentVisiblePos-1]
-				if err := m.swapTodos(m.SelectedIndex, prevIdx); err == nil {
-					m.SelectedIndex = prevIdx
+		if m.hasActiveFilters() || m.ShowHeadings {
+			// Use document tree to find target position in visible list
+			tree := m.GetDocumentTree()
+			selectedNode := tree.GetSelectedNode()
+			if selectedNode != nil && selectedNode.Type == DocNodeTodo {
+				targetIndex := tree.MoveUp()
+				if targetIndex != -1 {
+					// Move the todo via AST (insertion-based, crosses section boundaries)
+					if err := m.FileModel.MoveTodoItem(selectedNode.TodoIndex, targetIndex); err == nil {
+						// Rebuild tree from updated AST
+						m.InvalidateDocumentTree()
+						tree = m.GetDocumentTree()
+						// Update selection to follow the moved todo
+						m.SelectedIndex = targetIndex
+						// Update tree selection
+						tree.Selected = tree.findNodeByTodoIndex(targetIndex)
+					}
 				}
 			}
 		} else {
-			// No filters: swap with adjacent item
+			// No filters: simple insertion move
 			if m.SelectedIndex > 0 {
-				if err := m.swapTodos(m.SelectedIndex, m.SelectedIndex-1); err == nil {
+				if err := m.FileModel.MoveTodoItem(m.SelectedIndex, m.SelectedIndex-1); err == nil {
 					m.SelectedIndex--
 				}
 			}
@@ -506,6 +521,7 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.History != nil {
 			m.FileModel = *m.History
 			m.History = nil
+			m.InvalidateDocumentTree()
 		}
 		m.MoveMode = false
 	}
@@ -593,6 +609,9 @@ func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.FilteredTags = append(m.FilteredTags, selectedTag)
 			}
 
+			// Filter change affects document tree
+			m.InvalidateDocumentTree()
+
 			// Close filter mode after selection
 			m.FilterMode = false
 		}
@@ -603,6 +622,7 @@ func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		// Clear all filters
 		m.FilteredTags = []string{}
+		m.InvalidateDocumentTree()
 
 	case "down", "ctrl+n", "ctrl+j", "j":
 		// Move down in tag list
@@ -705,6 +725,7 @@ func (m *Model) addNewTodo() {
 		m.SelectedIndex = len(m.FileModel.Todos) - 1
 	}
 	m.InvalidateHeadingsCache() // New todo may affect heading positions
+	m.InvalidateDocumentTree()  // New todo affects document tree
 	m.writeIfPersist()
 }
 
@@ -713,18 +734,35 @@ func (m *Model) deleteCurrent() {
 		return
 	}
 
-	m.FileModel.DeleteTodoItem(m.SelectedIndex)
-	m.InvalidateHeadingsCache() // Deletion may affect heading positions
-	m.writeIfPersist()
+	// Use document tree for predictable deletion and selection
+	if m.hasActiveFilters() || m.ShowHeadings {
+		tree := m.GetDocumentTree()
+		deletedIdx := tree.DeleteSelected()
+		if deletedIdx >= 0 {
+			m.FileModel.DeleteTodoItem(deletedIdx)
+			m.InvalidateHeadingsCache()
+			m.InvalidateDocumentTree()
 
-	// Adjust selection - ensure it stays within bounds first
-	if m.SelectedIndex >= len(m.FileModel.Todos) {
-		m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
-	}
+			// Rebuild tree and update selection
+			tree = m.GetDocumentTree()
+			if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
+				m.SelectedIndex = selectedNode.TodoIndex
+			} else if len(m.FileModel.Todos) > 0 {
+				m.SelectedIndex = 0
+			}
 
-	// If filters are active, ensure cursor moves to a visible task
-	if m.hasActiveFilters() {
-		m.adjustSelectionForFilter()
+			m.writeIfPersist()
+		}
+	} else {
+		// Simple case: no filters or headings
+		m.FileModel.DeleteTodoItem(m.SelectedIndex)
+		m.InvalidateHeadingsCache()
+		m.writeIfPersist()
+
+		// Adjust selection - ensure it stays within bounds
+		if m.SelectedIndex >= len(m.FileModel.Todos) {
+			m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
+		}
 	}
 }
 
