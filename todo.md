@@ -22,7 +22,7 @@ show-headings: true
 - [x] add command to toggle heading on (add flag for it as well or markdown metadata)
 - [x] add command to set max-visible while running
 - [x] add markdown metadata for options (persit: false, filter-done: true, ...)
-- [ ] add functionality to edit pervious seen files (saved in locale share or config)
+- [x] add functionality to edit pervious seen files (saved in locale share or config)
 - [x] add frontmatter for hide done/filter-done
 
 ## Reddit requests
