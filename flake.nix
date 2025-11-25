@@ -34,7 +34,7 @@
             else
               ./.;
 
-          vendorHash = "sha256-2OorJ59Q+M+UuJTSqXFi7a+4Zv34ap44lnOTxNGrTSU=";
+          vendorHash = "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=";
           doCheck = false;
           ldflags = [
             "-X main.Version=${version}"
