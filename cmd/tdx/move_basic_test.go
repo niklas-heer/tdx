@@ -6,6 +6,7 @@ import (
 )
 
 // TestTUI_MoveWithCompletedItem tests moving with a completed item in between
+// With granular movement, one 'j' moves one position (swaps with adjacent item)
 func TestTUI_MoveWithCompletedItem(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -21,18 +22,16 @@ func TestTUI_MoveWithCompletedItem(t *testing.T) {
 	t.Log("Initial file:")
 	t.Log(initial)
 
-	// Move A down (should swap with B)
+	// Move A down (should swap with B - one position at a time)
 	// Sequence: m (move mode), j (swap down), enter (confirm)
 	runPiped(t, file, "mj\r")
 
 	content := readTestFile(t, file)
 	t.Logf("After move:\n%s", content)
-	t.Logf("Swap should have been: A (index 0) with B (index 1)")
-	t.Logf("But result suggests: A (index 0) with C (index 2)")
 
 	todos := getTodos(t, file)
 
-	// Expected: B, A, C (A and B swapped)
+	// Expected: B, A, C (A and B swapped - granular movement)
 	if len(todos) != 3 {
 		t.Fatalf("Expected 3 todos, got %d", len(todos))
 	}
@@ -54,6 +53,7 @@ func TestTUI_MoveWithCompletedItem(t *testing.T) {
 }
 
 // TestTUI_MoveWithFilterDone_ReallySimple tests the simplest filter-done move case
+// With granular movement, one 'j' moves one position even with filter-done active
 func TestTUI_MoveWithFilterDone_ReallySimple(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -67,13 +67,12 @@ func TestTUI_MoveWithFilterDone_ReallySimple(t *testing.T) {
 
 	t.Log("Initial state: A, [x]B, C")
 
-	// Enable filter-done, then move A down
-	// With filter active, visible items are: A, C
-	// Move A down: A moves after C, B stays in place
+	// Enable filter-done, then move A down ONCE
+	// With granular movement, A swaps with B (one position)
 	runPiped(t, file, ":filter-done\rmj\r")
 
 	content := readTestFile(t, file)
-	t.Logf("After filter-done move:\n%s", content)
+	t.Logf("After filter-done move (one position):\n%s", content)
 
 	todos := getTodos(t, file)
 
@@ -81,7 +80,46 @@ func TestTUI_MoveWithFilterDone_ReallySimple(t *testing.T) {
 		t.Fatalf("Expected 3 todos, got %d", len(todos))
 	}
 
-	// Expected: B, C, A (A moved after C, B stays in original position)
+	// Expected: B, A, C (A moved one position, swapped with B)
+	// This is the same as without filter - granular movement is consistent
+	if todos[0] != "- [x] B" {
+		t.Errorf("First todo should be '[x] B', got: %s", todos[0])
+	}
+	if todos[1] != "- [ ] A" {
+		t.Errorf("Second todo should be '[ ] A', got: %s", todos[1])
+	}
+	if todos[2] != "- [ ] C" {
+		t.Errorf("Third todo should be '[ ] C', got: %s", todos[2])
+	}
+}
+
+// TestTUI_MoveWithFilterDone_TwoMoves tests moving twice to get past hidden item
+func TestTUI_MoveWithFilterDone_TwoMoves(t *testing.T) {
+	file := tempTestFile(t)
+
+	// Use CLI to create clear starting state
+	runCLI(t, file, "add", "A")
+	runCLI(t, file, "add", "B")
+	runCLI(t, file, "add", "C")
+
+	// Mark B complete
+	runPiped(t, file, "j ")
+
+	t.Log("Initial state: A, [x]B, C")
+
+	// Enable filter-done, then move A down TWICE to get past B
+	runPiped(t, file, ":filter-done\rmjj\r")
+
+	content := readTestFile(t, file)
+	t.Logf("After filter-done move (two positions):\n%s", content)
+
+	todos := getTodos(t, file)
+
+	if len(todos) != 3 {
+		t.Fatalf("Expected 3 todos, got %d", len(todos))
+	}
+
+	// Expected: B, C, A (A moved two positions)
 	if todos[0] != "- [x] B" {
 		t.Errorf("First todo should be '[x] B', got: %s", todos[0])
 	}

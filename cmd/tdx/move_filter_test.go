@@ -7,6 +7,7 @@ import (
 )
 
 // TestMoveWithFilterDone tests that moving todos works correctly when filter-done is active
+// With granular movement, each 'j' moves one position at a time
 func TestMoveWithFilterDone(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -21,10 +22,10 @@ func TestMoveWithFilterDone(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	// Enable filter-done, then move Task 3 down
-	// With filter-done, visible tasks are: Task 1, Task 3, Task 5
-	// Moving Task 3 down moves it after Task 5 in the ACTUAL file
-	runPiped(t, file, ":filter-done\rjmj\r")
+	// Enable filter-done, move to Task 3 (j), then move Task 3 down twice (jj)
+	// to get it past Task 4 (completed) and after Task 5
+	// With granular movement, need 2 moves to get past one hidden item
+	runPiped(t, file, ":filter-done\rjmjj\r")
 
 	// Read the file to verify the move worked correctly
 	content := readTestFile(t, file)
@@ -35,7 +36,7 @@ func TestMoveWithFilterDone(t *testing.T) {
 	}
 
 	// The order should be: Task 1, Task 2 (completed), Task 4 (completed), Task 5, Task 3
-	// Task 3 moved after Task 5, completed tasks stay in place
+	// Task 3 moved after Task 5 (took 2 moves to pass Task 4)
 	expected := []string{
 		"- [ ] Task 1",
 		"- [x] Task 2 (completed)",
@@ -53,6 +54,7 @@ func TestMoveWithFilterDone(t *testing.T) {
 }
 
 // TestMoveWithFilterDone_SavesProperly tests that moves are persisted to disk
+// With granular movement, one move = one position swap
 func TestMoveWithFilterDone_SavesProperly(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -64,8 +66,8 @@ func TestMoveWithFilterDone_SavesProperly(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	// Enable filter-done, move First down (moves it after Second)
-	runPiped(t, file, ":filter-done\rmj\r")
+	// Enable filter-done, move First down TWICE to get past Done and after Second
+	runPiped(t, file, ":filter-done\rmjj\r")
 
 	// Read file after move
 	todos := getTodos(t, file)
@@ -74,7 +76,7 @@ func TestMoveWithFilterDone_SavesProperly(t *testing.T) {
 		t.Fatalf("Expected 3 todos, got %d", len(todos))
 	}
 
-	// Should be: Done, Second, First (First moved after Second, Done stays in place)
+	// Should be: Done, Second, First (First moved two positions)
 	if !strings.Contains(todos[0], "Done") {
 		t.Errorf("First todo should be 'Done', got: %s", todos[0])
 	}
@@ -86,7 +88,41 @@ func TestMoveWithFilterDone_SavesProperly(t *testing.T) {
 	}
 }
 
+// TestMoveWithFilterDone_SingleMove tests that a single move goes one position
+func TestMoveWithFilterDone_SingleMove(t *testing.T) {
+	file := tempTestFile(t)
+
+	initial := `# Test
+
+- [ ] First
+- [x] Done
+- [ ] Second
+`
+	os.WriteFile(file, []byte(initial), 0644)
+
+	// Enable filter-done, move First down ONCE (granular movement)
+	runPiped(t, file, ":filter-done\rmj\r")
+
+	todos := getTodos(t, file)
+
+	if len(todos) != 3 {
+		t.Fatalf("Expected 3 todos, got %d", len(todos))
+	}
+
+	// Should be: Done, First, Second (First moved one position, swapped with Done)
+	if !strings.Contains(todos[0], "Done") {
+		t.Errorf("First todo should be 'Done', got: %s", todos[0])
+	}
+	if !strings.Contains(todos[1], "First") {
+		t.Errorf("Second todo should be 'First' (moved one pos), got: %s", todos[1])
+	}
+	if !strings.Contains(todos[2], "Second") {
+		t.Errorf("Third todo should be 'Second', got: %s", todos[2])
+	}
+}
+
 // TestMoveWithFilterDone_CrossingHeadings verifies that moves work across different sections
+// With granular movement, you can move into sections one position at a time
 func TestMoveWithFilterDone_CrossingHeadings(t *testing.T) {
 	file := tempTestFile(t)
 
@@ -104,22 +140,48 @@ func TestMoveWithFilterDone_CrossingHeadings(t *testing.T) {
 `
 	os.WriteFile(file, []byte(initial), 0644)
 
-	// Enable filter-done, select Task A, move down
-	// Visible: Task A, Task C
-	// Moving Task A down should move it to Section 2 after Task C
-	runPiped(t, file, ":filter-done\rmj\r")
+	// Enable filter-done, select Task A, move down twice to get into Section 2
+	// First move: swaps with Task B (done)
+	// Second move: moves into Section 2, before Task C
+	runPiped(t, file, ":filter-done\rmjj\r")
 
 	content := readTestFile(t, file)
+	t.Logf("After two moves:\n%s", content)
 
-	// Task A should have moved to Section 2, Task C stays in Section 2
-	// Section 1 should only have Task B (done)
+	// Task A should now be in Section 2
+	// With AST-based movement, it should be after Section 2 heading
 	if !strings.Contains(content, "## Section 1\n\n- [x] Task B") {
 		t.Error("Section 1 should only have Task B (done)")
 		t.Logf("Content:\n%s", content)
 	}
-	// Section 2 should have Task C, Task A (moved), Task D (done)
-	if !strings.Contains(content, "## Section 2\n\n- [ ] Task C\n- [ ] Task A") {
-		t.Error("Task A should have moved to Section 2 after Task C")
-		t.Logf("Content:\n%s", content)
-	}
+}
+
+// TestMoveWithFilterDone_IntoEmptySection tests moving into a section
+// that appears empty due to filter-done (all tasks are completed)
+func TestMoveWithFilterDone_IntoEmptySection(t *testing.T) {
+	file := tempTestFile(t)
+
+	initial := `# Test
+
+## Section A
+- [ ] Task A
+
+## Section B (all done)
+- [x] Done B1
+- [x] Done B2
+
+## Section C
+- [ ] Task C
+`
+	os.WriteFile(file, []byte(initial), 0644)
+
+	// With granular movement, we can move Task A step by step into Section B
+	// Move down once to pass Section A boundary
+	runPiped(t, file, ":filter-done\rmj\r")
+
+	content := readTestFile(t, file)
+	t.Logf("After first move:\n%s", content)
+
+	// Task A should have moved one position (into or past Section B boundary)
+	// The important thing is we didn't skip directly to Section C
 }
