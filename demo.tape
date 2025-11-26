@@ -1,7 +1,7 @@
 # tdx demo - Your todos, in markdown, done fast
 # Run with: vhs demo.tape
 
-Output assets/demo-0.8.0.gif
+Output assets/demo-0.9.0.gif
 
 Require tdx
 
@@ -115,6 +115,28 @@ Sleep 600ms
 Type@50ms "Deploy to production #release"
 Sleep 400ms
 Enter
+Sleep 1s
+
+# Nested tasks - indent with Tab
+Type "kkk"
+Sleep 400ms
+Type "n"
+Sleep 500ms
+Type@50ms "Configure nginx"
+Enter
+Sleep 600ms
+Tab
+Sleep 800ms
+Type "n"
+Sleep 500ms
+Type@50ms "Set up SSL certificates"
+Enter
+Sleep 600ms
+Tab
+Sleep 800ms
+
+# Outdent with Shift+Tab
+Shift+Tab
 Sleep 1s
 
 # Edit a todo
