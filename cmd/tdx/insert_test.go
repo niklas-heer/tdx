@@ -200,7 +200,7 @@ func TestInsertTodoAfter_AST(t *testing.T) {
 - [ ] Second
 - [ ] Third
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Use CLI to verify markdown structure after insert
 	runPiped(t, file, "nInserted\r")

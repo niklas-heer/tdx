@@ -44,8 +44,8 @@ word-wrap: true
 - [ ] Task 2 in file 2
 `
 
-	os.WriteFile(file1, []byte(content1), 0644)
-	os.WriteFile(file2, []byte(content2), 0644)
+	_ = os.WriteFile(file1, []byte(content1), 0644)
+	_ = os.WriteFile(file2, []byte(content2), 0644)
 
 	// Open file1 to add it to recent
 	runPiped(t, file1, "\x1b")
@@ -97,7 +97,7 @@ max-visible: 5
 - [ ] Task 2
 - [ ] Task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enter move mode, move down, then cancel with Escape
 	runPiped(t, file, "mj\x1b")
@@ -129,7 +129,7 @@ show-headings: true
 - [ ] Task 2
 - [ ] Task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enter move mode, move down, then confirm with Enter
 	runPiped(t, file, "mj\r")
@@ -179,8 +179,8 @@ max-visible: 20
 - [ ] File2 Task 2
 `
 
-	os.WriteFile(file1, []byte(content1), 0644)
-	os.WriteFile(file2, []byte(content2), 0644)
+	_ = os.WriteFile(file1, []byte(content1), 0644)
+	_ = os.WriteFile(file2, []byte(content2), 0644)
 
 	// Open file1 to add it to recent
 	runPiped(t, file1, "\x1b")
@@ -241,9 +241,9 @@ word-wrap: false
 - [ ] File3 Task
 `
 
-	os.WriteFile(file1, []byte(content1), 0644)
-	os.WriteFile(file2, []byte(content2), 0644)
-	os.WriteFile(file3, []byte(content3), 0644)
+	_ = os.WriteFile(file1, []byte(content1), 0644)
+	_ = os.WriteFile(file2, []byte(content2), 0644)
+	_ = os.WriteFile(file3, []byte(content3), 0644)
 
 	// Open all files to add them to recent
 	runPiped(t, file1, "\x1b")
@@ -299,8 +299,8 @@ show-headings: true
 - [ ] Task in File2
 `
 
-	os.WriteFile(file1, []byte(content1), 0644)
-	os.WriteFile(file2, []byte(content2), 0644)
+	_ = os.WriteFile(file1, []byte(content1), 0644)
+	_ = os.WriteFile(file2, []byte(content2), 0644)
 
 	// Open file1 first
 	runPiped(t, file1, "\x1b")
@@ -359,8 +359,8 @@ word-wrap: false
 - [ ] Task in File2
 `
 
-	os.WriteFile(file1, []byte(content1), 0644)
-	os.WriteFile(file2, []byte(content2), 0644)
+	_ = os.WriteFile(file1, []byte(content1), 0644)
+	_ = os.WriteFile(file2, []byte(content2), 0644)
 
 	// Open file1 first
 	runPiped(t, file1, "\x1b")

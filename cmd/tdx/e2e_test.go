@@ -79,7 +79,7 @@ func TestE2E_ProjectManagement(t *testing.T) {
 - [ ] QA testing
 - [ ] Deploy to production`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Complete planning phase
 	runCLI(t, file, "toggle", "1")
@@ -178,7 +178,7 @@ func TestE2E_CollaborativeDocument(t *testing.T) {
 
 *Last updated: 2024-01-15*`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Alice completes her tasks
 	runCLI(t, file, "toggle", "1")
@@ -238,7 +238,7 @@ Here are things I need to do:
 [Useful link](https://example.com)
 > Important quote here`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Convert regular list items to task items manually
 	content, _ := os.ReadFile(file)
@@ -246,7 +246,7 @@ Here are things I need to do:
 	markdown = strings.ReplaceAll(markdown, "- Buy groceries", "- [ ] Buy groceries")
 	markdown = strings.ReplaceAll(markdown, "- Call mom", "- [ ] Call mom")
 	markdown = strings.ReplaceAll(markdown, "- Fix the leaky faucet", "- [ ] Fix the leaky faucet")
-	os.WriteFile(file, []byte(markdown), 0644)
+	_ = os.WriteFile(file, []byte(markdown), 0644)
 
 	// Now use tdx to manage
 	runCLI(t, file, "toggle", "1")
@@ -296,7 +296,7 @@ func TestE2E_BugTracking(t *testing.T) {
 **Bug #401**: Reproduced on Safari 16.x, works on Chrome.
 **Bug #402**: Need to add retry logic.`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Fix critical bugs
 	runCLI(t, file, "toggle", "1")
@@ -349,7 +349,7 @@ func TestE2E_RecipeChecklist(t *testing.T) {
 ## Notes
 Best served warm with milk!`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Check off steps as cooking
 	for i := 1; i <= 7; i++ {
@@ -431,7 +431,7 @@ func TestE2E_LargeDocument(t *testing.T) {
 		content.WriteString("\nNotes for this section.\n\n")
 	}
 
-	os.WriteFile(file, []byte(content.String()), 0644)
+	_ = os.WriteFile(file, []byte(content.String()), 0644)
 
 	// Should have 100 tasks
 	todos := getTodos(t, file)
@@ -488,7 +488,7 @@ Regular list:
 
 *Last updated: 2024*`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Operate on tasks
 	runCLI(t, file, "toggle", "1")

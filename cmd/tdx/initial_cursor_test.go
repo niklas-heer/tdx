@@ -20,7 +20,7 @@ filter-done: true
 - [ ] Task A1
 - [ ] Task A2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Initial state with filter-done metadata:")
 	t.Log(initial)
@@ -58,7 +58,7 @@ filter-done: true
 - [ ] Task B
 - [ ] Task C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Initial state with completed tasks in middle:")
 	t.Log(initial)
@@ -89,7 +89,7 @@ filter-done: true
 - [ ] First incomplete
 - [ ] Second incomplete
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Just toggle without moving (cursor should start at First incomplete)
 	runPiped(t, file, " ")
@@ -114,7 +114,7 @@ func TestInitialCursor_NoFilters(t *testing.T) {
 - [ ] Task A
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle item at cursor (should be index 0 - Done task)
 	runPiped(t, file, " ")
@@ -145,7 +145,7 @@ show-headings: true
 
 - [ ] Task C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Initial state with show-headings metadata:")
 	t.Log(initial)
@@ -179,7 +179,7 @@ show-headings: true
 
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle item at cursor (should be Task A - first visible todo)
 	runPiped(t, file, " ")
@@ -209,7 +209,7 @@ filter-done: true
 - [x] Done 2
 - [x] Done 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Try to toggle (no visible items, cursor at index 0)
 	// This will toggle the item at index 0 even though it's filtered
@@ -246,7 +246,7 @@ filter-done: true
 - [x] Completed task 3
 - [ ] Active task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Move down twice and toggle
 	// Should start at Active task 1, move to Active task 2, move to Active task 3, then toggle

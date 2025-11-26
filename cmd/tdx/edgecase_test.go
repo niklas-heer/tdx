@@ -9,7 +9,7 @@ import (
 // TestEdgeCase_EmptyFile tests operations on empty file
 func TestEdgeCase_EmptyFile(t *testing.T) {
 	file := tempTestFile(t)
-	os.WriteFile(file, []byte(""), 0644)
+	_ = os.WriteFile(file, []byte(""), 0644)
 
 	// Add to empty file
 	runCLI(t, file, "add", "First task")
@@ -30,7 +30,7 @@ This is just regular text.
 
 No tasks here.`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Add task to file with no tasks
 	runCLI(t, file, "add", "First task")
@@ -233,7 +233,7 @@ func TestEdgeCase_NewlineInContent(t *testing.T) {
 	file := tempTestFile(t)
 
 	initial := "# Todos\n\nParagraph 1\n\nParagraph 2\n\n- [ ] Task\n\nParagraph 3\n\nParagraph 4"
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	runCLI(t, file, "toggle", "1")
 
@@ -252,7 +252,7 @@ func TestEdgeCase_NewlineInContent(t *testing.T) {
 func TestEdgeCase_OnlyHeader(t *testing.T) {
 	file := tempTestFile(t)
 
-	os.WriteFile(file, []byte("# Todos\n"), 0644)
+	_ = os.WriteFile(file, []byte("# Todos\n"), 0644)
 
 	runCLI(t, file, "add", "First task")
 

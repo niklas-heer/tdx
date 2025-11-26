@@ -18,7 +18,7 @@ filter-done: true
 - [ ] Active task 1
 - [ ] Active task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Just open and immediately toggle - should toggle the first VISIBLE item (Active task 1)
 	runPiped(t, file, " ")
@@ -47,7 +47,7 @@ filter-done: false
 - [x] Completed task
 - [ ] Active task 1
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle first item (should be Completed task at index 0)
 	runPiped(t, file, " ")
@@ -76,7 +76,7 @@ show-headings: true
 
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle first item - should be Task A (first todo, not heading)
 	runPiped(t, file, " ")
@@ -102,7 +102,7 @@ max-visible: 2
 - [ ] Task 3
 - [ ] Task 4
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Move down 3 times and toggle - should wrap around due to max-visible
 	// This test just verifies the metadata is parsed and available
@@ -128,7 +128,7 @@ read-only: true
 - [ ] Task 1
 - [ ] Task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	initialContent := readTestFile(t, file)
 
@@ -153,7 +153,7 @@ word-wrap: false
 
 - [ ] This is a very long task that would normally wrap but shouldn't with word-wrap disabled
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Just verify we can read and process the file with word-wrap metadata
 	// The actual word-wrap behavior is in the View layer
@@ -184,7 +184,7 @@ show-headings: true
 - [ ] Task 1
 - [ ] Task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle first visible item - should be Task 1
 	runPiped(t, file, " ")
@@ -204,7 +204,7 @@ func TestMetadataBehavior_NoMetadata(t *testing.T) {
 	initial := `- [x] Completed task
 - [ ] Active task
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle first item - should be Completed task at index 0
 	runPiped(t, file, " ")

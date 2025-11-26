@@ -41,7 +41,7 @@ show-headings: true
 - [ ] Task 1
 - [ ] Task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle first task
 	runPiped(t, file, " ")
@@ -71,7 +71,7 @@ max-visible: 10
 - [ ] Task 2
 - [ ] Task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle multiple times
 	runPiped(t, file, " j j ")
@@ -96,7 +96,7 @@ show-headings: true
 - [ ] Task 2
 - [ ] Task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Delete first task
 	runPiped(t, file, "d")
@@ -126,7 +126,7 @@ read-only: false
 - [ ] Task 3
 - [ ] Task 4
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Delete multiple tasks
 	runPiped(t, file, "djd")
@@ -152,7 +152,7 @@ filter-done: true
 
 - [ ] Task 1
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Add a new task
 	runPiped(t, file, "nNew Task\r")
@@ -178,7 +178,7 @@ word-wrap: true
 
 - [ ] Original Task
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Edit the task
 	runPiped(t, file, "e\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7fEdited Task\r")
@@ -207,7 +207,7 @@ show-headings: false
 - [ ] Task 2
 - [ ] Task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Move first task down
 	runPiped(t, file, "mj\r")
@@ -236,7 +236,7 @@ max-visible: 5
 - [x] Done Task 2
 - [ ] Active Task
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Clear done tasks
 	runPiped(t, file, ":clear-done\r")
@@ -264,7 +264,7 @@ word-wrap: true
 - [ ] Task 1
 - [ ] Task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Check all tasks
 	runPiped(t, file, ":check-all\r")
@@ -293,7 +293,7 @@ filter-done: true
 - [x] Task 1
 - [x] Task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Uncheck all tasks
 	runPiped(t, file, ":uncheck-all\r")
@@ -323,7 +323,7 @@ show-headings: true
 - [ ] Apple
 - [ ] Banana
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Sort tasks
 	runPiped(t, file, ":sort\r")
@@ -355,7 +355,7 @@ read-only: false
 - [ ] Task 2
 - [ ] Task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Perform multiple operations in sequence
 	runPiped(t, file, " ")      // Toggle first
@@ -388,7 +388,7 @@ show-headings: true
 
 - [ ] Task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle and delete
 	runPiped(t, file, " jd")
@@ -418,7 +418,7 @@ filter-done: true
 
 - [ ] Only Task
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Delete the only task
 	runPiped(t, file, "d")
@@ -443,7 +443,7 @@ filter-done: true
 
 - [ ] Task 1
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Use CLI to add a task
 	runCLI(t, file, "add", "New CLI Task")
@@ -470,7 +470,7 @@ word-wrap: false
 - [ ] Task 1
 - [ ] Task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Use CLI to toggle
 	runCLI(t, file, "toggle", "1")

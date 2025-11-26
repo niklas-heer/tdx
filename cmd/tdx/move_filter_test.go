@@ -20,7 +20,7 @@ func TestMoveWithFilterDone(t *testing.T) {
 - [x] Task 4 (completed)
 - [ ] Task 5
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move to Task 3 (j), then move Task 3 down once
 	// Visible: Task 1, Task 3, Task 5
@@ -74,7 +74,7 @@ func TestMoveWithFilterDone_SavesProperly(t *testing.T) {
 - [x] Done
 - [ ] Second
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move First down (inserts after Second - next visible)
 	runPiped(t, file, ":filter-done\rmj\r")
@@ -107,7 +107,7 @@ func TestMoveWithFilterDone_SingleMove(t *testing.T) {
 - [x] Done
 - [ ] Second
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move First down ONCE (inserts after Second)
 	runPiped(t, file, ":filter-done\rmj\r")
@@ -146,7 +146,7 @@ func TestMoveWithFilterDone_CrossingHeadings(t *testing.T) {
 - [ ] Task C
 - [x] Task D (done)
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, select Task A, move down
 	// Visible: Task A, Task C
@@ -196,7 +196,7 @@ func TestMoveWithFilterDone_IntoEmptySection(t *testing.T) {
 ## Section C
 - [ ] Task C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// With visible-swap: Task A swaps with Task C (next visible)
 	// Section B's completed tasks stay in place
@@ -235,7 +235,7 @@ func TestMoveWithFilterDone_MoveUpSwapsWithPreviousVisible(t *testing.T) {
 - [x] Hidden 2
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move to Task B (j), then move it up
 	// Visible: Task A, Task B
@@ -275,7 +275,7 @@ func TestMoveWithFilterDone_Reversible(t *testing.T) {
 - [ ] B
 - [ ] C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move down then up (in single session)
 	// Visible: A, B, C

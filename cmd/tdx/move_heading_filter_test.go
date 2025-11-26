@@ -26,7 +26,7 @@ filter-done: true
 ## Section C
 - [ ] Task C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Initial visible tasks: Task A (Section A), Task C (Section C)")
 	t.Log("Section B appears empty because all tasks are done")
@@ -72,7 +72,7 @@ func TestMoveWithFilterDone_VisibleSwapMovement(t *testing.T) {
 - [x] Done 3
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Array indices: Task A(0), Done1(1), Done2(2), Done3(3), Task B(4)")
 	t.Log("Visible with filter-done: Task A, Task B")
@@ -118,7 +118,7 @@ func TestMoveWithFilterDone_ConsecutiveMovesArePredictable(t *testing.T) {
 - [x] Done 2
 - [ ] Task C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Visible: Task A, Task B, Task C
 	// Move Task A down twice (in single session)
@@ -165,7 +165,7 @@ func TestMoveWithFilterDone_CursorStaysOnMovedItem(t *testing.T) {
 - [x] Done 2
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move Task A down, then immediately delete
 	// If cursor stayed on Task A (now at Task B's old position), delete removes Task A
@@ -205,7 +205,7 @@ filter-done: true
 ## Section C
 - [ ] Task C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Starting with cursor on Task C (last visible task)")
 
@@ -253,7 +253,7 @@ func TestMoveWithFilterDone_HeadingBoundaries(t *testing.T) {
 - [x] Personal Done
 - [ ] Personal Task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done
 	// Visible: Work Task 1, Work Task 2, Personal Task 1, Personal Task 2
@@ -297,7 +297,7 @@ func TestMoveNoFilter_AdjacentSwap(t *testing.T) {
 - [x] B
 - [ ] C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Move A down (no filter active) - swaps with adjacent B
 	runPiped(t, file, "mj\r")
@@ -330,7 +330,7 @@ func TestMoveWithFilterDone_Reversibility(t *testing.T) {
 - [x] Done 1
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	initialContent := readTestFile(t, file)
 	t.Logf("Initial:\n%s", initialContent)
@@ -371,7 +371,7 @@ func TestMoveWithFilterDone_StopsAtEnd(t *testing.T) {
 - [x] Hidden
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, try to move Task A down multiple times
 	// Should only swap once (with Task B), then stop
@@ -411,7 +411,7 @@ func TestMoveWithFilterDone_CantMovePastStart(t *testing.T) {
 - [x] Hidden
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move to Task B, try to move it up multiple times
 	// Should only swap once (with Task A), then stop

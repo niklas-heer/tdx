@@ -54,8 +54,8 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 	var walkList func(list *ast.List, depth int, parentIdx int)
 
 	// walkListItem processes a single list item and its nested lists
-	var walkListItem func(listItem *ast.ListItem, depth int, parentIdx int)
-	walkListItem = func(listItem *ast.ListItem, depth int, parentIdx int) { //nolint:unparam
+	var walkListItem func(listItem *ast.ListItem, depth int, parentIdx int) //nolint:unparam,staticcheck
+	walkListItem = func(listItem *ast.ListItem, depth int, parentIdx int) {
 		// Check if this list item has a checkbox (task item)
 		var checkbox *extast.TaskCheckBox
 		var textBlock ast.Node
@@ -280,7 +280,7 @@ func (doc *ASTDocument) FindTodoNode(todoIndex int) (*TodoNode, error) {
 	currentIndex := 0
 
 	var found *TodoNode
-	ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering || found != nil {
 			return ast.WalkContinue, nil
 		}
@@ -299,7 +299,7 @@ func (doc *ASTDocument) FindTodoNode(todoIndex int) (*TodoNode, error) {
 
 				// Find the text node containing the checkbox text
 				var textNode *ast.Text
-				ast.Walk(textBlock, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+				_ = ast.Walk(textBlock, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 					if entering {
 						if tn, ok := n.(*ast.Text); ok {
 							textNode = tn
@@ -389,7 +389,7 @@ func (doc *ASTDocument) UpdateTodoText(todoIndex int, newText string) error {
 
 	// Find the parsed list item
 	var newListItem *ast.ListItem
-	ast.Walk(tempDoc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(tempDoc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering || newListItem != nil {
 			return ast.WalkContinue, nil
 		}
@@ -397,7 +397,7 @@ func (doc *ASTDocument) UpdateTodoText(todoIndex int, newText string) error {
 		if li, ok := n.(*ast.ListItem); ok {
 			// Verify it has a checkbox
 			hasCheckbox := false
-			ast.Walk(li, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
+			_ = ast.Walk(li, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
 				if entering && child.Kind() == extast.KindTaskCheckBox {
 					hasCheckbox = true
 					return ast.WalkStop, nil
@@ -516,7 +516,7 @@ func (doc *ASTDocument) AddTodo(todoText string, checked bool) error {
 	// Find the last list in the document, or create one
 	var lastList *ast.List
 
-	ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			if list, ok := node.(*ast.List); ok {
 				// Check if this list contains task items
@@ -524,7 +524,7 @@ func (doc *ASTDocument) AddTodo(todoText string, checked bool) error {
 				for child := list.FirstChild(); child != nil; child = child.NextSibling() {
 					if listItem, ok := child.(*ast.ListItem); ok {
 						// Check if this list item has a checkbox
-						ast.Walk(listItem, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+						_ = ast.Walk(listItem, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 							if entering && n.Kind() == extast.KindTaskCheckBox {
 								hasTaskItems = true
 								return ast.WalkStop, nil
@@ -599,13 +599,13 @@ func (doc *ASTDocument) InsertTodoAfter(afterIndex int, todoText string, checked
 	if afterIndex < 0 {
 		// Insert at the beginning of the first todo list
 		var firstList *ast.List
-		ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		_ = ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 			if entering {
 				if list, ok := node.(*ast.List); ok {
 					hasTaskItems := false
 					for child := list.FirstChild(); child != nil; child = child.NextSibling() {
 						if listItem, ok := child.(*ast.ListItem); ok {
-							ast.Walk(listItem, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+							_ = ast.Walk(listItem, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 								if entering && n.Kind() == extast.KindTaskCheckBox {
 									hasTaskItems = true
 									return ast.WalkStop, nil

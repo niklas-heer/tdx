@@ -15,7 +15,7 @@ func TestMoveWithFilterDone_Simple(t *testing.T) {
 - [x] B
 - [ ] C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Initial state:")
 	t.Log(initial)
@@ -51,7 +51,7 @@ func TestMoveWithFilterDone_MoveDownThenUp(t *testing.T) {
 - [x] B
 - [ ] C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	initialTodos := getTodos(t, file)
 
@@ -96,7 +96,7 @@ func TestMoveWithFilterDone_NoFilter(t *testing.T) {
 - [x] B
 - [ ] C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Move A down (no filter)
 	// Should swap A with B (adjacent in array)
@@ -130,7 +130,7 @@ func TestMoveWithFilterDone_VisibleSwapIsPredictable(t *testing.T) {
 - [x] Done C
 - [ ] Task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move Task 1 down twice (in single session)
 	// Visible: Task 1, Task 2, Task 3
@@ -174,7 +174,7 @@ func TestMoveWithFilterDone_CantMovePastEnd(t *testing.T) {
 - [x] B
 - [ ] C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, try to move A down 5 times (but only 1 visible item after)
 	runPiped(t, file, ":filter-done\rmjjjjj\r")

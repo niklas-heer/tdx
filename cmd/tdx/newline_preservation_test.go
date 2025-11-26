@@ -22,7 +22,7 @@ Content between tasks.
 
 More content here.`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle first task
 	runCLI(t, file, "toggle", "1")
@@ -63,7 +63,7 @@ func TestNewlinePreservation_MultipleBlankLines(t *testing.T) {
 
 - [ ] Third task`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Edit second task
 	runCLI(t, file, "edit", "2", "Modified task")
@@ -112,7 +112,7 @@ Some notes here.
 
 - [ ] Task three`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Delete middle task
 	runCLI(t, file, "delete", "2")
@@ -141,7 +141,7 @@ func TestNewlinePreservation_CodeBlocks(t *testing.T) {
 
 	initial := "# Todos\n\n- [ ] First task\n\n```go\nfunc main() {\n    fmt.Println(\"Hello\")\n}\n```\n\n- [ ] Second task"
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle first task
 	runCLI(t, file, "toggle", "1")
@@ -174,7 +174,7 @@ func TestNewlinePreservation_Quotes(t *testing.T) {
 
 - [ ] Task two`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Add a new task
 	runCLI(t, file, "add", "Task three")
@@ -205,7 +205,7 @@ Conclusion paragraph.
 
 Final notes.`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle the task
 	runCLI(t, file, "toggle", "1")
@@ -239,7 +239,7 @@ Check out [this link](https://example.com) for more info.
 
 - [ ] Second task`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Edit first task
 	runCLI(t, file, "edit", "1", "Updated task")
@@ -264,7 +264,7 @@ func TestNewlinePreservation_HorizontalRules(t *testing.T) {
 
 - [ ] Second task`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Delete first task
 	runCLI(t, file, "delete", "1")
@@ -292,7 +292,7 @@ Regular list:
 
 - [ ] Task two`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle task
 	runCLI(t, file, "toggle", "1")
@@ -323,7 +323,7 @@ This has *italic* and **bold** text.
 
 - [ ] Second task`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Add task
 	runCLI(t, file, "add", "Third task")

@@ -372,7 +372,7 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.EditMode {
 			if m.InputBuffer != "" {
 				todo := m.FileModel.Todos[m.SelectedIndex]
-				m.FileModel.UpdateTodoItem(m.SelectedIndex, m.InputBuffer, todo.Checked)
+				_ = m.FileModel.UpdateTodoItem(m.SelectedIndex, m.InputBuffer, todo.Checked)
 				m.InvalidateDocumentTree() // Text change affects document tree
 				m.writeIfPersist()
 			}

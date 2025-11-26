@@ -17,7 +17,7 @@ func TestTUI_MoveWithCompletedItem(t *testing.T) {
 - [x] B
 - [ ] C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Initial file:")
 	t.Log(initial)
@@ -142,7 +142,7 @@ func TestTUI_MoveWithFilterDone_VisibleOrderChanges(t *testing.T) {
 - [x] Hidden B
 - [ ] Task 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Enable filter-done, move Task 1 down once
 	// Visible order: Task 1, Task 2, Task 3

@@ -21,7 +21,7 @@ filter-done: true
 - [ ] Task B
 - [ ] Task C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Initial state with filter-done metadata:")
 	t.Log(initial)
@@ -67,7 +67,7 @@ filter-done: true
 - [ ] Task B
 - [ ] Task C
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Move to Task B (second visible item), delete it, then toggle
 	// This verifies cursor moved to Task C after delete
@@ -106,7 +106,7 @@ filter-done: true
 - [x] Done task 1
 - [x] Done task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Move to Task B (last visible) and delete
 	runPiped(t, file, "jd")
@@ -147,7 +147,7 @@ filter-done: true
 - [ ] Task A
 - [x] Done task 2
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Delete the only visible item
 	runPiped(t, file, "d")
@@ -190,7 +190,7 @@ filter-done: true
 - [ ] Visible 2
 - [ ] Visible 3
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	t.Log("Testing delete with multiple hidden items at top")
 	t.Log("Cursor should start on 'Visible 1'")
@@ -242,7 +242,7 @@ func TestDelete_NoFilter_NormalBehavior(t *testing.T) {
 - [ ] Task A
 - [ ] Task B
 `
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Delete first item (no filter, so it's at index 0)
 	runPiped(t, file, "d")

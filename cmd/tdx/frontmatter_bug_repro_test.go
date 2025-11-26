@@ -64,8 +64,8 @@ filter-done: false
 - [ ] Task in file 2
 `
 
-	os.WriteFile(file1, []byte(content1), 0644)
-	os.WriteFile(file2, []byte(content2), 0644)
+	_ = os.WriteFile(file1, []byte(content1), 0644)
+	_ = os.WriteFile(file2, []byte(content2), 0644)
 
 	// Add file2 to recent first
 	runPiped(t, file2, "\x1b")
@@ -188,8 +188,8 @@ word-wrap: false
 - [ ] Other file task
 `
 
-	os.WriteFile(file1, []byte(content1), 0644)
-	os.WriteFile(file2, []byte(content2), 0644)
+	_ = os.WriteFile(file1, []byte(content1), 0644)
+	_ = os.WriteFile(file2, []byte(content2), 0644)
 
 	// Add file2 to recent
 	runPiped(t, file2, "\x1b")
@@ -254,7 +254,7 @@ show-headings: true
 - [ ] Active B2
 `
 
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Move Active B1 up - this might try to move it into the "empty" Section A
 	// With filter-done, we should only see Active B1 and B2
@@ -298,7 +298,7 @@ max-visible: 0
 - [ ] Task 3
 `
 
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Move down and confirm
 	runPiped(t, file, "mj\r")

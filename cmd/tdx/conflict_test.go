@@ -115,7 +115,7 @@ func TestConflictDetection_ReloadAfterConflict(t *testing.T) {
 - [ ] Task two
 - [ ] Task three (added externally)
 `
-	os.WriteFile(tmpFile, []byte(externalContent), 0644)
+	_ = os.WriteFile(tmpFile, []byte(externalContent), 0644)
 
 	// Try to write - should fail
 	err = markdown.WriteFile(tmpFile, fm)

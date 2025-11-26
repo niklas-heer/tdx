@@ -22,7 +22,7 @@ func TestVisualCommandPalette(t *testing.T) {
 - [x] Completed task #frontend
 - [ ] Another task #urgent #backend
 `
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	t.Log("\n=== Command Palette Visual Output ===")
 
@@ -78,7 +78,7 @@ func TestVisualFilterMode(t *testing.T) {
 - [x] Completed task #frontend
 - [ ] Another task #urgent #backend
 `
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	t.Log("\n=== Filter Mode Visual Output ===")
 

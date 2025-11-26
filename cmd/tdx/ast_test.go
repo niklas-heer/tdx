@@ -55,7 +55,7 @@ Some text.
 
 More text.`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Toggle first task
 	runCLI(t, file, "toggle", "1")
@@ -103,7 +103,7 @@ func TestAST_HandlesComplexNesting(t *testing.T) {
 
 - [x] Completed task`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	todos := getTodos(t, file)
 	if len(todos) != 3 {
@@ -344,7 +344,7 @@ func TestAST_HandlesEmptyLines(t *testing.T) {
 
 - [ ] Task with single blank line above`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	todos := getTodos(t, file)
 	if len(todos) != 3 {

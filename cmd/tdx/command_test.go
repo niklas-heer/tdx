@@ -95,7 +95,7 @@ Another note.
 
 Final note.`
 
-	os.WriteFile(file, []byte(initial), 0644)
+	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	runPiped(t, file, ":clear-done\r")
 
@@ -239,7 +239,7 @@ func TestCommand_MixedStatus(t *testing.T) {
 func TestCommand_EmptyFile(t *testing.T) {
 	file := tempTestFile(t)
 
-	os.WriteFile(file, []byte(""), 0644)
+	_ = os.WriteFile(file, []byte(""), 0644)
 
 	// These should not crash on empty file
 	runPiped(t, file, ":check-all\r")
