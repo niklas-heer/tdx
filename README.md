@@ -62,6 +62,16 @@ just build
 just install
 ```
 
+### Nix
+
+```bash
+# Try it without installing
+nix run github:niklas-heer/tdx
+
+# Install to profile
+nix profile install github:niklas-heer/tdx
+```
+
 ## Usage
 
 ### Interactive TUI (Default)
