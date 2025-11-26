@@ -182,7 +182,7 @@ Type@60ms "# Paste and run the copied command"
 Enter
 Sleep 800ms
 
-Ctrl+v
+Paste
 Sleep 600ms
 Enter
 Sleep 1.5s
