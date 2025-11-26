@@ -310,10 +310,22 @@
                             <code
                                 ><a
                                     href="https://github.com/niklas-heer/tdx/releases/latest"
-                                    style="color: var(--accent); text-decoration: none;"
+                                    style="
+                                        color: var(--accent);
+                                        text-decoration: none;
+                                    "
                                     >Download for macOS, Linux, or Windows →</a
                                 ></code
                             >
+                        </div>
+                    </div>
+                    <div class="install-method">
+                        <h3>Nix</h3>
+                        <div class="code-block">
+                            <code>nix run github:niklas-heer/tdx</code>
+                            <button class="copy-btn" onclick="copyCode(this)">
+                                Copy
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -388,6 +400,14 @@
                         YAML frontmatter.
                     </p>
                 </div>
+                <div class="feature">
+                    <div class="feature-icon">📂</div>
+                    <h3>Recent Files</h3>
+                    <p>
+                        Jump to recently opened files with cursor position
+                        restoration. Smart sorting by frequency and recency.
+                    </p>
+                </div>
             </section>
 
             <section class="shortcuts">
@@ -398,12 +418,20 @@
                         <span>Move down / up</span>
                     </div>
                     <div class="shortcut">
+                        <kbd>gg / G</kbd>
+                        <span>First / last item</span>
+                    </div>
+                    <div class="shortcut">
                         <kbd>Space</kbd>
                         <span>Toggle completion</span>
                     </div>
                     <div class="shortcut">
                         <kbd>n</kbd>
-                        <span>New todo</span>
+                        <span>New todo after cursor</span>
+                    </div>
+                    <div class="shortcut">
+                        <kbd>N</kbd>
+                        <span>New todo at end</span>
                     </div>
                     <div class="shortcut">
                         <kbd>e</kbd>
@@ -430,6 +458,10 @@
                         <span>Tag filter</span>
                     </div>
                     <div class="shortcut">
+                        <kbd>r</kbd>
+                        <span>Recent files</span>
+                    </div>
+                    <div class="shortcut">
                         <kbd>:</kbd>
                         <span>Command palette</span>
                     </div>
@@ -451,7 +483,8 @@
             <footer>
                 <p>
                     <a href="https://github.com/niklas-heer/tdx">GitHub</a> ·
-                    <a href="https://github.com/niklas-heer/tdx/blob/main/README.md"
+                    <a
+                        href="https://github.com/niklas-heer/tdx/blob/main/README.md"
                         >Documentation</a
                     >
                     ·
