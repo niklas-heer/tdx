@@ -542,3 +542,187 @@ func TestChecklistFilterDoneWithHeadings(t *testing.T) {
 		t.Logf("After j #%d: SelectedIndex=%d", i+1, m.SelectedIndex)
 	}
 }
+
+// TestExactVHSPanicSequence reproduces the EXACT sequence from the original VHS tape
+// that was causing panics: N + comment text + Escape + check-all + N
+func TestExactVHSPanicSequence(t *testing.T) {
+	content := `---
+show-headings: true
+filter-done: false
+---
+
+# Weekly Sprint Checklist
+
+## Monday
+- [ ] Review pending PRs #review #urgent
+- [ ] Team standup notes #meeting
+- [x] Check CI pipeline #devops
+
+## Tuesday
+- [ ] Write unit tests #testing
+- [ ] Code review session #review
+- [x] Update documentation #docs
+
+## Wednesday
+- [ ] Deploy to staging #devops #urgent
+- [ ] Performance testing #testing
+
+## Commands
+- [ ] echo 'Deploy complete!' && date
+`
+	fm := markdown.ParseMarkdown(content)
+	m := New("/tmp/checklist.md", fm, false, true, -1, testConfig(), testStyles(), "")
+	m.TermWidth = 80
+
+	renderView := func(step string) {
+		view := m.View()
+		t.Logf("  [%s] View rendered OK, length=%d", step, len(view))
+	}
+
+	t.Logf("Initial: Todos=%d, SelectedIndex=%d", len(m.FileModel.Todos), m.SelectedIndex)
+	renderView("initial")
+
+	// VHS sequence from original tape:
+	// 1. Navigate with gg, n (new task), type comment, Escape
+	t.Log("Step 1: gg")
+	m = pressKey(t, m, "g")
+	m = pressKey(t, m, "g")
+	renderView("after-gg")
+
+	t.Log("Step 2: n (new task after cursor)")
+	m = pressKey(t, m, "n")
+	t.Logf("  InputMode=%v, InsertAfterCursor=%v", m.InputMode, m.InsertAfterCursor)
+	renderView("after-n")
+
+	t.Log("Step 3: Type comment text")
+	for _, c := range "# Headings visible thanks to front matter" {
+		m = pressKey(t, m, string(c))
+	}
+	renderView("after-typing")
+
+	t.Log("Step 4: Escape (cancel input)")
+	m = pressKeyType(t, m, tea.KeyEsc)
+	t.Logf("  InputMode=%v, Todos=%d", m.InputMode, len(m.FileModel.Todos))
+	renderView("after-escape1")
+
+	// 2. Navigate, toggle items, filter
+	t.Log("Step 5: Navigate jjj, space, jj, space")
+	m = pressKey(t, m, "j")
+	m = pressKey(t, m, "j")
+	m = pressKey(t, m, "j")
+	m = pressKey(t, m, " ")
+	m = pressKey(t, m, "j")
+	m = pressKey(t, m, "j")
+	m = pressKey(t, m, " ")
+	renderView("after-toggles")
+
+	// 3. Filter by tag
+	t.Log("Step 6: Filter by tag")
+	m = pressKey(t, m, "f")
+	m = pressKey(t, m, "j")
+	m = pressKey(t, m, "j")
+	m = pressKey(t, m, " ")
+	m = pressKey(t, m, "f")
+	m = pressKey(t, m, "c")
+	m = pressKeyType(t, m, tea.KeyEsc)
+	renderView("after-filter")
+
+	// 4. gg, n + comment + Escape + Enter (add "Morning coffee ritual")
+	t.Log("Step 7: gg, n, type, enter (add new task)")
+	m = pressKey(t, m, "g")
+	m = pressKey(t, m, "g")
+	m = pressKey(t, m, "n")
+	for _, c := range "Morning coffee ritual #urgent" {
+		m = pressKey(t, m, string(c))
+	}
+	m = pressKeyType(t, m, tea.KeyEnter)
+	t.Logf("  After adding task: Todos=%d", len(m.FileModel.Todos))
+	renderView("after-add-task")
+
+	// 5. Toggle filter-done on
+	t.Log("Step 8: filter-done ON")
+	executeCommand(&m, "filter-done")
+	t.Logf("  FilterDone=%v", m.FilterDone)
+	renderView("after-filter-done-on")
+
+	// 6. N + comment + Escape (this is where VHS had Type "N")
+	t.Log("Step 9: N (append mode), type comment, Escape")
+	m = pressKey(t, m, "N")
+	t.Logf("  InputMode=%v, InsertAfterCursor=%v", m.InputMode, m.InsertAfterCursor)
+	for _, c := range "# Completed items now hidden" {
+		m = pressKey(t, m, string(c))
+	}
+	m = pressKeyType(t, m, tea.KeyEsc)
+	t.Logf("  After Escape: InputMode=%v, Todos=%d", m.InputMode, len(m.FileModel.Todos))
+	renderView("after-N-escape")
+
+	// 7. Toggle filter-done off
+	t.Log("Step 10: filter-done OFF")
+	executeCommand(&m, "filter-done")
+	t.Logf("  FilterDone=%v", m.FilterDone)
+	renderView("after-filter-done-off")
+
+	// 8. N + comment + Escape BEFORE check-all (this was in the VHS tape)
+	t.Log("Step 11: N, type '# Check all items at once', Escape")
+	m = pressKey(t, m, "N")
+	for _, c := range "# Check all items at once" {
+		m = pressKey(t, m, string(c))
+	}
+	m = pressKeyType(t, m, tea.KeyEsc)
+	renderView("after-comment-before-check-all")
+
+	// 9. check-all - THIS IS THE CRITICAL COMMAND
+	t.Log("Step 12: :check-all")
+	executeCommand(&m, "check-all")
+	t.Logf("  After check-all: SelectedIndex=%d", m.SelectedIndex)
+	allChecked := true
+	for i, todo := range m.FileModel.Todos {
+		if !todo.Checked {
+			allChecked = false
+			t.Logf("  Todo[%d] NOT checked: %s", i, todo.Text)
+		}
+	}
+	t.Logf("  All todos checked: %v", allChecked)
+	renderView("after-check-all")
+
+	// 10. N + comment + Escape AFTER check-all (THIS IS WHERE PANIC LIKELY OCCURS)
+	t.Log("Step 13: N (after check-all), type comment, Escape")
+	m = pressKey(t, m, "N")
+	t.Logf("  InputMode=%v, InsertAfterCursor=%v, SelectedIndex=%d", m.InputMode, m.InsertAfterCursor, m.SelectedIndex)
+	renderView("after-N-post-check-all")
+
+	for _, c := range "# Reset checklist with uncheck-all" {
+		m = pressKey(t, m, string(c))
+	}
+	renderView("after-typing-post-check-all")
+
+	m = pressKeyType(t, m, tea.KeyEsc)
+	t.Logf("  After Escape: InputMode=%v", m.InputMode)
+	renderView("after-escape-post-check-all")
+
+	// 11. uncheck-all
+	t.Log("Step 14: :uncheck-all")
+	executeCommand(&m, "uncheck-all")
+	renderView("after-uncheck-all")
+
+	// 12. More N + comment sequences
+	t.Log("Step 15: N, type, Escape")
+	m = pressKey(t, m, "N")
+	for _, c := range "# Copy task to clipboard with 'c'" {
+		m = pressKey(t, m, string(c))
+	}
+	m = pressKeyType(t, m, tea.KeyEsc)
+	renderView("after-final-N")
+
+	// 13. G (go to last)
+	t.Log("Step 16: G (go to last)")
+	m = pressKey(t, m, "G")
+	renderView("after-G")
+
+	// 14. c (copy)
+	t.Log("Step 17: c (copy)")
+	m = pressKey(t, m, "c")
+	renderView("after-c")
+
+	t.Log("Test passed - no panic!")
+}

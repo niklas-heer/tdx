@@ -23,7 +23,12 @@ func InitCommands() []Command {
 			Description: "Mark all todos as complete",
 			Handler: func(m *Model) {
 				m.saveHistory()
-				for i := range m.FileModel.Todos {
+				// Use index-based loop with bounds check since UpdateTodoItem
+				// can re-extract todos from AST, potentially changing slice
+				for i := 0; i < len(m.FileModel.Todos); i++ {
+					if i >= len(m.FileModel.Todos) {
+						break // Safety check if slice shrinks
+					}
 					todo := m.FileModel.Todos[i]
 					if !todo.Checked {
 						_ = m.FileModel.UpdateTodoItem(i, todo.Text, true)
@@ -38,7 +43,12 @@ func InitCommands() []Command {
 			Description: "Mark all todos as incomplete",
 			Handler: func(m *Model) {
 				m.saveHistory()
-				for i := range m.FileModel.Todos {
+				// Use index-based loop with bounds check since UpdateTodoItem
+				// can re-extract todos from AST, potentially changing slice
+				for i := 0; i < len(m.FileModel.Todos); i++ {
+					if i >= len(m.FileModel.Todos) {
+						break // Safety check if slice shrinks
+					}
 					todo := m.FileModel.Todos[i]
 					if todo.Checked {
 						_ = m.FileModel.UpdateTodoItem(i, todo.Text, false)
