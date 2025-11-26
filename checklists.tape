@@ -1,7 +1,7 @@
 # tdx checklists demo - Front matter and checklist features
 # Run with: vhs checklists.tape
 
-Output assets/checklists.gif
+Output assets/checklists-0.8.0.gif
 
 Require tdx
 
@@ -97,11 +97,7 @@ Sleep 1.5s
 
 # Show headings are visible (from show-headings: true)
 Type "gg"
-Type "n"
-Type@60ms "# Headings visible thanks to front matter"
-Sleep 1.5s
-Escape
-Sleep 1s
+Sleep 800ms
 
 # Navigate and toggle some items
 Type "jjj"
@@ -131,15 +127,11 @@ Sleep 500ms
 Escape
 Sleep 1s
 
-# Add a new checklist item
+# Navigate to top and toggle first item
 Type "gg"
 Sleep 400ms
-Type "n"
+Space
 Sleep 600ms
-Type@50ms "Morning coffee ritual #urgent"
-Sleep 400ms
-Enter
-Sleep 1s
 
 # Toggle filter-done via command palette
 Type ":"
@@ -149,14 +141,7 @@ Sleep 500ms
 Enter
 Sleep 1.2s
 
-# Completed items are now hidden
-Type "N"
-Type@60ms "# Completed items now hidden"
-Sleep 1.5s
-Escape
-Sleep 500ms
-
-# Toggle it back
+# Completed items are now hidden - toggle it back
 Type ":"
 Sleep 400ms
 Type@60ms "filter-done"
@@ -165,39 +150,22 @@ Enter
 Sleep 1s
 
 # Check all items at once
-Type "N"
-Type@60ms "# Check all items at once"
-Sleep 1s
-Escape
-Sleep 500ms
-
 Type ":"
 Sleep 500ms
 Type@60ms "check-all"
 Sleep 500ms
 Enter
-Sleep 1.2s
+Sleep 1.5s
 
 # Uncheck all to reset the checklist
-Type "N"
-Type@60ms "# Reset checklist with uncheck-all"
-Sleep 1s
-Escape
-Sleep 500ms
-
 Type ":"
 Sleep 500ms
 Type@60ms "uncheck-all"
 Sleep 500ms
 Enter
-Sleep 1.2s
+Sleep 1.5s
 
 # Copy a command to clipboard
-Type "N"
-Type@60ms "# Copy task to clipboard with 'c'"
-Sleep 1s
-Escape
-Sleep 500ms
 
 # Navigate to the command task
 Type "G"
