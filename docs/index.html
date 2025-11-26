@@ -8,6 +8,27 @@
             name="description"
             content="A fast, single-binary CLI todo manager with vim-style navigation and interactive TUI. Store todos in plain markdown."
         />
+        <!-- Open Graph / Social -->
+        <meta property="og:type" content="website" />
+        <meta
+            property="og:title"
+            content="tdx - Your todos, in markdown, done fast"
+        />
+        <meta
+            property="og:description"
+            content="A fast, single-binary CLI todo manager with vim-style navigation and interactive TUI. Store todos in plain markdown."
+        />
+        <meta
+            property="og:image"
+            content="https://raw.githubusercontent.com/niklas-heer/tdx/main/assets/demo-0.7.0.gif"
+        />
+        <meta property="og:url" content="https://niklas-heer.github.io/tdx/" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <!-- Favicon -->
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✓</text></svg>"
+        />
         <style>
             :root {
                 --bg: #0d1117;
@@ -42,10 +63,23 @@
                 padding: 0 20px;
             }
 
+            /* Animations */
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
             /* Hero */
             .hero {
                 text-align: center;
                 padding: 80px 0 60px;
+                animation: fadeInUp 0.6s ease-out;
             }
 
             .hero h1 {
@@ -65,7 +99,30 @@
             .hero .tagline {
                 font-size: 1.5rem;
                 color: var(--text-muted);
-                margin-bottom: 40px;
+                margin-bottom: 24px;
+            }
+
+            .github-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                background: var(--bg-secondary);
+                color: var(--text);
+                padding: 12px 24px;
+                border-radius: 8px;
+                border: 1px solid var(--border);
+                text-decoration: none;
+                font-weight: 500;
+                transition: all 0.2s ease;
+            }
+
+            .github-btn:hover {
+                border-color: var(--accent);
+                background: var(--border);
+            }
+
+            .github-btn svg {
+                opacity: 0.8;
             }
 
             /* Demo */
@@ -76,6 +133,7 @@
                 overflow: hidden;
                 box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
                 border: 1px solid var(--border);
+                animation: fadeInUp 0.6s ease-out 0.2s both;
             }
 
             .demo img {
@@ -170,6 +228,14 @@
                 border-radius: 12px;
                 padding: 24px;
                 border: 1px solid var(--border);
+                transition:
+                    transform 0.2s ease,
+                    border-color 0.2s ease;
+            }
+
+            .feature:hover {
+                transform: translateY(-4px);
+                border-color: var(--accent);
             }
 
             .feature-icon {
@@ -270,6 +336,24 @@
             <section class="hero">
                 <h1>tdx</h1>
                 <p class="tagline">Your todos, in markdown, done fast.</p>
+                <a
+                    href="https://github.com/niklas-heer/tdx"
+                    class="github-btn"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    <svg
+                        height="20"
+                        width="20"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                    >
+                        <path
+                            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                        />
+                    </svg>
+                    View on GitHub
+                </a>
             </section>
 
             <div class="demo">
