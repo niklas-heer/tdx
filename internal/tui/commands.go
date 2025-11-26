@@ -29,6 +29,7 @@ func InitCommands() []Command {
 						m.FileModel.UpdateTodoItem(i, todo.Text, true)
 					}
 				}
+				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 			},
 		},
@@ -43,6 +44,7 @@ func InitCommands() []Command {
 						m.FileModel.UpdateTodoItem(i, todo.Text, false)
 					}
 				}
+				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 			},
 		},
@@ -75,6 +77,8 @@ func InitCommands() []Command {
 			Description: "Toggle showing/hiding completed todos",
 			Handler: func(m *Model) {
 				m.FilterDone = !m.FilterDone
+				// Invalidate document tree since visibility changed
+				m.InvalidateDocumentTree()
 				// Adjust selection if current item is now hidden
 				if m.FilterDone {
 					m.adjustSelectionForFilter()
