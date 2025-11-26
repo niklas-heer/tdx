@@ -29,7 +29,7 @@ show-headings: true
 
 - [ ] add date when task is due (@due(2025-11-24))
 - [ ] add priorities and a priority-sort command (p1, p2, ...)
-- [ ] add nested tasks
+- [x] add nested tasks
 - [x] add tags and f shortcut to filter for tags (#tag)
 
 ## Other features
