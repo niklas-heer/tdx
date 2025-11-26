@@ -55,7 +55,7 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 
 	// walkListItem processes a single list item and its nested lists
 	var walkListItem func(listItem *ast.ListItem, depth int, parentIdx int)
-	walkListItem = func(listItem *ast.ListItem, depth int, parentIdx int) {
+	walkListItem = func(listItem *ast.ListItem, depth int, parentIdx int) { //nolint:unparam
 		// Check if this list item has a checkbox (task item)
 		var checkbox *extast.TaskCheckBox
 		var textBlock ast.Node
@@ -63,7 +63,7 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 		for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
 			// Look for checkbox in the first text block/paragraph
 			if child.Kind() == ast.KindTextBlock || child.Kind() == ast.KindParagraph {
-				ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+				_ = ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 					if entering && n.Kind() == extast.KindTaskCheckBox {
 						checkbox = n.(*extast.TaskCheckBox)
 						textBlock = child
@@ -121,7 +121,7 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 	}
 
 	// Walk the document and find all top-level lists
-	ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+	_ = ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering {
 			if list, ok := node.(*ast.List); ok {
 				// Only process lists that are NOT inside a ListItem (top-level lists)
@@ -208,7 +208,7 @@ func (doc *ASTDocument) extractTodoText(listItem ast.Node, checkbox ast.Node) st
 		}
 
 		// Walk this child and collect text nodes
-		ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		_ = ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			// Skip the checkbox itself
 			if n == checkbox {
 				return ast.WalkSkipChildren, nil

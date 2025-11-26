@@ -180,7 +180,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.FileModel.Todos) > 0 {
 			m.saveHistory()
 			todo := m.FileModel.Todos[m.SelectedIndex]
-			m.FileModel.UpdateTodoItem(m.SelectedIndex, todo.Text, !todo.Checked)
+			_ = m.FileModel.UpdateTodoItem(m.SelectedIndex, todo.Text, !todo.Checked)
 			// Mark this todo as locally modified
 			m.LocallyModified[todo.Text] = true
 			m.writeIfPersist()
@@ -805,7 +805,7 @@ func (m *Model) deleteCurrent() {
 				newSelectedTodoIndex = selectedNode.TodoIndex
 			}
 
-			m.FileModel.DeleteTodoItem(deletedIdx)
+			_ = m.FileModel.DeleteTodoItem(deletedIdx)
 			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 
@@ -823,7 +823,7 @@ func (m *Model) deleteCurrent() {
 		}
 	} else {
 		// Simple case: no filters or headings
-		m.FileModel.DeleteTodoItem(m.SelectedIndex)
+		_ = m.FileModel.DeleteTodoItem(m.SelectedIndex)
 		m.InvalidateHeadingsCache()
 		m.writeIfPersist()
 
@@ -832,18 +832,6 @@ func (m *Model) deleteCurrent() {
 			m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
 		}
 	}
-}
-
-func (m *Model) moveTodo(from, to int) error {
-	err := m.FileModel.MoveTodoItem(from, to)
-	if err == nil {
-		m.InvalidateHeadingsCache() // Move may affect heading positions
-	}
-	return err
-}
-
-func (m *Model) swapTodos(i, j int) error {
-	return m.FileModel.SwapTodoItems(i, j)
 }
 
 func (m *Model) updateSearchResults() {
@@ -1011,7 +999,7 @@ func (m *Model) trySmartReload() bool {
 		if ourCheckState, exists := ourTodos[diskTodo.Text]; exists {
 			// Only apply our change if we actually toggled this todo
 			if m.LocallyModified[diskTodo.Text] {
-				resultFM.UpdateTodoItem(i, diskTodo.Text, ourCheckState)
+				_ = resultFM.UpdateTodoItem(i, diskTodo.Text, ourCheckState)
 			}
 			// Otherwise keep disk's checkbox state (they might have changed it)
 		}
@@ -1053,16 +1041,6 @@ func (m Model) checkAndReloadFile() tea.Cmd {
 // reloadedMsg carries the updated model after successful reload
 type reloadedMsg struct {
 	model Model
-}
-
-// findVisiblePosition returns the position of SelectedIndex in the visible list, or -1 if not found
-func (m *Model) findVisiblePosition(visible []int) int {
-	for i, idx := range visible {
-		if idx == m.SelectedIndex {
-			return i
-		}
-	}
-	return -1
 }
 
 // isTodoVisible returns true if the todo at the given index is visible given current filters
@@ -1206,15 +1184,6 @@ func (m Model) findPreviousVisibleTodo(currentIdx int) int {
 	return -1 // No visible todo found
 }
 
-func (m *Model) getCount() int {
-	count := 1
-	if m.NumberBuffer != "" {
-		count, _ = strconv.Atoi(m.NumberBuffer)
-		m.NumberBuffer = ""
-	}
-	return count
-}
-
 // handleRecentFilesInput handles keyboard input in recent files mode
 func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 	// Filter recent files based on search
@@ -1301,7 +1270,7 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 		// Add to search buffer (printable characters, but skip leading spaces)
 		if len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
 			// Skip leading spaces
-			if !(m.RecentFilesSearch == "" && key == " ") {
+			if m.RecentFilesSearch != "" || key != " " {
 				m.RecentFilesSearch += key
 				m.RecentFilesCursor = 0 // Reset cursor when search changes
 			}

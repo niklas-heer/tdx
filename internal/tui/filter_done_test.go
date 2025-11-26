@@ -59,7 +59,7 @@ func TestFilterDone_CheckAllThenToggleFilter(t *testing.T) {
 	}
 
 	// With filter on, no todos should be visible in view
-	view := m.View()
+	_ = m.View()
 	// All todos are done, so none should show with filter on
 	// (They're hidden, but we should not crash)
 
@@ -76,7 +76,7 @@ func TestFilterDone_CheckAllThenToggleFilter(t *testing.T) {
 	}
 
 	// Step 4: All 5 todos should now be visible again
-	view = m.View()
+	view := m.View()
 
 	// Count how many tasks appear in the view
 	visibleCount := 0

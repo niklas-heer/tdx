@@ -25,7 +25,7 @@ var frontmatterRegex = regexp.MustCompile(`(?s)^---\s*\n(.*?)\n---\s*\n`)
 // Returns the metadata and the content without frontmatter
 func ParseMetadata(content string) (*Metadata, string, error) {
 	matches := frontmatterRegex.FindStringSubmatch(content)
-	if matches == nil || len(matches) < 2 {
+	if len(matches) < 2 {
 		// No frontmatter found
 		return &Metadata{}, content, nil
 	}
@@ -61,7 +61,7 @@ func SerializeMetadata(metadata *Metadata, content string) string {
 		// If encoding fails, just return content without frontmatter
 		return content
 	}
-	encoder.Close()
+	_ = encoder.Close()
 
 	buf.WriteString("---\n")
 	buf.WriteString(content)

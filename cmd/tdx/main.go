@@ -54,12 +54,12 @@ func main() {
 	var remainingArgs []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		switch {
-		case arg == "--read-only" || arg == "-r":
+		switch arg {
+		case "--read-only", "-r":
 			readOnly = true
-		case arg == "--show-headings":
+		case "--show-headings":
 			showHeadings = true
-		case arg == "--max-visible" || arg == "-m":
+		case "--max-visible", "-m":
 			// Get the next argument as the number
 			if i+1 < len(args) {
 				i++

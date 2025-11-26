@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	testBinary = filepath.Join(tmpDir, "tdx")
 	buildCmd := exec.Command("go", "build", "-o", testBinary, ".")
@@ -58,10 +58,7 @@ func TestMain(m *testing.M) {
 func runCLI(t *testing.T, file string, args ...string) string {
 	cmdArgs := append([]string{file}, args...)
 	cmd := exec.Command(testBinary, cmdArgs...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// Some commands may fail, that's okay
-	}
+	out, _ := cmd.CombinedOutput() // Some commands may fail, that's okay
 	return strings.TrimSpace(string(out))
 }
 
@@ -98,8 +95,8 @@ func tempTestFile(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
-	t.Cleanup(func() { os.Remove(f.Name()) })
+	_ = f.Close()
+	t.Cleanup(func() { _ = os.Remove(f.Name()) })
 	return f.Name()
 }
 

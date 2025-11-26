@@ -11,7 +11,7 @@ func TestMetadataIntegration_FilterDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	content := `---
 filter-done: true
@@ -25,7 +25,7 @@ filter-done: true
 	if _, err := tmpfile.Write([]byte(content)); err != nil {
 		t.Fatal(err)
 	}
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	// Read the file
 	fm, err := ReadFile(tmpfile.Name())
@@ -58,7 +58,7 @@ func TestMetadataIntegration_WordWrap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	content := `---
 word-wrap: true
@@ -71,7 +71,7 @@ word-wrap: true
 	if _, err := tmpfile.Write([]byte(content)); err != nil {
 		t.Fatal(err)
 	}
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	// Read the file
 	fm, err := ReadFile(tmpfile.Name())
@@ -98,7 +98,7 @@ func TestMetadataIntegration_AllFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
 
 	content := `---
 filter-done: true
@@ -115,7 +115,7 @@ word-wrap: true
 	if _, err := tmpfile.Write([]byte(content)); err != nil {
 		t.Fatal(err)
 	}
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	// Read the file
 	fm, err := ReadFile(tmpfile.Name())

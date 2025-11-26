@@ -26,7 +26,7 @@ func InitCommands() []Command {
 				for i := range m.FileModel.Todos {
 					todo := m.FileModel.Todos[i]
 					if !todo.Checked {
-						m.FileModel.UpdateTodoItem(i, todo.Text, true)
+						_ = m.FileModel.UpdateTodoItem(i, todo.Text, true)
 					}
 				}
 				m.InvalidateDocumentTree()
@@ -41,7 +41,7 @@ func InitCommands() []Command {
 				for i := range m.FileModel.Todos {
 					todo := m.FileModel.Todos[i]
 					if todo.Checked {
-						m.FileModel.UpdateTodoItem(i, todo.Text, false)
+						_ = m.FileModel.UpdateTodoItem(i, todo.Text, false)
 					}
 				}
 				m.InvalidateDocumentTree()
@@ -93,7 +93,7 @@ func InitCommands() []Command {
 				// Delete completed todos from the end backwards to preserve indices
 				for i := len(m.FileModel.Todos) - 1; i >= 0; i-- {
 					if m.FileModel.Todos[i].Checked {
-						m.FileModel.DeleteTodoItem(i)
+						_ = m.FileModel.DeleteTodoItem(i)
 					}
 				}
 				m.writeIfPersist()
@@ -114,7 +114,7 @@ func InitCommands() []Command {
 			Name:        "save",
 			Description: "Save current state to file",
 			Handler: func(m *Model) {
-				markdown.WriteFile(m.FilePath, &m.FileModel)
+				_ = markdown.WriteFile(m.FilePath, &m.FileModel)
 			},
 		},
 		{

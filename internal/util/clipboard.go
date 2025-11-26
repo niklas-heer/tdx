@@ -10,7 +10,7 @@ func CopyToClipboard(text string) {
 	// Use pbcopy on macOS
 	cmd := exec.Command("pbcopy")
 	cmd.Stdin = strings.NewReader(text)
-	cmd.Run()
+	_ = cmd.Run() // Ignore error - clipboard may not be available
 }
 
 // PasteFromClipboard retrieves text from the system clipboard

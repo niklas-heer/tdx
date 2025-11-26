@@ -217,7 +217,7 @@ func TestInsertTodoAfter_AST(t *testing.T) {
 		t.Fatalf("Missing expected content in result:\n%s", result)
 	}
 
-	if !(firstIdx < insertedIdx && insertedIdx < secondIdx) {
+	if firstIdx >= insertedIdx || insertedIdx >= secondIdx {
 		t.Errorf("Wrong order: First(%d) should come before Inserted(%d) before Second(%d)\nContent:\n%s",
 			firstIdx, insertedIdx, secondIdx, result)
 	}

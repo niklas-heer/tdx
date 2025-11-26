@@ -56,7 +56,7 @@ Another important paragraph.
 	}
 
 	// Simulate TUI making a change (toggle task)
-	loadedFM.UpdateTodoItem(0, "Task one", true)
+	_ = loadedFM.UpdateTodoItem(0, "Task one", true)
 
 	// Try to write - should detect conflict
 	err = markdown.WriteFile(tmpFile, loadedFM)
@@ -105,7 +105,7 @@ func TestConflictDetection_ReloadAfterConflict(t *testing.T) {
 	}
 
 	// Make a change
-	fm.UpdateTodoItem(0, "Task one", true)
+	_ = fm.UpdateTodoItem(0, "Task one", true)
 
 	// External modification
 	time.Sleep(1100 * time.Millisecond)
@@ -163,7 +163,7 @@ Paragraph to preserve.
 	}
 
 	// Make a change
-	fm.UpdateTodoItem(0, "Task one", true)
+	_ = fm.UpdateTodoItem(0, "Task one", true)
 
 	// Write should succeed (no external modification)
 	err = markdown.WriteFile(tmpFile, fm)
@@ -206,7 +206,7 @@ func TestConflictDetection_MultipleWrites(t *testing.T) {
 	}
 
 	// First write
-	fm.UpdateTodoItem(0, "Task one", true)
+	_ = fm.UpdateTodoItem(0, "Task one", true)
 	err = markdown.WriteFile(tmpFile, fm)
 	if err != nil {
 		t.Fatalf("First write failed: %v", err)
@@ -214,7 +214,7 @@ func TestConflictDetection_MultipleWrites(t *testing.T) {
 
 	// Second write should also succeed (modTime updated after first write)
 	time.Sleep(1100 * time.Millisecond) // Ensure different modTime
-	fm.UpdateTodoItem(1, "Task two", true)
+	_ = fm.UpdateTodoItem(1, "Task two", true)
 	err = markdown.WriteFile(tmpFile, fm)
 	if err != nil {
 		t.Fatalf("Second write failed: %v", err)

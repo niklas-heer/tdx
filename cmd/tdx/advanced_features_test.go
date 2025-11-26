@@ -104,7 +104,7 @@ func TestTUI_WordWrapToggle(t *testing.T) {
 	runCLI(t, file, "add", longTask)
 
 	// Word wrap is enabled by default - toggle it off then on
-	output := runPiped(t, file, ":wrap\r\x1b")
+	_ = runPiped(t, file, ":wrap\r\x1b")
 
 	// After toggling, it should be off (we can't easily test visual wrapping,
 	// but we verify the command doesn't crash and the task is preserved)
@@ -117,8 +117,7 @@ func TestTUI_WordWrapToggle(t *testing.T) {
 	}
 
 	// Toggle wrap back on
-	output = runPiped(t, file, ":wrap\r\x1b")
-	_ = output // Output contains the view, task should still be there
+	_ = runPiped(t, file, ":wrap\r\x1b")
 
 	todos = getTodos(t, file)
 	if !strings.Contains(todos[0], longTask) {
@@ -153,7 +152,7 @@ func TestTUI_LineNumbersToggle(t *testing.T) {
 	}
 
 	// Toggle back on
-	output = runPiped(t, file, ":line-numbers\r\x1b")
+	_ = runPiped(t, file, ":line-numbers\r\x1b")
 
 	// Tasks should still be intact
 	todos := getTodos(t, file)
@@ -174,7 +173,7 @@ func TestTUI_TagFilterMultipleTags(t *testing.T) {
 - [ ] Task with #work and #urgent tags
 - [ ] Task with no tags`
 
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Open filter mode with 'f', select first tag (work), press enter to apply
 	// The exact behavior depends on how many tags are shown and their order
@@ -199,7 +198,7 @@ func TestTUI_TagFilterClearAll(t *testing.T) {
 - [ ] Task with #home tag
 - [ ] Task with no tags`
 
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Open filter mode, select a tag, then clear all with 'c'
 	runPiped(t, file, "f\rc\x1b")
@@ -220,7 +219,7 @@ func TestTUI_TagFilterNavigateAndSelect(t *testing.T) {
 - [ ] Gamma task #ccc
 - [ ] Delta task #aaa #bbb`
 
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Open filter, move down to second tag, select it
 	output := runPiped(t, file, "fj\r\x1b")
@@ -248,8 +247,8 @@ func TestTUI_RecentFilesOverlayOpen(t *testing.T) {
 	file1 := filepath.Join(tmpDir, "file1.md")
 	file2 := filepath.Join(tmpDir, "file2.md")
 
-	os.WriteFile(file1, []byte("- [ ] Task in file 1"), 0644)
-	os.WriteFile(file2, []byte("- [ ] Task in file 2"), 0644)
+	_ = os.WriteFile(file1, []byte("- [ ] Task in file 1"), 0644)
+	_ = os.WriteFile(file2, []byte("- [ ] Task in file 2"), 0644)
 
 	// Open file1 first to add it to recent
 	runPiped(t, file1, "\x1b")
@@ -277,9 +276,9 @@ func TestTUI_RecentFilesOverlayNavigation(t *testing.T) {
 	file2 := filepath.Join(tmpDir, "second.md")
 	file3 := filepath.Join(tmpDir, "third.md")
 
-	os.WriteFile(file1, []byte("- [ ] First file task"), 0644)
-	os.WriteFile(file2, []byte("- [ ] Second file task"), 0644)
-	os.WriteFile(file3, []byte("- [ ] Third file task"), 0644)
+	_ = os.WriteFile(file1, []byte("- [ ] First file task"), 0644)
+	_ = os.WriteFile(file2, []byte("- [ ] Second file task"), 0644)
+	_ = os.WriteFile(file3, []byte("- [ ] Third file task"), 0644)
 
 	// Open each file to populate recent list
 	runPiped(t, file1, "\x1b")
@@ -306,9 +305,9 @@ func TestTUI_RecentFilesOverlaySearch(t *testing.T) {
 	file2 := filepath.Join(tmpDir, "project_beta.md")
 	file3 := filepath.Join(tmpDir, "notes.md")
 
-	os.WriteFile(file1, []byte("- [ ] Alpha task"), 0644)
-	os.WriteFile(file2, []byte("- [ ] Beta task"), 0644)
-	os.WriteFile(file3, []byte("- [ ] Notes task"), 0644)
+	_ = os.WriteFile(file1, []byte("- [ ] Alpha task"), 0644)
+	_ = os.WriteFile(file2, []byte("- [ ] Beta task"), 0644)
+	_ = os.WriteFile(file3, []byte("- [ ] Notes task"), 0644)
 
 	// Open each file
 	runPiped(t, file1, "\x1b")
@@ -337,7 +336,7 @@ func TestTUI_CommandShowHeadings(t *testing.T) {
 ## Frontend
 - [ ] UI work`
 
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Toggle show-headings on
 	output := runPiped(t, file, ":show-headings\r\x1b")
@@ -364,7 +363,7 @@ func TestTUI_CommandSort(t *testing.T) {
 - [x] Done task 2
 - [ ] Pending task 2`
 
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Run sort command
 	runPiped(t, file, ":sort\r\x1b")
@@ -393,7 +392,7 @@ func TestTUI_CommandSort(t *testing.T) {
 func TestTUI_CommandReload(t *testing.T) {
 	file := tempTestFile(t)
 
-	os.WriteFile(file, []byte("- [ ] Original task"), 0644)
+	_ = os.WriteFile(file, []byte("- [ ] Original task"), 0644)
 
 	// Make a change via TUI
 	runPiped(t, file, " ")
@@ -404,7 +403,7 @@ func TestTUI_CommandReload(t *testing.T) {
 	}
 
 	// Externally modify the file
-	os.WriteFile(file, []byte("- [ ] External change"), 0644)
+	_ = os.WriteFile(file, []byte("- [ ] External change"), 0644)
 
 	// Reload from disk (discards our toggle)
 	runPiped(t, file, ":reload\r\x1b")
@@ -424,7 +423,7 @@ func TestTUI_UndoSort(t *testing.T) {
 - [ ] Pending
 - [x] Done second`
 
-	os.WriteFile(file, []byte(content), 0644)
+	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Sort then immediately undo in same session
 	runPiped(t, file, ":sort\ru")

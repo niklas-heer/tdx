@@ -195,16 +195,16 @@ func (fm *FileModel) syncTodosToAST() {
 	for i := range fm.Todos {
 		if i >= len(astTodos) {
 			// Todo was added
-			fm.ast.AddTodo(fm.Todos[i].Text, fm.Todos[i].Checked)
+			_ = fm.ast.AddTodo(fm.Todos[i].Text, fm.Todos[i].Checked)
 		} else if fm.Todos[i].Text != astTodos[i].Text {
 			// Text was modified
-			fm.ast.UpdateTodoText(i, fm.Todos[i].Text)
+			_ = fm.ast.UpdateTodoText(i, fm.Todos[i].Text)
 			if fm.Todos[i].Checked != astTodos[i].Checked {
-				fm.ast.ToggleTodo(i)
+				_ = fm.ast.ToggleTodo(i)
 			}
 		} else if fm.Todos[i].Checked != astTodos[i].Checked {
 			// Checkbox was toggled
-			fm.ast.ToggleTodo(i)
+			_ = fm.ast.ToggleTodo(i)
 		}
 	}
 
@@ -212,7 +212,7 @@ func (fm *FileModel) syncTodosToAST() {
 	if len(fm.Todos) < len(astTodos) {
 		// Delete from the end backwards to preserve indices
 		for i := len(astTodos) - 1; i >= len(fm.Todos); i-- {
-			fm.ast.DeleteTodo(i)
+			_ = fm.ast.DeleteTodo(i)
 		}
 	}
 
@@ -223,7 +223,7 @@ func (fm *FileModel) syncTodosToAST() {
 func (fm *FileModel) AddTodoItem(text string, checked bool) {
 	if fm.ast != nil {
 		// Use AST for adding
-		fm.ast.AddTodo(text, checked)
+		_ = fm.ast.AddTodo(text, checked)
 		// Re-extract todos to keep cache in sync
 		fm.Todos = fm.ast.ExtractTodos()
 	} else {
@@ -245,7 +245,7 @@ func (fm *FileModel) AddTodoItem(text string, checked bool) {
 func (fm *FileModel) InsertTodoItemAfter(afterIndex int, text string, checked bool) int {
 	if fm.ast != nil {
 		// Use AST for inserting
-		fm.ast.InsertTodoAfter(afterIndex, text, checked)
+		_ = fm.ast.InsertTodoAfter(afterIndex, text, checked)
 		// Re-extract todos to keep cache in sync
 		fm.Todos = fm.ast.ExtractTodos()
 		// Return the new index (afterIndex + 1, or 0 if inserting at beginning)

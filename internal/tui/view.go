@@ -275,7 +275,7 @@ func (m Model) renderMainContent() string {
 
 		// Text with inline code rendering and tag colorization
 		var text string
-		var plainText string = todo.Text
+		plainText := todo.Text
 
 		if m.SearchMode && m.InputBuffer != "" {
 			// Highlight matches during search
@@ -506,71 +506,6 @@ func (m Model) renderStatusBar() string {
 	}
 
 	return b.String()
-}
-
-// renderFilterOverlay renders the tag filter overlay as a centered modal
-func (m Model) renderFilterOverlay() string {
-	var b strings.Builder
-	styles := m.Styles()
-
-	// Header
-	b.WriteString(ModeIndicator("🏷", "FILTER"))
-	b.WriteString("\n\n")
-	b.WriteString(styles.Dim("Select tags to filter:"))
-	b.WriteString("\n\n")
-
-	// Display available tags
-	for i, tag := range m.AvailableTags {
-		isSelected := i == m.TagFilterCursor
-		isActive := false
-		for _, activeTag := range m.FilteredTags {
-			if activeTag == tag {
-				isActive = true
-				break
-			}
-		}
-
-		var marker string
-		if isSelected {
-			marker = styles.Cyan("→ ")
-		} else {
-			marker = "  "
-		}
-
-		var checkbox string
-		if isActive {
-			checkbox = styles.Green("[✓] ")
-		} else {
-			checkbox = styles.Dim("[ ] ")
-		}
-
-		b.WriteString(marker + checkbox + styles.Cyan("#"+tag))
-		b.WriteString("\n")
-	}
-
-	// Footer with help
-	b.WriteString("\n")
-	b.WriteString(styles.Dim("  ↑/↓ navigate  space toggle  c clear all  esc done"))
-
-	// Style the overlay with a border and background (extension of status bar)
-	content := b.String()
-	overlayStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.Border{
-			Top:         "─",
-			Bottom:      "",
-			Left:        "│",
-			Right:       "│",
-			TopLeft:     "┌",
-			TopRight:    "┐",
-			BottomLeft:  "",
-			BottomRight: "",
-		}).
-		BorderForeground(lipgloss.Color("#7aa2f7")).
-		Background(lipgloss.Color("#1a1b26")).
-		Padding(1, 2).
-		Width(50)
-
-	return overlayStyle.Render(content)
 }
 
 // renderCommandOverlayCompact renders a compact modal command palette
@@ -833,70 +768,6 @@ func (m Model) renderFilterOverlayCompact() string {
 		}).
 		BorderForeground(lipgloss.Color("#7aa2f7")).
 		Padding(0, 1)
-
-	return overlayStyle.Render(content)
-}
-
-// renderCommandOverlay renders the command palette overlay as a bottom-left modal
-func (m Model) renderCommandOverlay() string {
-	var b strings.Builder
-	styles := m.Styles()
-
-	// Header
-	b.WriteString(ModeIndicator("⌘", "COMMAND"))
-	b.WriteString("\n\n")
-
-	// Command input with cursor
-	before := m.InputBuffer[:m.CursorPos]
-	after := m.InputBuffer[m.CursorPos:]
-	cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-	b.WriteString(styles.Cyan(":") + before + cursor + after)
-	b.WriteString("\n\n")
-
-	// Display filtered commands
-	for i, cmdIdx := range m.FilteredCmds {
-		if i >= 5 { // Limit display to first 5 commands
-			break
-		}
-
-		cmd := m.Commands[cmdIdx]
-		isSelected := i == m.CommandCursor
-
-		var marker string
-		if isSelected {
-			marker = styles.Cyan("→ ")
-		} else {
-			marker = "  "
-		}
-
-		// Command name and description
-		cmdName := styles.Cyan(cmd.Name)
-		cmdDesc := styles.Dim(" - " + cmd.Description)
-		b.WriteString(marker + cmdName + cmdDesc)
-		b.WriteString("\n")
-	}
-
-	// Footer with help
-	b.WriteString("\n")
-	b.WriteString(styles.Dim("  ↑/↓ navigate  tab complete  enter execute  esc cancel"))
-
-	// Style the overlay with a border and background (extension of status bar)
-	content := b.String()
-	overlayStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.Border{
-			Top:         "─",
-			Bottom:      "",
-			Left:        "│",
-			Right:       "│",
-			TopLeft:     "┌",
-			TopRight:    "┐",
-			BottomLeft:  "",
-			BottomRight: "",
-		}).
-		BorderForeground(lipgloss.Color("#7aa2f7")).
-		Background(lipgloss.Color("#1a1b26")).
-		Padding(1, 2).
-		Width(60)
 
 	return overlayStyle.Render(content)
 }
