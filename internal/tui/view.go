@@ -268,8 +268,10 @@ func (m Model) renderMainContent() string {
 		}
 
 		// Build the line prefix (needed early for edit mode wrapping)
-		prefix := fmt.Sprintf("%s%s%s ", styles.Dim(indexStr), arrow, checkbox)
-		prefixWidth := 3 + 3 + 3 + 1 // index(3) + arrow(3) + checkbox(3) + space(1)
+		// Add indentation based on nesting depth (2 spaces per level)
+		indent := strings.Repeat("  ", todo.Depth)
+		prefix := fmt.Sprintf("%s%s%s%s ", indent, styles.Dim(indexStr), arrow, checkbox)
+		prefixWidth := (todo.Depth * 2) + 3 + 3 + 3 + 1 // indent + index(3) + arrow(3) + checkbox(3) + space(1)
 
 		// Text with inline code rendering and tag colorization
 		var text string

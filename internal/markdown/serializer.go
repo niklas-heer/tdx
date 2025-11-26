@@ -85,11 +85,25 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 		buf.WriteString(marker)
 		buf.WriteString(" ")
 
-		// Serialize children (paragraph contains the content)
+		// First pass: serialize non-list children (text content)
+		hasNestedList := false
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			serializeNode(doc, child, buf, depth)
+			if _, isList := child.(*ast.List); isList {
+				hasNestedList = true
+			} else {
+				serializeNode(doc, child, buf, depth)
+			}
 		}
 		buf.WriteString("\n")
+
+		// Second pass: serialize nested lists (after the newline)
+		if hasNestedList {
+			for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+				if _, isList := child.(*ast.List); isList {
+					serializeNode(doc, child, buf, depth+1)
+				}
+			}
+		}
 
 	case *extast.TaskCheckBox:
 		// Write checkbox with space after it

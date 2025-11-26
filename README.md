@@ -96,6 +96,8 @@ tdx
 | `d` | Delete todo |
 | `c` | Copy to clipboard |
 | `m` | Move mode |
+| `Tab` | Indent (nest under previous) |
+| `Shift+Tab` | Outdent (move up one level) |
 | `/` | Fuzzy search |
 | `f` | Tag filter |
 | `r` | Recent files |
@@ -143,6 +145,23 @@ Use `:save` to manually save when ready, or `:read-only` to turn auto-save back 
 
 **Fuzzy Search:**
 Press `/` to enter search mode. Type to filter todos with live highlighting. Press `Enter` to select or `Esc` to cancel.
+
+**Nested Tasks:**
+
+Organize your todos hierarchically using `Tab` and `Shift+Tab`:
+
+```markdown
+- [ ] Main project
+  - [ ] Subtask 1
+  - [ ] Subtask 2
+    - [ ] Sub-subtask
+- [ ] Another task
+```
+
+- Press `Tab` to indent a task under its previous sibling
+- Press `Shift+Tab` to outdent (move up one level)
+- Deleting a parent task promotes its children to the parent's level
+- New tasks (`n`) are created at the same nesting level as the cursor
 
 **Tags & Filtering:**
 

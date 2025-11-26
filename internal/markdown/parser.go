@@ -10,11 +10,13 @@ import (
 
 // Todo represents a single todo item
 type Todo struct {
-	Index   int
-	Checked bool
-	Text    string
-	LineNo  int
-	Tags    []string // Tags extracted from the text (e.g., #urgent #backend)
+	Index       int
+	Checked     bool
+	Text        string
+	LineNo      int
+	Tags        []string // Tags extracted from the text (e.g., #urgent #backend)
+	Depth       int      // Nesting depth: 0 = top-level, 1 = child, 2 = grandchild, etc.
+	ParentIndex int      // Index of parent todo in flat array, -1 for top-level
 }
 
 // FileModel holds parsed file content with AST backend
@@ -415,6 +417,42 @@ func (fm *FileModel) SwapTodoItems(index1, index2 int) error {
 		fm.Todos[index1].LineNo, fm.Todos[index2].LineNo = fm.Todos[index2].LineNo, fm.Todos[index1].LineNo
 		fm.dirty = true
 	}
+	return nil
+}
+
+// IndentTodoItem makes a todo a child of its previous sibling (increases nesting)
+func (fm *FileModel) IndentTodoItem(index int) error {
+	if index < 0 || index >= len(fm.Todos) {
+		return fmt.Errorf("invalid todo index: %d", index)
+	}
+
+	if fm.ast == nil {
+		return fmt.Errorf("AST not available for indent operation")
+	}
+
+	if err := fm.ast.IndentTodo(index); err != nil {
+		return err
+	}
+	// Re-extract todos to keep cache in sync
+	fm.Todos = fm.ast.ExtractTodos()
+	return nil
+}
+
+// OutdentTodoItem moves a todo up one level in the hierarchy (decreases nesting)
+func (fm *FileModel) OutdentTodoItem(index int) error {
+	if index < 0 || index >= len(fm.Todos) {
+		return fmt.Errorf("invalid todo index: %d", index)
+	}
+
+	if fm.ast == nil {
+		return fmt.Errorf("AST not available for outdent operation")
+	}
+
+	if err := fm.ast.OutdentTodo(index); err != nil {
+		return err
+	}
+	// Re-extract todos to keep cache in sync
+	fm.Todos = fm.ast.ExtractTodos()
 	return nil
 }
 

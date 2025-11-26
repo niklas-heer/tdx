@@ -129,6 +129,8 @@ func RenderHelp(version string, cyanStyle, dimStyle func(string) string) string 
 				{"d", "Delete"},
 				{"c", "Copy"},
 				{"m", "Move"},
+				{"Tab", "Indent"},
+				{"S-Tab", "Outdent"},
 			},
 		},
 		{

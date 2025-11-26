@@ -332,6 +332,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		for i := range m.Commands {
 			m.FilteredCmds = append(m.FilteredCmds, i)
 		}
+
+	case "tab":
+		// Indent: make current todo a child of its previous sibling
+		if len(m.FileModel.Todos) > 0 && !m.ReadOnly {
+			m.saveHistory()
+			if err := m.FileModel.IndentTodoItem(m.SelectedIndex); err == nil {
+				m.InvalidateDocumentTree()
+				m.writeIfPersist()
+			}
+			// Silently ignore errors (e.g., can't indent first item)
+		}
+
+	case "shift+tab":
+		// Outdent: move current todo up one level in hierarchy
+		if len(m.FileModel.Todos) > 0 && !m.ReadOnly {
+			m.saveHistory()
+			if err := m.FileModel.OutdentTodoItem(m.SelectedIndex); err == nil {
+				m.InvalidateDocumentTree()
+				m.writeIfPersist()
+			}
+			// Silently ignore errors (e.g., can't outdent top-level item)
+		}
 	}
 
 	return m, nil

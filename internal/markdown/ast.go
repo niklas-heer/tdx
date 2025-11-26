@@ -45,56 +45,95 @@ func ParseAST(content string) (*ASTDocument, error) {
 	}, nil
 }
 
-// ExtractTodos walks the AST and extracts all task list items
+// ExtractTodos walks the AST and extracts all task list items with nesting information
 func (doc *ASTDocument) ExtractTodos() []Todo {
 	var todos []Todo
-	todoIndex := 1
+	todoIndex := 0
 
-	// Walk the document structure in order, processing List nodes
-	// This ensures we respect the parent-child relationships we've modified
-	var walkNode func(ast.Node)
-	walkNode = func(node ast.Node) {
-		// Process current node
-		if node.Kind() == extast.KindTaskCheckBox {
-			checkbox := node.(*extast.TaskCheckBox)
+	// Forward declare walkList so walkListItem can call it
+	var walkList func(list *ast.List, depth int, parentIdx int)
 
-			// Navigate: TaskCheckBox -> TextBlock -> ListItem
-			textBlock := checkbox.Parent()
-			if textBlock != nil {
-				listItem := textBlock.Parent()
-				if listItem != nil {
-					// Extract text content (everything after the checkbox)
-					text := doc.extractTodoText(listItem, checkbox)
+	// walkListItem processes a single list item and its nested lists
+	var walkListItem func(listItem *ast.ListItem, depth int, parentIdx int)
+	walkListItem = func(listItem *ast.ListItem, depth int, parentIdx int) {
+		// Check if this list item has a checkbox (task item)
+		var checkbox *extast.TaskCheckBox
+		var textBlock ast.Node
 
-					// Extract tags from the text
-					tags := ExtractTags(text)
-
-					// Get line number from textBlock (ListItem doesn't have Lines())
-					lineNo := 0
-					if textBlock.Lines().Len() > 0 {
-						lineNo = textBlock.Lines().At(0).Start
+		for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
+			// Look for checkbox in the first text block/paragraph
+			if child.Kind() == ast.KindTextBlock || child.Kind() == ast.KindParagraph {
+				ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+					if entering && n.Kind() == extast.KindTaskCheckBox {
+						checkbox = n.(*extast.TaskCheckBox)
+						textBlock = child
+						return ast.WalkStop, nil
 					}
-
-					todo := Todo{
-						Index:   todoIndex,
-						Checked: checkbox.IsChecked,
-						Text:    text,
-						LineNo:  lineNo,
-						Tags:    tags,
-					}
-					todos = append(todos, todo)
-					todoIndex++
+					return ast.WalkContinue, nil
+				})
+				if checkbox != nil {
+					break
 				}
 			}
 		}
 
-		// Walk children in document order by iterating through siblings
-		for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-			walkNode(child)
+		// If this is a task item, extract it
+		currentIdx := -1
+		if checkbox != nil {
+			text := doc.extractTodoText(listItem, checkbox)
+			tags := ExtractTags(text)
+
+			// Get line number from textBlock
+			lineNo := 0
+			if textBlock != nil && textBlock.Lines().Len() > 0 {
+				lineNo = textBlock.Lines().At(0).Start
+			}
+
+			todo := Todo{
+				Index:       todoIndex + 1,
+				Checked:     checkbox.IsChecked,
+				Text:        text,
+				LineNo:      lineNo,
+				Tags:        tags,
+				Depth:       depth,
+				ParentIndex: parentIdx,
+			}
+			todos = append(todos, todo)
+			currentIdx = todoIndex
+			todoIndex++
+		}
+
+		// Process nested lists within this list item
+		for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
+			if nestedList, ok := child.(*ast.List); ok {
+				walkList(nestedList, depth+1, currentIdx)
+			}
 		}
 	}
 
-	walkNode(doc.AST)
+	// walkList processes all items in a list
+	walkList = func(list *ast.List, depth int, parentIdx int) {
+		for child := list.FirstChild(); child != nil; child = child.NextSibling() {
+			if listItem, ok := child.(*ast.ListItem); ok {
+				walkListItem(listItem, depth, parentIdx)
+			}
+		}
+	}
+
+	// Walk the document and find all top-level lists
+	ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			if list, ok := node.(*ast.List); ok {
+				// Only process lists that are NOT inside a ListItem (top-level lists)
+				parent := list.Parent()
+				if _, parentIsListItem := parent.(*ast.ListItem); !parentIsListItem {
+					walkList(list, 0, -1)
+					return ast.WalkSkipChildren, nil
+				}
+			}
+		}
+		return ast.WalkContinue, nil
+	})
 
 	return todos
 }
@@ -163,10 +202,20 @@ func (doc *ASTDocument) extractTodoText(listItem ast.Node, checkbox ast.Node) st
 	var buf bytes.Buffer
 
 	for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
+		// Skip nested lists - they are separate todos, not part of this todo's text
+		if child.Kind() == ast.KindList {
+			continue
+		}
+
 		// Walk this child and collect text nodes
 		ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			// Skip the checkbox itself
 			if n == checkbox {
+				return ast.WalkSkipChildren, nil
+			}
+
+			// Skip any nested lists encountered during walk
+			if n.Kind() == ast.KindList {
 				return ast.WalkSkipChildren, nil
 			}
 
@@ -408,18 +457,56 @@ func adjustNodeSegments(node ast.Node, offset int) {
 	}
 }
 
-// DeleteTodo removes a todo from the AST
+// DeleteTodo removes a todo from the AST, promoting any children to the parent level
 func (doc *ASTDocument) DeleteTodo(todoIndex int) error {
 	node, err := doc.FindTodoNode(todoIndex)
 	if err != nil {
 		return err
 	}
 
-	// Remove the list item from its parent
-	parent := node.ListItem.Parent()
-	if parent != nil {
-		parent.RemoveChild(parent, node.ListItem)
+	listItem := node.ListItem
+	parentList := listItem.Parent()
+	if parentList == nil {
+		return fmt.Errorf("list item has no parent")
 	}
+
+	// Find any nested list (children) within this list item
+	var nestedList *ast.List
+	for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
+		if list, ok := child.(*ast.List); ok {
+			nestedList = list
+			break
+		}
+	}
+
+	// If there are children, promote them to the parent level
+	if nestedList != nil {
+		// Collect all children first (we'll insert them after the deleted item's position)
+		var children []*ast.ListItem
+		for child := nestedList.FirstChild(); child != nil; child = child.NextSibling() {
+			if li, ok := child.(*ast.ListItem); ok {
+				children = append(children, li)
+			}
+		}
+
+		// Remove the nested list from the item being deleted
+		listItem.RemoveChild(listItem, nestedList)
+
+		// Insert children into parent list at the deleted item's position
+		// Insert in forward order, updating insertion point each time
+		var insertAfter ast.Node = listItem
+		for _, child := range children {
+			// Detach from nested list
+			nestedList.RemoveChild(nestedList, child)
+
+			// Insert into parent list after the insertion point
+			parentList.InsertAfter(parentList, insertAfter, child)
+			insertAfter = child // Next child goes after this one
+		}
+	}
+
+	// Remove the list item itself
+	parentList.RemoveChild(parentList, listItem)
 
 	return nil
 }
@@ -647,6 +734,106 @@ func (doc *ASTDocument) MoveTodo(fromIndex, toIndex int) error {
 	} else {
 		// Moving up: insert BEFORE nodeTo
 		parentTo.InsertBefore(parentTo, nodeTo.ListItem, nodeFrom.ListItem)
+	}
+
+	return nil
+}
+
+// IndentTodo makes a todo a child of its previous sibling (increases depth)
+// Returns error if the todo cannot be indented (e.g., first item in list)
+func (doc *ASTDocument) IndentTodo(todoIndex int) error {
+	node, err := doc.FindTodoNode(todoIndex)
+	if err != nil {
+		return err
+	}
+
+	// Get the list item and its parent list
+	listItem := node.ListItem
+	parentList := listItem.Parent()
+	if parentList == nil {
+		return fmt.Errorf("list item has no parent")
+	}
+
+	// Find the previous sibling (must exist to indent under)
+	var prevSibling *ast.ListItem
+	for child := parentList.FirstChild(); child != nil; child = child.NextSibling() {
+		if child == listItem {
+			break
+		}
+		if li, ok := child.(*ast.ListItem); ok {
+			prevSibling = li
+		}
+	}
+
+	if prevSibling == nil {
+		return fmt.Errorf("cannot indent: no previous sibling")
+	}
+
+	// Find or create a nested list in the previous sibling
+	var nestedList *ast.List
+	for child := prevSibling.FirstChild(); child != nil; child = child.NextSibling() {
+		if list, ok := child.(*ast.List); ok {
+			nestedList = list
+			break
+		}
+	}
+
+	if nestedList == nil {
+		// Create a new nested list
+		nestedList = ast.NewList(0)
+		nestedList.Marker = '-'
+		prevSibling.AppendChild(prevSibling, nestedList)
+	}
+
+	// Remove from current parent and add to nested list
+	parentList.RemoveChild(parentList, listItem)
+	nestedList.AppendChild(nestedList, listItem)
+
+	return nil
+}
+
+// OutdentTodo moves a todo up one level in the hierarchy (decreases depth)
+// Returns error if the todo cannot be outdented (e.g., already at top level)
+func (doc *ASTDocument) OutdentTodo(todoIndex int) error {
+	node, err := doc.FindTodoNode(todoIndex)
+	if err != nil {
+		return err
+	}
+
+	// Get the list item and its parent list
+	listItem := node.ListItem
+	parentList := listItem.Parent()
+	if parentList == nil {
+		return fmt.Errorf("list item has no parent")
+	}
+
+	// The parent list must be inside a list item for us to outdent
+	parentListItem := parentList.Parent()
+	if parentListItem == nil {
+		return fmt.Errorf("cannot outdent: already at top level")
+	}
+
+	// Check that the parent is actually a list item
+	grandparentListItem, ok := parentListItem.(*ast.ListItem)
+	if !ok {
+		return fmt.Errorf("cannot outdent: already at top level")
+	}
+
+	// Get the grandparent list (where we'll insert the item)
+	grandparentList := grandparentListItem.Parent()
+	if grandparentList == nil {
+		return fmt.Errorf("cannot outdent: no grandparent list")
+	}
+
+	// Remove from current parent
+	parentList.RemoveChild(parentList, listItem)
+
+	// Insert after the grandparent list item
+	grandparentList.InsertAfter(grandparentList, grandparentListItem, listItem)
+
+	// If the nested list is now empty, remove it
+	if parentList.FirstChild() == nil {
+		grandparentListItem.RemoveChild(grandparentListItem, parentList)
 	}
 
 	return nil
