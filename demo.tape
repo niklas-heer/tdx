@@ -1,7 +1,7 @@
 # tdx demo - Your todos, in markdown, done fast
 # Run with: vhs demo.tape
 
-Output assets/demo.gif
+Output assets/demo-0.8.0.gif
 
 Require tdx
 
@@ -143,8 +143,6 @@ Sleep 800ms
 Type "j"
 Sleep 400ms
 Space
-Sleep 1s
-Escape
 Sleep 1s
 
 # Clear tag filter and show all
