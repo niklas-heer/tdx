@@ -123,7 +123,8 @@ func RenderHelp(version string, cyanStyle, dimStyle func(string) string) string 
 			header: "EDITING",
 			entries: []entry{
 				{"␣", "Toggle"},
-				{"n", "New"},
+				{"n", "New after"},
+				{"N", "New at end"},
 				{"e", "Edit"},
 				{"d", "Delete"},
 				{"c", "Copy"},
