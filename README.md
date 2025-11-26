@@ -1,5 +1,10 @@
 # tdx
 
+[![CI](https://github.com/niklas-heer/tdx/actions/workflows/ci.yml/badge.svg)](https://github.com/niklas-heer/tdx/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/niklas-heer/tdx/branch/main/graph/badge.svg)](https://codecov.io/gh/niklas-heer/tdx)
+[![GitHub Downloads](https://img.shields.io/github/downloads/niklas-heer/tdx/total?logo=github&label=downloads)](https://github.com/niklas-heer/tdx/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/niklas-heer/tdx)](https://goreportcard.com/report/github.com/niklas-heer/tdx)
+
 **Your todos, in markdown, done fast.**
 
 <p align="center">
