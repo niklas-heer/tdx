@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/niklas-heer/tdx/internal/config"
 )
 
 // TestRecentCommandClear tests clearing recent files
@@ -32,12 +34,13 @@ func TestRecentCommandClear(t *testing.T) {
 }
 
 // TestRecentFilesCursorRestoration tests cursor position is restored
-// TODO: This test is currently disabled because cursor restoration is not working properly
-// The feature was recently added but needs debugging - cursor is not being restored on file reopen
 func TestRecentFilesCursorRestoration(t *testing.T) {
-	t.Skip("Cursor restoration feature needs debugging - skipping for now")
-
 	tmpDir := t.TempDir()
+
+	// Override config dir for testing to isolate from other tests
+	config.SetConfigDirForTesting(tmpDir)
+	defer config.ResetConfigDirForTesting()
+
 	testFile := filepath.Join(tmpDir, "cursor_test.md")
 
 	content := `- [ ] Task 1
@@ -49,9 +52,6 @@ func TestRecentFilesCursorRestoration(t *testing.T) {
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-
-	// Clear recent files (ignore errors - may not work in CI)
-	runCLI(t, "", "recent", "clear")
 
 	// Open file, move cursor down 3 times, then quit with Escape
 	output := runPiped(t, testFile, "jjj\x1b")
@@ -73,6 +73,11 @@ func TestRecentFilesCursorRestoration(t *testing.T) {
 // TestRecentFilesCursorResetOnChange tests cursor is not restored if file changed
 func TestRecentFilesCursorResetOnChange(t *testing.T) {
 	tmpDir := t.TempDir()
+
+	// Override config dir for testing to isolate from other tests
+	config.SetConfigDirForTesting(tmpDir)
+	defer config.ResetConfigDirForTesting()
+
 	testFile := filepath.Join(tmpDir, "change_test.md")
 
 	content := `- [ ] Task 1
@@ -82,9 +87,6 @@ func TestRecentFilesCursorResetOnChange(t *testing.T) {
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-
-	// Clear recent files (ignore errors - may not work in CI)
-	runCLI(t, "", "recent", "clear")
 
 	// Open file, move cursor down 2 times, then quit with Escape
 	output := runPiped(t, testFile, "jj\x1b")

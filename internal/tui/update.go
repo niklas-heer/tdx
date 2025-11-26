@@ -1313,8 +1313,22 @@ func RunPiped(filePath string, input []byte, readOnly bool) string {
 	// Note: FilterDone and WordWrap are now applied in New() from metadata
 	// This ensures cursor positioning happens after filters are applied
 
+	// Try to restore cursor position from recent files (if file content hasn't changed)
+	if recentFiles, err := config.LoadRecentFiles(); err == nil {
+		if savedPos := recentFiles.GetCursorPosition(filePath); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
+			m.SelectedIndex = savedPos
+			// Invalidate tree to ensure correct positioning
+			m.InvalidateDocumentTree()
+		}
+	}
+
 	m.ProcessPipedInput(input)
-	return m.View()
+	output := m.View()
+
+	// Save cursor position to recent files when exiting
+	_ = config.SaveRecentFile(filePath, m.SelectedIndex)
+
+	return output
 }
 
 // Run starts the TUI with Bubbletea

@@ -31,6 +31,21 @@ type RecentFiles struct {
 // getConfigDir is a variable so it can be mocked in tests
 var getConfigDir = GetConfigDir
 
+// originalGetConfigDir stores the original function for reset
+var originalGetConfigDir = GetConfigDir
+
+// SetConfigDirForTesting allows tests to override the config directory
+func SetConfigDirForTesting(dir string) {
+	getConfigDir = func() (string, error) {
+		return dir, nil
+	}
+}
+
+// ResetConfigDirForTesting restores the original config directory function
+func ResetConfigDirForTesting() {
+	getConfigDir = originalGetConfigDir
+}
+
 // DefaultMaxRecent is the default maximum number of recent files to track
 const DefaultMaxRecent = 20
 
