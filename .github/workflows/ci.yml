@@ -66,13 +66,27 @@ jobs:
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          file: ./coverage.out
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+      - name: Generate coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          # Color based on percentage
+          if (( $(echo "$COVERAGE >= 80" | bc -l) )); then COLOR="brightgreen"
+          elif (( $(echo "$COVERAGE >= 60" | bc -l) )); then COLOR="green"
+          elif (( $(echo "$COVERAGE >= 40" | bc -l) )); then COLOR="yellow"
+          else COLOR="red"; fi
+          mkdir -p .github/badges
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COVERAGE}%\",\"color\":\"$COLOR\"}" > .github/badges/coverage.json
+          cat .github/badges/coverage.json
+
+      - name: Commit coverage badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/coverage.json
+          git diff --staged --quiet || git commit -m "chore: update coverage badge [skip ci]"
+          git push
 
   build:
     name: Build

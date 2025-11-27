@@ -1,6 +1,7 @@
 # tdx
 
 [![CI](https://github.com/niklas-heer/tdx/actions/workflows/ci.yml/badge.svg)](https://github.com/niklas-heer/tdx/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/niklas-heer/tdx/main/.github/badges/coverage.json)](https://github.com/niklas-heer/tdx/actions/workflows/ci.yml)
 [![GitHub Downloads](https://img.shields.io/github/downloads/niklas-heer/tdx/total?logo=github&label=downloads)](https://github.com/niklas-heer/tdx/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/niklas-heer/tdx)](https://goreportcard.com/report/github.com/niklas-heer/tdx)
 
@@ -98,7 +99,8 @@ tdx
 | `Tab` | Indent (nest under previous) |
 | `Shift+Tab` | Outdent (move up one level) |
 | `/` | Fuzzy search |
-| `f` | Tag filter |
+| `t` | Tag filter |
+| `p` | Priority filter |
 | `r` | Recent files |
 | `:` | Command palette |
 | `u` | Undo |
@@ -114,7 +116,8 @@ Press `:` to open the command palette with fuzzy search. Available commands:
 |---------|-------------|
 | `check-all` | Mark all todos as complete |
 | `uncheck-all` | Mark all todos as incomplete |
-| `sort` | Sort todos (incomplete first) |
+| `sort-done` | Sort todos by completion (incomplete first) |
+| `sort-priority` | Sort todos by priority (p1 first, then p2, etc.) |
 | `filter-done` | Toggle showing/hiding completed todos |
 | `clear-done` | Delete all completed todos |
 | `read-only` | Toggle read-only mode (changes not saved) |
@@ -172,13 +175,43 @@ Add hashtags to your todos for organization:
 - [ ] Add dark mode #feature #frontend
 ```
 
-Press `f` to open tag filter mode:
+Press `t` to open tag filter mode:
 - Navigate with `↑/↓` or `j/k`
 - Toggle tags with `Space` or `Enter`
 - Clear all filters with `c`
 - Press `Esc` when done
 
 Active tag filters are shown in the status bar. Todos are automatically filtered to show only matching items.
+
+**Priorities:**
+
+Add priority markers to your todos using `!p1`, `!p2`, `!p3`, etc.:
+
+```markdown
+- [ ] Fix critical security bug !p1
+- [ ] Update dependencies !p2
+- [ ] Write documentation !p3
+- [ ] Refactor code !p2
+- [ ] Add nice-to-have feature
+```
+
+Priority levels:
+- `!p1` - Critical/Urgent (displayed in red)
+- `!p2` - High priority (displayed in orange)
+- `!p3` - Medium priority (displayed in yellow)
+- `!p4+` - Lower priorities (displayed dimmed)
+
+Use the `:sort-priority` command to sort todos by priority (p1 first, then p2, etc.). Tasks without a priority marker are placed at the end. You can combine priorities with tags: `Fix bug !p1 #backend #urgent`
+
+**Priority Filtering:**
+
+Press `p` to open priority filter mode:
+- Navigate with `↑/↓` or `j/k`
+- Toggle priorities with `Space` or `Enter`
+- Clear all filters with `c`
+- Press `Esc` when done
+
+Active priority filters are shown in the status bar (e.g., `⚡ p1 p2`). You can combine priority and tag filters to narrow down your view.
 
 ### CLI Commands
 
