@@ -3,7 +3,8 @@
 
 Output assets/demo-0.10.0.gif
 
-Require tdx
+# Use local binary (build with: just build)
+Require ./tdx
 
 Set Shell "bash"
 Set FontSize 26
@@ -68,7 +69,7 @@ Enter
 Sleep 800ms
 
 # Launch TUI
-Type "tdx demo_todo.md"
+Type "./tdx demo_todo.md"
 Sleep 400ms
 Enter
 Sleep 1.5s
@@ -231,15 +232,15 @@ Type@60ms "# CLI commands work too!"
 Enter
 Sleep 800ms
 
-Type "tdx demo_todo.md list"
+Type "./tdx demo_todo.md list"
 Enter
 Sleep 1.5s
 
-Type "tdx demo_todo.md add 'Review pull requests !p2 #review'"
+Type "./tdx demo_todo.md add 'Review pull requests !p2 #review'"
 Enter
 Sleep 1s
 
-Type "tdx demo_todo.md toggle 1"
+Type "./tdx demo_todo.md toggle 1"
 Enter
 Sleep 1s
 
