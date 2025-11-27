@@ -359,7 +359,7 @@ func SaveTheme(themeName string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	encoder := toml.NewEncoder(f)
 	return encoder.Encode(minConfig)

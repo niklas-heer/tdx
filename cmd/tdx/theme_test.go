@@ -249,7 +249,7 @@ func TestSaveTheme_OnlyWritesThemeName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create config file path
 	configPath := filepath.Join(tmpDir, "config.toml")
@@ -271,10 +271,10 @@ func TestSaveTheme_OnlyWritesThemeName(t *testing.T) {
 
 	encoder := toml.NewEncoder(f)
 	if err := encoder.Encode(cfg); err != nil {
-		f.Close()
+		_ = f.Close()
 		t.Fatal(err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Read back and verify no colors section
 	content, err := os.ReadFile(configPath)

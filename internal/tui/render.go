@@ -294,7 +294,7 @@ func ColorizePriorities(text string) string {
 		}
 
 		priority := 0
-		fmt.Sscanf(submatch[1], "%d", &priority)
+		_, _ = fmt.Sscanf(submatch[1], "%d", &priority)
 
 		var style lipgloss.Style
 		switch priority {
