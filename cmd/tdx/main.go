@@ -40,6 +40,28 @@ func main() {
 	}
 	tui.Version = Version
 
+	// Setup theme picker support
+	tui.AvailableThemes = GetBuiltinThemeNames()
+	tui.CurrentThemeName = appConfig.Theme.Name
+	tui.ThemeApplyFunc = func(themeName string) *tui.StyleFuncsType {
+		colors, ok := GetBuiltinTheme(themeName)
+		if !ok {
+			return nil
+		}
+		// Create a temporary config with the new theme colors
+		tempConfig := &UserConfig{Colors: colors}
+		newStyles := NewStyles(tempConfig)
+		return &tui.StyleFuncsType{
+			Magenta: func(s string) string { return newStyles.Important.Render(s) },
+			Cyan:    func(s string) string { return newStyles.Accent.Render(s) },
+			Dim:     func(s string) string { return newStyles.Dim.Render(s) },
+			Green:   func(s string) string { return newStyles.Success.Render(s) },
+			Yellow:  func(s string) string { return newStyles.Warning.Render(s) },
+			Code:    func(s string) string { return newStyles.Code.Render(s) },
+		}
+	}
+	tui.ThemeSaveFunc = SaveTheme
+
 	args := os.Args[1:]
 
 	// Determine file path, flags, and command

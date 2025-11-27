@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/niklas-heer/tdx/internal/cmd"
+	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/tui"
 )
 
@@ -38,12 +39,44 @@ func TestMain(m *testing.M) {
 	}
 	tui.Version = Version
 
+	// Setup theme picker globals for testing
+	tui.AvailableThemes = GetBuiltinThemeNames()
+	tui.CurrentThemeName = appConfig.Theme.Name
+	tui.ThemeApplyFunc = func(themeName string) *tui.StyleFuncsType {
+		colors, ok := GetBuiltinTheme(themeName)
+		if !ok {
+			return nil
+		}
+		tempConfig := &UserConfig{Colors: colors}
+		newStyles := NewStyles(tempConfig)
+		return &tui.StyleFuncsType{
+			Magenta: func(s string) string { return newStyles.Important.Render(s) },
+			Cyan:    func(s string) string { return newStyles.Accent.Render(s) },
+			Dim:     func(s string) string { return newStyles.Dim.Render(s) },
+			Green:   func(s string) string { return newStyles.Success.Render(s) },
+			Yellow:  func(s string) string { return newStyles.Warning.Render(s) },
+			Code:    func(s string) string { return newStyles.Code.Render(s) },
+		}
+	}
+	tui.ThemeSaveFunc = func(themeName string) error {
+		// For testing, don't actually save to disk
+		return nil
+	}
+
 	// Build the binary for testing
 	tmpDir, err := os.MkdirTemp("", "tdx-test")
 	if err != nil {
 		panic(err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Isolate config directory for tests to avoid race conditions with other packages
+	configDir, err := os.MkdirTemp("", "tdx-test-config")
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = os.RemoveAll(configDir) }()
+	config.SetConfigDirForTesting(configDir)
 
 	testBinary = filepath.Join(tmpDir, "tdx")
 	buildCmd := exec.Command("go", "build", "-o", testBinary, ".")

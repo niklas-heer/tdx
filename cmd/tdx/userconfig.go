@@ -15,7 +15,7 @@ var themesFS embed.FS
 // UserConfig holds user configuration
 type UserConfig struct {
 	Theme   ThemeConfig   `toml:"theme"`
-	Colors  ColorsConfig  `toml:"colors"`
+	Colors  ColorsConfig  // Populated from builtin theme, not from config file
 	Display DisplayConfig `toml:"display"`
 }
 
@@ -78,6 +78,103 @@ func loadBuiltinThemes() map[string]ColorsConfig {
 // builtinThemes holds all embedded themes
 var builtinThemes = loadBuiltinThemes()
 
+// loadUserThemes loads themes from ~/.config/tdx/themes/ directory
+func loadUserThemes() map[string]ColorsConfig {
+	themes := make(map[string]ColorsConfig)
+
+	// Get user themes directory
+	var themesDir string
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		themesDir = filepath.Join(xdgConfig, "tdx", "themes")
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return themes
+		}
+		themesDir = filepath.Join(homeDir, ".config", "tdx", "themes")
+	}
+
+	// Check if directory exists
+	entries, err := os.ReadDir(themesDir)
+	if err != nil {
+		return themes // Directory doesn't exist or not readable
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		// Only process .toml files
+		if filepath.Ext(entry.Name()) != ".toml" {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(themesDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+
+		var config UserConfig
+		if _, err := toml.Decode(string(data), &config); err != nil {
+			continue
+		}
+
+		if config.Theme.Name != "" {
+			themes[config.Theme.Name] = config.Colors
+		}
+	}
+
+	return themes
+}
+
+// allThemes combines builtin and user themes (user themes override builtin)
+func getAllThemes() map[string]ColorsConfig {
+	themes := make(map[string]ColorsConfig)
+
+	// Start with builtin themes
+	for name, colors := range builtinThemes {
+		themes[name] = colors
+	}
+
+	// Override/add with user themes
+	for name, colors := range loadUserThemes() {
+		themes[name] = colors
+	}
+
+	return themes
+}
+
+// GetBuiltinThemeNames returns a sorted list of available theme names (builtin + user)
+func GetBuiltinThemeNames() []string {
+	allThemes := getAllThemes()
+	names := make([]string, 0, len(allThemes))
+	for name := range allThemes {
+		names = append(names, name)
+	}
+	// Sort alphabetically for consistent display
+	for i := 0; i < len(names)-1; i++ {
+		for j := i + 1; j < len(names); j++ {
+			if names[i] > names[j] {
+				names[i], names[j] = names[j], names[i]
+			}
+		}
+	}
+	return names
+}
+
+// GetBuiltinTheme returns the colors for a theme by name (checks user themes first, then builtin)
+func GetBuiltinTheme(name string) (ColorsConfig, bool) {
+	// Check user themes first (allows overriding builtin themes)
+	userThemes := loadUserThemes()
+	if colors, ok := userThemes[name]; ok {
+		return colors, true
+	}
+	// Fall back to builtin themes
+	colors, ok := builtinThemes[name]
+	return colors, ok
+}
+
 // DefaultConfig returns Tokyo Night theme as default
 func DefaultConfig() *UserConfig {
 	return &UserConfig{
@@ -95,7 +192,8 @@ func DefaultConfig() *UserConfig {
 
 // LoadConfig loads config from ~/.config/tdx/config.toml or returns defaults
 func LoadConfig() *UserConfig {
-	config := DefaultConfig()
+	defaults := DefaultConfig()
+	config := &UserConfig{}
 
 	// Try multiple config locations
 	var configPaths []string
@@ -120,22 +218,30 @@ func LoadConfig() *UserConfig {
 	}
 
 	if configPath == "" {
-		return config
+		return defaults
 	}
 
-	// Load and parse config
-	meta, err := toml.DecodeFile(configPath, config)
-	if err != nil {
-		return DefaultConfig()
+	// Load and parse config (theme name and display settings only)
+	if _, err := toml.DecodeFile(configPath, config); err != nil {
+		return defaults
 	}
 
-	// Apply builtin theme if name is set and no custom colors defined
+	// Apply defaults for any missing values
+	if config.Theme.Name == "" {
+		config.Theme.Name = defaults.Theme.Name
+	}
+	if config.Display.CheckSymbol == "" {
+		config.Display.CheckSymbol = defaults.Display.CheckSymbol
+	}
+	if config.Display.SelectMarker == "" {
+		config.Display.SelectMarker = defaults.Display.SelectMarker
+	}
+	// MaxVisible 0 is valid (unlimited), so we don't override it
+
+	// Apply colors from theme (user themes override builtin)
 	if config.Theme.Name != "" {
-		if theme, ok := builtinThemes[config.Theme.Name]; ok {
-			// Only apply theme colors if [colors] section wasn't in config
-			if !meta.IsDefined("colors") {
-				config.Colors = theme
-			}
+		if theme, ok := GetBuiltinTheme(config.Theme.Name); ok {
+			config.Colors = theme
 		}
 	}
 
@@ -166,4 +272,95 @@ func NewStyles(config *UserConfig) *Styles {
 		Error:     lipgloss.NewStyle().Foreground(lipgloss.Color(config.Colors.AlertError)),
 		Code:      lipgloss.NewStyle().Background(lipgloss.Color(config.Colors.Dim)).Foreground(lipgloss.Color(config.Colors.Base)),
 	}
+}
+
+// NewStyleFuncs creates StyleFuncsType from Styles
+func NewStyleFuncs(styles *Styles) *StyleFuncsType {
+	return &StyleFuncsType{
+		Magenta: func(s string) string { return styles.Important.Render(s) },
+		Cyan:    func(s string) string { return styles.Accent.Render(s) },
+		Dim:     func(s string) string { return styles.Dim.Render(s) },
+		Green:   func(s string) string { return styles.Success.Render(s) },
+		Yellow:  func(s string) string { return styles.Warning.Render(s) },
+		Code:    func(s string) string { return styles.Code.Render(s) },
+	}
+}
+
+// StyleFuncsType holds style functions for rendering (duplicated here to avoid import cycle)
+type StyleFuncsType struct {
+	Magenta func(string) string
+	Cyan    func(string) string
+	Dim     func(string) string
+	Green   func(string) string
+	Yellow  func(string) string
+	Code    func(string) string
+}
+
+// getConfigPath returns the path to the TOML config file, creating directory if needed
+func getConfigPath() (string, error) {
+	var configDir string
+
+	// Check XDG_CONFIG_HOME first
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		configDir = filepath.Join(xdgConfig, "tdx")
+	} else {
+		// Fall back to ~/.config/tdx
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		configDir = filepath.Join(homeDir, ".config", "tdx")
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return "", err
+	}
+
+	return filepath.Join(configDir, "config.toml"), nil
+}
+
+// minimalThemeConfig is used for saving only the theme name without colors
+type minimalThemeConfig struct {
+	Theme struct {
+		Name string `toml:"name"`
+	} `toml:"theme"`
+	Display *DisplayConfig `toml:"display,omitempty"`
+}
+
+// SaveTheme saves the theme name to the config file
+// Only saves the theme name, not colors, so the builtin theme colors are used
+func SaveTheme(themeName string) error {
+	configPath, err := getConfigPath()
+	if err != nil {
+		return err
+	}
+
+	// Load existing config to preserve display settings
+	existingConfig := &UserConfig{}
+	if _, err := os.Stat(configPath); err == nil {
+		// File exists, load it to preserve display settings
+		_, _ = toml.DecodeFile(configPath, existingConfig)
+	}
+
+	// Create minimal config with only theme name and display settings
+	minConfig := &minimalThemeConfig{}
+	minConfig.Theme.Name = themeName
+
+	// Preserve display settings if they were customized
+	if existingConfig.Display.MaxVisible != 0 ||
+		existingConfig.Display.CheckSymbol != "" ||
+		existingConfig.Display.SelectMarker != "" {
+		minConfig.Display = &existingConfig.Display
+	}
+
+	// Write config to file
+	f, err := os.Create(configPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	encoder := toml.NewEncoder(f)
+	return encoder.Encode(minConfig)
 }
