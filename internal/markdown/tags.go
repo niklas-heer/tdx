@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -63,7 +64,7 @@ func (t *Todo) HasAnyTag(tags []string) bool {
 	return false
 }
 
-// GetAllTags returns all unique tags from a list of todos
+// GetAllTags returns all unique tags from a list of todos, sorted alphabetically
 func GetAllTags(todos []Todo) []string {
 	tagSet := make(map[string]bool)
 	for _, todo := range todos {
@@ -77,6 +78,7 @@ func GetAllTags(todos []Todo) []string {
 		tags = append(tags, tag)
 	}
 
-	// Sort tags alphabetically
+	// Sort tags alphabetically for deterministic ordering
+	sort.Strings(tags)
 	return tags
 }

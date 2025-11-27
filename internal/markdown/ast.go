@@ -82,6 +82,7 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 		if checkbox != nil {
 			text := doc.extractTodoText(listItem, checkbox)
 			tags := ExtractTags(text)
+			priority := ExtractPriority(text)
 
 			// Get line number from textBlock
 			lineNo := 0
@@ -95,6 +96,7 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 				Text:        text,
 				LineNo:      lineNo,
 				Tags:        tags,
+				Priority:    priority,
 				Depth:       depth,
 				ParentIndex: parentIdx,
 			}

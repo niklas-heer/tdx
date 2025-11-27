@@ -15,6 +15,7 @@ type Todo struct {
 	Text        string
 	LineNo      int
 	Tags        []string // Tags extracted from the text (e.g., #urgent #backend)
+	Priority    int      // Priority level (1=highest, 0=no priority) extracted from !p1, !p2, etc.
 	Depth       int      // Nesting depth: 0 = top-level, 1 = child, 2 = grandchild, etc.
 	ParentIndex int      // Index of parent todo in flat array, -1 for top-level
 }
