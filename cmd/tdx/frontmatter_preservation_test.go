@@ -326,7 +326,7 @@ show-headings: true
 	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Sort tasks
-	runPiped(t, file, ":sort\r")
+	runPiped(t, file, ":sort-done\r")
 
 	assertFrontmatterExists(t, file, map[string]string{
 		"filter-done":   "true",

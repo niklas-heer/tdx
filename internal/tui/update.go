@@ -28,6 +28,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.TermWidth = msg.Width
+		m.TermHeight = msg.Height
 		return m, nil
 	case ClearCopyFeedbackMsg:
 		m.CopyFeedback = false
@@ -99,9 +100,19 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchKey(msg)
 	}
 
-	// Handle filter mode
+	// Handle filter mode (tags)
 	if m.FilterMode {
 		return m.handleFilterKey(msg)
+	}
+
+	// Handle priority filter mode
+	if m.PriorityFilterMode {
+		return m.handlePriorityFilterKey(msg)
+	}
+
+	// Handle theme picker mode
+	if m.ThemeMode {
+		return m.handleThemeKey(msg)
 	}
 
 	// Handle command mode
@@ -184,13 +195,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Mark this todo as locally modified
 			m.LocallyModified[todo.Text] = true
 			m.writeIfPersist()
-			// Adjust selection if item is now hidden by filter
-			if m.FilterDone && m.FileModel.Todos[m.SelectedIndex].Checked {
+			// Adjust selection if item is now hidden by any filter
+			if !m.isTodoVisible(m.SelectedIndex) {
+				m.SelectedIndex = m.findBestVisibleSelection(m.SelectedIndex)
 				m.InvalidateDocumentTree()
-				tree := m.GetDocumentTree()
-				if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
-					m.SelectedIndex = selectedNode.TodoIndex
-				}
 			}
 		}
 
@@ -284,11 +292,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case "f":
-		if len(m.AvailableTags) > 0 {
-			m.FilterMode = true
-			m.TagFilterCursor = 0
-		}
+	case "t":
+		// Always allow entering tag filter mode - show helpful message if no tags
+		m.FilterMode = true
+		m.TagFilterCursor = 0
+
+	case "p":
+		// Always allow entering priority filter mode - show helpful message if no priorities
+		m.PriorityFilterMode = true
+		m.PriorityFilterCursor = 0
 
 	case "G":
 		// Go to bottom (vim-style)
@@ -699,6 +711,111 @@ func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) handlePriorityFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "enter", " ":
+		// Toggle priority filter
+		if len(m.AvailablePriorities) > 0 && m.PriorityFilterCursor < len(m.AvailablePriorities) {
+			selectedPriority := m.AvailablePriorities[m.PriorityFilterCursor]
+
+			// Check if priority is already in filter
+			found := false
+			for i, p := range m.FilteredPriorities {
+				if p == selectedPriority {
+					// Remove priority from filter
+					m.FilteredPriorities = append(m.FilteredPriorities[:i], m.FilteredPriorities[i+1:]...)
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				// Add priority to filter
+				m.FilteredPriorities = append(m.FilteredPriorities, selectedPriority)
+			}
+
+			// Filter change affects document tree
+			m.InvalidateDocumentTree()
+
+			// Close filter mode after selection
+			m.PriorityFilterMode = false
+		}
+
+	case "esc":
+		m.PriorityFilterMode = false
+
+	case "c":
+		// Clear all priority filters
+		m.FilteredPriorities = []int{}
+		m.InvalidateDocumentTree()
+
+	case "down", "ctrl+n", "ctrl+j", "j":
+		// Move down in priority list
+		if len(m.AvailablePriorities) > 0 && m.PriorityFilterCursor < len(m.AvailablePriorities)-1 {
+			m.PriorityFilterCursor++
+		}
+
+	case "up", "ctrl+p", "ctrl+k", "k":
+		// Move up in priority list
+		if m.PriorityFilterCursor > 0 {
+			m.PriorityFilterCursor--
+		}
+	}
+
+	return m, nil
+}
+
+func (m Model) handleThemeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "enter":
+		// Confirm theme selection and save to config
+		if len(m.AvailableThemes) > 0 && m.ThemeCursor < len(m.AvailableThemes) {
+			selectedTheme := m.AvailableThemes[m.ThemeCursor]
+			m.CurrentThemeName = selectedTheme
+			// Save theme to config
+			if m.ThemeSaveFunc != nil {
+				_ = m.ThemeSaveFunc(selectedTheme)
+			}
+		}
+		m.ThemeMode = false
+		m.OriginalStyles = nil // Clear saved styles
+
+	case "esc":
+		// Cancel and restore original theme
+		if m.OriginalStyles != nil {
+			m.styles = m.OriginalStyles
+		}
+		m.ThemeMode = false
+		m.OriginalStyles = nil
+
+	case "down", "ctrl+n", "ctrl+j", "j":
+		// Move down in theme list and apply preview
+		if len(m.AvailableThemes) > 0 && m.ThemeCursor < len(m.AvailableThemes)-1 {
+			m.ThemeCursor++
+			// Apply theme preview
+			if m.ThemeApplyFunc != nil {
+				m.styles = m.ThemeApplyFunc(m.AvailableThemes[m.ThemeCursor])
+			}
+		}
+
+	case "up", "ctrl+p", "ctrl+k", "k":
+		// Move up in theme list and apply preview
+		if m.ThemeCursor > 0 {
+			m.ThemeCursor--
+			// Apply theme preview
+			if m.ThemeApplyFunc != nil {
+				m.styles = m.ThemeApplyFunc(m.AvailableThemes[m.ThemeCursor])
+			}
+		}
+	}
+
+	return m, nil
+}
+
 func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
@@ -788,50 +905,189 @@ func (m *Model) addNewTodo() {
 	m.writeIfPersist()
 }
 
+// findBestVisibleSelection finds the best visible todo to select when the item at
+// hiddenIdx becomes hidden (e.g., toggled to done with filter-done active).
+// It considers subtask relationships:
+// 1. Next sibling at same depth with same parent
+// 2. Previous sibling if no next sibling
+// 3. Parent if no siblings remain
+// 4. Fall back to next/previous visible item
+// Returns the index to select (no adjustment needed since nothing is removed)
+func (m *Model) findBestVisibleSelection(hiddenIdx int) int {
+	if len(m.FileModel.Todos) == 0 {
+		return 0
+	}
+
+	todos := m.FileModel.Todos
+	hiddenTodo := todos[hiddenIdx]
+	hiddenDepth := hiddenTodo.Depth
+	hiddenParent := hiddenTodo.ParentIndex
+
+	// Look for next sibling (same parent, same depth, comes after hiddenIdx)
+	for i := hiddenIdx + 1; i < len(todos); i++ {
+		todo := todos[i]
+		// If we hit a shallower depth, we've left the subtree
+		if todo.Depth < hiddenDepth {
+			break
+		}
+		// Found a sibling at same depth with same parent
+		if todo.Depth == hiddenDepth && todo.ParentIndex == hiddenParent {
+			if m.isTodoVisible(i) {
+				return i
+			}
+		}
+	}
+
+	// Look for previous sibling (same parent, same depth, comes before hiddenIdx)
+	for i := hiddenIdx - 1; i >= 0; i-- {
+		todo := todos[i]
+		// If we hit a shallower depth, we've left the subtree
+		if todo.Depth < hiddenDepth {
+			break
+		}
+		// Found a sibling at same depth with same parent
+		if todo.Depth == hiddenDepth && todo.ParentIndex == hiddenParent {
+			if m.isTodoVisible(i) {
+				return i
+			}
+		}
+	}
+
+	// No siblings found - select parent if this was a subtask
+	if hiddenParent >= 0 && hiddenParent < len(todos) {
+		if m.isTodoVisible(hiddenParent) {
+			return hiddenParent
+		}
+	}
+
+	// Fall back to default behavior: next visible item or previous
+	// Try next item first
+	for i := hiddenIdx + 1; i < len(todos); i++ {
+		if m.isTodoVisible(i) {
+			return i
+		}
+	}
+	// Try previous item
+	for i := hiddenIdx - 1; i >= 0; i-- {
+		if m.isTodoVisible(i) {
+			return i
+		}
+	}
+
+	// No visible items - return current index (will show empty state)
+	return hiddenIdx
+}
+
+// findBestSelectionAfterDelete calculates the best todo index to select after deleting
+// the todo at deletedIdx. Uses findBestVisibleSelection logic but adjusts indices
+// for the deletion.
+func (m *Model) findBestSelectionAfterDelete(deletedIdx int) int {
+	if len(m.FileModel.Todos) <= 1 {
+		return 0 // Will be empty or just one item
+	}
+
+	todos := m.FileModel.Todos
+	deletedTodo := todos[deletedIdx]
+	deletedDepth := deletedTodo.Depth
+	deletedParent := deletedTodo.ParentIndex
+
+	// Look for next sibling (same parent, same depth, comes after deletedIdx)
+	for i := deletedIdx + 1; i < len(todos); i++ {
+		todo := todos[i]
+		// If we hit a shallower depth, we've left the subtree
+		if todo.Depth < deletedDepth {
+			break
+		}
+		// Found a sibling at same depth with same parent
+		if todo.Depth == deletedDepth && todo.ParentIndex == deletedParent {
+			if m.isTodoVisible(i) {
+				// Adjust for deletion: this index will shift down by 1
+				return i - 1
+			}
+		}
+	}
+
+	// Look for previous sibling (same parent, same depth, comes before deletedIdx)
+	for i := deletedIdx - 1; i >= 0; i-- {
+		todo := todos[i]
+		// If we hit a shallower depth, we've left the subtree
+		if todo.Depth < deletedDepth {
+			break
+		}
+		// Found a sibling at same depth with same parent
+		if todo.Depth == deletedDepth && todo.ParentIndex == deletedParent {
+			if m.isTodoVisible(i) {
+				// No adjustment needed: this index comes before deletion
+				return i
+			}
+		}
+	}
+
+	// No siblings found - select parent if this was a subtask
+	if deletedParent >= 0 && deletedParent < len(todos) {
+		if m.isTodoVisible(deletedParent) {
+			// Parent comes before deletion, no adjustment needed
+			return deletedParent
+		}
+	}
+
+	// Fall back to default behavior: next visible item or previous
+	// Try next item first
+	for i := deletedIdx + 1; i < len(todos); i++ {
+		if m.isTodoVisible(i) {
+			return i - 1 // Adjust for deletion
+		}
+	}
+	// Try previous item
+	for i := deletedIdx - 1; i >= 0; i-- {
+		if m.isTodoVisible(i) {
+			return i
+		}
+	}
+
+	return 0
+}
+
 func (m *Model) deleteCurrent() {
 	if len(m.FileModel.Todos) == 0 {
 		return
 	}
 
-	// Use document tree for predictable deletion and selection
+	deletedIdx := m.SelectedIndex
+
+	// Calculate the best selection BEFORE deletion while we still have the full todo list
+	newSelection := m.findBestSelectionAfterDelete(deletedIdx)
+
+	// Use document tree path for filters/headings to handle visibility
 	if m.hasActiveFilters() || m.ShowHeadings {
 		tree := m.GetDocumentTree()
-		deletedIdx := tree.DeleteSelected()
-		if deletedIdx >= 0 {
-			// Capture the new selection BEFORE invalidating/deleting
-			// DeleteSelected has already updated tree.Selected to point to the next visible node
-			newSelectedTodoIndex := -1
-			if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
-				newSelectedTodoIndex = selectedNode.TodoIndex
+		actualDeletedIdx := tree.DeleteSelected()
+		if actualDeletedIdx >= 0 {
+			deletedIdx = actualDeletedIdx
+			// Recalculate with actual deleted index if different
+			if actualDeletedIdx != m.SelectedIndex {
+				newSelection = m.findBestSelectionAfterDelete(actualDeletedIdx)
 			}
-
-			_ = m.FileModel.DeleteTodoItem(deletedIdx)
-			m.InvalidateHeadingsCache()
-			m.InvalidateDocumentTree()
-
-			// Update model selection based on what we captured
-			// Adjust for the deletion: if new selection was after deleted item, decrement by 1
-			if newSelectedTodoIndex > deletedIdx {
-				m.SelectedIndex = newSelectedTodoIndex - 1
-			} else if newSelectedTodoIndex >= 0 {
-				m.SelectedIndex = newSelectedTodoIndex
-			} else if len(m.FileModel.Todos) > 0 {
-				m.SelectedIndex = 0
-			}
-
-			m.writeIfPersist()
-		}
-	} else {
-		// Simple case: no filters or headings
-		_ = m.FileModel.DeleteTodoItem(m.SelectedIndex)
-		m.InvalidateHeadingsCache()
-		m.writeIfPersist()
-
-		// Adjust selection - ensure it stays within bounds
-		if m.SelectedIndex >= len(m.FileModel.Todos) {
-			m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
 		}
 	}
+
+	// Perform the deletion
+	_ = m.FileModel.DeleteTodoItem(deletedIdx)
+	m.InvalidateHeadingsCache()
+	m.InvalidateDocumentTree()
+
+	// Set the new selection
+	if len(m.FileModel.Todos) == 0 {
+		m.SelectedIndex = 0
+	} else if newSelection >= len(m.FileModel.Todos) {
+		m.SelectedIndex = len(m.FileModel.Todos) - 1
+	} else if newSelection < 0 {
+		m.SelectedIndex = 0
+	} else {
+		m.SelectedIndex = newSelection
+	}
+
+	m.writeIfPersist()
 }
 
 func (m *Model) updateSearchResults() {
@@ -1060,12 +1316,17 @@ func (m *Model) isTodoVisible(idx int) bool {
 		return false
 	}
 
+	// Hidden by priority filters
+	if len(m.FilteredPriorities) > 0 && !todo.HasAnyPriority(m.FilteredPriorities) {
+		return false
+	}
+
 	return true
 }
 
 // hasActiveFilters returns true if any visibility filter is active
 func (m *Model) hasActiveFilters() bool {
-	return m.FilterDone || len(m.FilteredTags) > 0
+	return m.FilterDone || len(m.FilteredTags) > 0 || len(m.FilteredPriorities) > 0
 }
 
 func (m *Model) getVisibleTodos() []int {

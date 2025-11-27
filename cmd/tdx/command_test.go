@@ -139,7 +139,7 @@ func TestCommand_SortTasks(t *testing.T) {
 	runCLI(t, file, "toggle", "4")
 
 	// Sort (incomplete first)
-	runPiped(t, file, ":sort\r")
+	runPiped(t, file, ":sort-done\r")
 
 	todos := getTodos(t, file)
 	if len(todos) != 4 {
@@ -245,7 +245,7 @@ func TestCommand_EmptyFile(t *testing.T) {
 	runPiped(t, file, ":check-all\r")
 	runPiped(t, file, ":uncheck-all\r")
 	runPiped(t, file, ":clear-done\r")
-	runPiped(t, file, ":sort\r")
+	runPiped(t, file, ":sort-done\r")
 
 	// File should still be valid (just empty or with header)
 	content, _ := os.ReadFile(file)

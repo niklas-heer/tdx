@@ -32,6 +32,12 @@ var (
 	Config     *ConfigType
 	StyleFuncs *StyleFuncsType
 	Version    string
+
+	// Theme picker globals (set by main.go)
+	AvailableThemes  []string
+	CurrentThemeName string
+	ThemeApplyFunc   func(themeName string) *StyleFuncsType
+	ThemeSaveFunc    func(themeName string) error
 )
 
 // Model holds the TUI application state
@@ -67,6 +73,7 @@ type Model struct {
 	FilterDone         bool
 	WordWrap           bool
 	TermWidth          int
+	TermHeight         int
 	HideLineNumbers    bool
 	MaxVisibleOverride int
 	ShowHeadings       bool
@@ -80,10 +87,25 @@ type Model struct {
 	AvailableTags   []string // All unique tags from todos
 	TagFilterCursor int      // Cursor position in tag filter list
 
+	// Priority filtering state
+	PriorityFilterMode   bool  // Whether we're in priority filter mode
+	FilteredPriorities   []int // Currently active priority filters (e.g., [1, 2] means show only p1 and p2)
+	AvailablePriorities  []int // All unique priorities from todos
+	PriorityFilterCursor int   // Cursor position in priority filter list
+
 	// Recent files state
 	RecentFiles       []config.RecentFile // List of recent files
 	RecentFilesCursor int                 // Cursor position in recent files list
 	RecentFilesSearch string              // Search filter for recent files
+
+	// Theme picker state
+	ThemeMode        bool                                   // Whether we're in theme picker mode
+	AvailableThemes  []string                               // List of available theme names
+	ThemeCursor      int                                    // Cursor position in theme list
+	CurrentThemeName string                                 // Name of the currently applied theme
+	OriginalStyles   *StyleFuncsType                        // Saved styles before entering theme mode (for cancel)
+	ThemeApplyFunc   func(themeName string) *StyleFuncsType // Function to apply a theme and return new style funcs
+	ThemeSaveFunc    func(themeName string) error           // Function to save theme to config
 
 	// Cached headings for performance (avoid re-extraction on every render)
 	cachedHeadings []markdown.Heading
@@ -116,27 +138,35 @@ type CommandDebounceMsg struct{}
 
 // New creates a new TUI model with injected dependencies
 func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bool, maxVisible int, config *ConfigType, styles *StyleFuncsType, version string) Model {
-	// Extract all available tags from todos
+	// Extract all available tags and priorities from todos
 	availableTags := markdown.GetAllTags(fm.Todos)
+	availablePriorities := markdown.GetAllPriorities(fm.Todos)
 
 	m := Model{
-		FilePath:           filePath,
-		FileModel:          *fm,
-		SelectedIndex:      0,
-		Commands:           InitCommands(),
-		ReadOnly:           readOnly,
-		ShowHeadings:       showHeadings,
-		MaxVisibleOverride: maxVisible,
-		LocallyModified:    make(map[string]bool),
-		AvailableTags:      availableTags,
-		FilteredTags:       []string{},
-		WordWrap:           true,  // Default to true for better UX
-		headingsDirty:      true,  // Force initial cache population
-		searchPending:      false, // No pending search on init
-		treeDirty:          true,  // Force initial tree build
-		config:             config,
-		styles:             styles,
-		appVersion:         version,
+		FilePath:            filePath,
+		FileModel:           *fm,
+		SelectedIndex:       0,
+		Commands:            InitCommands(),
+		ReadOnly:            readOnly,
+		ShowHeadings:        showHeadings,
+		MaxVisibleOverride:  maxVisible,
+		LocallyModified:     make(map[string]bool),
+		AvailableTags:       availableTags,
+		FilteredTags:        []string{},
+		AvailablePriorities: availablePriorities,
+		FilteredPriorities:  []int{},
+		WordWrap:            true,  // Default to true for better UX
+		headingsDirty:       true,  // Force initial cache population
+		searchPending:       false, // No pending search on init
+		treeDirty:           true,  // Force initial tree build
+		config:              config,
+		styles:              styles,
+		appVersion:          version,
+		// Theme picker state from globals
+		AvailableThemes:  AvailableThemes,
+		CurrentThemeName: CurrentThemeName,
+		ThemeApplyFunc:   ThemeApplyFunc,
+		ThemeSaveFunc:    ThemeSaveFunc,
 	}
 
 	// Apply metadata settings (including FilterDone) from file

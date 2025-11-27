@@ -58,6 +58,36 @@ func (m Model) View() string {
 		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
 	}
 
+	if m.PriorityFilterMode {
+		// Ensure there's space for overlay positioning
+		contentLines := strings.Count(mainContent, "\n")
+		minLines := 10 // Minimum lines to ensure overlay positioning works well
+		if contentLines < minLines {
+			for i := contentLines; i < minLines; i++ {
+				background += "\n"
+			}
+		}
+
+		overlayContent := m.renderPriorityFilterOverlayCompact()
+		// Position overlay just above status bar
+		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+	}
+
+	if m.ThemeMode {
+		// Ensure there's space for overlay positioning
+		contentLines := strings.Count(mainContent, "\n")
+		minLines := 10 // Minimum lines to ensure overlay positioning works well
+		if contentLines < minLines {
+			for i := contentLines; i < minLines; i++ {
+				background += "\n"
+			}
+		}
+
+		overlayContent := m.renderThemeOverlayCompact()
+		// Position overlay just above status bar
+		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+	}
+
 	if m.CommandMode {
 		// Ensure there's space for overlay positioning
 		contentLines := strings.Count(mainContent, "\n")
@@ -105,6 +135,11 @@ func (m Model) renderMainContent() string {
 				continue
 			}
 
+			// Apply priority filtering if active
+			if len(m.FilteredPriorities) > 0 && !todo.HasAnyPriority(m.FilteredPriorities) {
+				continue
+			}
+
 			todosToShow = append(todosToShow, i)
 		}
 	}
@@ -121,9 +156,25 @@ func (m Model) renderMainContent() string {
 	if m.MaxVisibleOverride >= 0 {
 		configMaxVisible = m.MaxVisibleOverride
 	}
+
+	// If max_visible is 0 (unlimited) but we have terminal height info,
+	// auto-calculate a reasonable limit based on terminal size
+	// Reserve lines for: status bar (1), empty line (1), potential headings, scroll indicators
+	autoMaxVisible := 0
+	if configMaxVisible == 0 && m.TermHeight > 0 {
+		// Reserve ~4 lines for UI chrome (status bar, spacing, etc.)
+		autoMaxVisible = m.TermHeight - 4
+		if autoMaxVisible < 5 {
+			autoMaxVisible = 5 // Minimum reasonable visible items
+		}
+	}
+
 	effectiveMaxVisible := configMaxVisible
-	if m.InputMode && configMaxVisible > 0 {
-		effectiveMaxVisible = configMaxVisible - 1
+	if effectiveMaxVisible == 0 && autoMaxVisible > 0 {
+		effectiveMaxVisible = autoMaxVisible
+	}
+	if m.InputMode && effectiveMaxVisible > 0 {
+		effectiveMaxVisible = effectiveMaxVisible - 1
 	}
 
 	if effectiveMaxVisible > 0 && len(todosToShow) > effectiveMaxVisible {
@@ -167,8 +218,8 @@ func (m Model) renderMainContent() string {
 		hasMoreBelow = true
 	}
 
-	// Show indicator for items above (always reserve space when max_visible is set)
-	if configMaxVisible > 0 && totalCount > configMaxVisible {
+	// Show indicator for items above (when scrolling is active)
+	if effectiveMaxVisible > 0 && totalCount > effectiveMaxVisible {
 		if hasMoreAbove {
 			b.WriteString(fmt.Sprintf("      %s\n", styles.Dim(fmt.Sprintf("▲ %d more", startIdx))))
 		} else {
@@ -282,8 +333,9 @@ func (m Model) renderMainContent() string {
 			text = HighlightMatches(todo.Text, m.InputBuffer, styles.Green)
 		} else {
 			text = RenderInlineCode(todo.Text, todo.Checked, styles.Magenta, styles.Cyan, styles.Code)
-			// Colorize tags
+			// Colorize tags and priorities
 			text = ColorizeTags(text, styles.Yellow)
+			text = ColorizePriorities(text)
 		}
 
 		// Show edit cursor if in edit mode on this item
@@ -338,8 +390,8 @@ func (m Model) renderMainContent() string {
 		b.WriteString(m.renderInputLine(styles, config))
 	}
 
-	// Show indicator for items below (always reserve space when max_visible is set)
-	if configMaxVisible > 0 && totalCount > configMaxVisible {
+	// Show indicator for items below (when scrolling is active)
+	if effectiveMaxVisible > 0 && totalCount > effectiveMaxVisible {
 		if hasMoreBelow && !m.InputMode {
 			b.WriteString(fmt.Sprintf("      %s\n", styles.Dim(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
 		} else {
@@ -350,6 +402,33 @@ func (m Model) renderMainContent() string {
 	// Show message when search has no results
 	if m.SearchMode && len(m.SearchResults) == 0 && m.InputBuffer != "" {
 		b.WriteString(styles.Dim("  No matches found"))
+		b.WriteString("\n")
+	}
+
+	// Show message when filters result in no visible todos
+	if !m.SearchMode && !m.InputMode && len(m.FileModel.Todos) > 0 && len(todosToShow) == 0 {
+		b.WriteString(styles.Dim("  No todos match current filters."))
+		b.WriteString("\n")
+		// Build hint about which filters are active
+		var activeFilters []string
+		if m.FilterDone {
+			activeFilters = append(activeFilters, "completed hidden")
+		}
+		if len(m.FilteredTags) > 0 {
+			activeFilters = append(activeFilters, fmt.Sprintf("tags: #%s", strings.Join(m.FilteredTags, " #")))
+		}
+		if len(m.FilteredPriorities) > 0 {
+			var pStrs []string
+			for _, p := range m.FilteredPriorities {
+				pStrs = append(pStrs, fmt.Sprintf("p%d", p))
+			}
+			activeFilters = append(activeFilters, fmt.Sprintf("priorities: %s", strings.Join(pStrs, " ")))
+		}
+		if len(activeFilters) > 0 {
+			b.WriteString(styles.Dim(fmt.Sprintf("  Active: %s", strings.Join(activeFilters, ", "))))
+			b.WriteString("\n")
+		}
+		b.WriteString(styles.Dim("  Press 't' (tags), 'p' (priority), or ':filter-done' to adjust filters."))
 		b.WriteString("\n")
 	}
 
@@ -427,10 +506,18 @@ func (m Model) renderStatusBar() string {
 		b.WriteString(ModeIndicator("⌘", "COMMAND"))
 		b.WriteString("  ")
 		b.WriteString(styles.Dim("Type to filter commands"))
+	} else if m.ThemeMode {
+		b.WriteString(ModeIndicator("🎨", "THEME"))
+		b.WriteString("  ")
+		b.WriteString(styles.Dim("↑/↓ preview  enter apply  esc cancel"))
 	} else if m.FilterMode {
-		b.WriteString(ModeIndicator("🏷", "FILTER"))
+		b.WriteString(ModeIndicator("🏷", "TAGS"))
 		b.WriteString("  ")
 		b.WriteString(styles.Dim("Select tags to filter todos"))
+	} else if m.PriorityFilterMode {
+		b.WriteString(ModeIndicator("⚡", "PRIORITY"))
+		b.WriteString("  ")
+		b.WriteString(styles.Dim("Select priorities to filter todos"))
 	} else if m.SearchMode {
 		b.WriteString(ModeIndicator("🔍", "SEARCH"))
 		b.WriteString("  ")
@@ -473,6 +560,13 @@ func (m Model) renderStatusBar() string {
 		if len(m.FilteredTags) > 0 {
 			tagList := strings.Join(m.FilteredTags, " #")
 			indicators = append(indicators, fmt.Sprintf("🏷  #%s", tagList))
+		}
+		if len(m.FilteredPriorities) > 0 {
+			var priorityStrs []string
+			for _, p := range m.FilteredPriorities {
+				priorityStrs = append(priorityStrs, fmt.Sprintf("p%d", p))
+			}
+			indicators = append(indicators, fmt.Sprintf("⚡ %s", strings.Join(priorityStrs, " ")))
 		}
 		if m.WordWrap {
 			indicators = append(indicators, "↩ WRAP")
@@ -572,6 +666,106 @@ func (m Model) renderCommandOverlayCompact() string {
 			b.WriteString(styles.Dim(fmt.Sprintf("  ... %d more (type to filter)", remaining)))
 			b.WriteString("\n")
 		}
+	}
+
+	// Style as compact modal
+	content := b.String()
+	overlayStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "┌",
+			TopRight:    "┐",
+			BottomLeft:  "└",
+			BottomRight: "┘",
+		}).
+		BorderForeground(lipgloss.Color("#7aa2f7")).
+		Padding(0, 1)
+
+	return overlayStyle.Render(content)
+}
+
+// renderThemeOverlayCompact renders a compact modal theme picker
+func (m Model) renderThemeOverlayCompact() string {
+	var b strings.Builder
+	styles := m.Styles()
+
+	// Title
+	b.WriteString(styles.Cyan("Select Theme"))
+	b.WriteString("\n")
+
+	// Check if there are any themes to display
+	if len(m.AvailableThemes) == 0 {
+		b.WriteString(styles.Dim("No themes available."))
+		b.WriteString("\n\n")
+		b.WriteString(styles.Dim("esc close"))
+	} else {
+		// Display themes with scrolling
+		maxThemes := 10
+		totalThemes := len(m.AvailableThemes)
+
+		// Calculate scroll window to keep cursor visible
+		startIdx := 0
+		if m.ThemeCursor >= maxThemes {
+			startIdx = m.ThemeCursor - maxThemes + 1
+		}
+
+		endIdx := startIdx + maxThemes
+		if endIdx > totalThemes {
+			endIdx = totalThemes
+			startIdx = endIdx - maxThemes
+			if startIdx < 0 {
+				startIdx = 0
+			}
+		}
+
+		// Show scroll indicator if there are items above
+		if startIdx > 0 {
+			b.WriteString(styles.Dim(fmt.Sprintf("  ▲ %d more", startIdx)))
+			b.WriteString("\n")
+		}
+
+		for i := startIdx; i < endIdx; i++ {
+			themeName := m.AvailableThemes[i]
+			isSelected := i == m.ThemeCursor
+			isCurrent := themeName == m.CurrentThemeName
+
+			var marker string
+			if isSelected {
+				marker = styles.Cyan("→ ")
+			} else {
+				marker = "  "
+			}
+
+			// Show checkbox for current theme
+			var checkbox string
+			if isCurrent {
+				checkbox = styles.Green("[●] ")
+			} else {
+				checkbox = styles.Dim("[ ] ")
+			}
+
+			// Theme name
+			displayName := themeName
+			if isSelected {
+				displayName = styles.Cyan(themeName)
+			}
+
+			b.WriteString(marker + checkbox + displayName)
+			b.WriteString("\n")
+		}
+
+		// Show scroll indicator if there are items below
+		if endIdx < totalThemes {
+			b.WriteString(styles.Dim(fmt.Sprintf("  ▼ %d more", totalThemes-endIdx)))
+			b.WriteString("\n")
+		}
+
+		// Add help text
+		b.WriteString("\n")
+		b.WriteString(styles.Dim("↑/↓ preview  enter apply  esc cancel"))
 	}
 
 	// Style as compact modal
@@ -712,46 +906,139 @@ func (m Model) renderFilterOverlayCompact() string {
 	var b strings.Builder
 	styles := m.Styles()
 
-	// Display tags vertically in compact modal
-	maxTags := 8
-	displayCount := len(m.AvailableTags)
-	if displayCount > maxTags {
-		displayCount = maxTags
-	}
+	// Check if there are any tags to display
+	if len(m.AvailableTags) == 0 {
+		b.WriteString(styles.Dim("No tags available."))
+		b.WriteString("\n\n")
+		if m.FilterDone {
+			b.WriteString(styles.Dim("Try disabling 'filter-done' to see"))
+			b.WriteString("\n")
+			b.WriteString(styles.Dim("tags from completed todos."))
+			b.WriteString("\n\n")
+		}
+		b.WriteString(styles.Dim("esc close"))
+	} else {
+		// Display tags vertically in compact modal
+		maxTags := 8
+		displayCount := len(m.AvailableTags)
+		if displayCount > maxTags {
+			displayCount = maxTags
+		}
 
-	for i := 0; i < displayCount; i++ {
-		tag := m.AvailableTags[i]
-		isSelected := i == m.TagFilterCursor
-		isActive := false
-		for _, activeTag := range m.FilteredTags {
-			if activeTag == tag {
-				isActive = true
-				break
+		for i := 0; i < displayCount; i++ {
+			tag := m.AvailableTags[i]
+			isSelected := i == m.TagFilterCursor
+			isActive := false
+			for _, activeTag := range m.FilteredTags {
+				if activeTag == tag {
+					isActive = true
+					break
+				}
 			}
+
+			var marker string
+			if isSelected {
+				marker = styles.Cyan("→ ")
+			} else {
+				marker = "  "
+			}
+
+			var checkbox string
+			if isActive {
+				checkbox = styles.Green("[✓] ")
+			} else {
+				checkbox = styles.Dim("[ ] ")
+			}
+
+			tagText := styles.Cyan("#" + tag)
+			b.WriteString(marker + checkbox + tagText)
+			b.WriteString("\n")
 		}
 
-		var marker string
-		if isSelected {
-			marker = styles.Cyan("→ ")
-		} else {
-			marker = "  "
-		}
-
-		var checkbox string
-		if isActive {
-			checkbox = styles.Green("[✓] ")
-		} else {
-			checkbox = styles.Dim("[ ] ")
-		}
-
-		tagText := styles.Cyan("#" + tag)
-		b.WriteString(marker + checkbox + tagText)
+		// Add help text
 		b.WriteString("\n")
+		b.WriteString(styles.Dim("space toggle  c clear  esc done"))
 	}
 
-	// Add help text
-	b.WriteString("\n")
-	b.WriteString(styles.Dim("space toggle  c clear  esc done"))
+	// Style as compact modal
+	content := b.String()
+	overlayStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "┌",
+			TopRight:    "┐",
+			BottomLeft:  "└",
+			BottomRight: "┘",
+		}).
+		BorderForeground(lipgloss.Color("#7aa2f7")).
+		Padding(0, 1)
+
+	return overlayStyle.Render(content)
+}
+
+// renderPriorityFilterOverlayCompact renders a compact modal priority filter selector
+func (m Model) renderPriorityFilterOverlayCompact() string {
+	var b strings.Builder
+	styles := m.Styles()
+
+	// Check if there are any priorities to display
+	if len(m.AvailablePriorities) == 0 {
+		b.WriteString(styles.Dim("No priorities available."))
+		b.WriteString("\n\n")
+		if m.FilterDone {
+			b.WriteString(styles.Dim("Try disabling 'filter-done' to see"))
+			b.WriteString("\n")
+			b.WriteString(styles.Dim("priorities from completed todos."))
+			b.WriteString("\n\n")
+		}
+		b.WriteString(styles.Dim("esc close"))
+	} else {
+		// Display priorities vertically in compact modal
+		maxPriorities := 8
+		displayCount := len(m.AvailablePriorities)
+		if displayCount > maxPriorities {
+			displayCount = maxPriorities
+		}
+
+		for i := 0; i < displayCount; i++ {
+			priority := m.AvailablePriorities[i]
+			isSelected := i == m.PriorityFilterCursor
+			isActive := false
+			for _, activePriority := range m.FilteredPriorities {
+				if activePriority == priority {
+					isActive = true
+					break
+				}
+			}
+
+			var marker string
+			if isSelected {
+				marker = styles.Cyan("→ ")
+			} else {
+				marker = "  "
+			}
+
+			var checkbox string
+			if isActive {
+				checkbox = styles.Green("[✓] ")
+			} else {
+				checkbox = styles.Dim("[ ] ")
+			}
+
+			// Color the priority marker based on level
+			priorityText := fmt.Sprintf("!p%d", priority)
+			priorityText = ColorizePriorities(priorityText)
+			b.WriteString(marker + checkbox + priorityText)
+			b.WriteString("\n")
+		}
+
+		// Add help text
+		b.WriteString("\n")
+		b.WriteString(styles.Dim("space toggle  c clear  esc done"))
+	}
 
 	// Style as compact modal
 	content := b.String()

@@ -366,7 +366,7 @@ func TestTUI_CommandSort(t *testing.T) {
 	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Run sort command
-	runPiped(t, file, ":sort\r\x1b")
+	runPiped(t, file, ":sort-done\r\x1b")
 
 	todos := getTodos(t, file)
 	if len(todos) != 4 {
@@ -426,7 +426,7 @@ func TestTUI_UndoSort(t *testing.T) {
 	_ = os.WriteFile(file, []byte(content), 0644)
 
 	// Sort then immediately undo in same session
-	runPiped(t, file, ":sort\ru")
+	runPiped(t, file, ":sort-done\ru")
 
 	todos := getTodos(t, file)
 	// Original order should be restored after undo
@@ -435,5 +435,208 @@ func TestTUI_UndoSort(t *testing.T) {
 	}
 	if !strings.Contains(todos[1], "Pending") {
 		t.Errorf("Second should be 'Pending' after undo, got: %s", todos[1])
+	}
+}
+
+// ==================== Long List with Word Wrap Tests ====================
+
+// TestTUI_LongListWithHeadingsAndWordWrap tests display with long wrapped entries and headings
+func TestTUI_LongListWithHeadingsAndWordWrap(t *testing.T) {
+	file := tempTestFile(t)
+
+	// Create a file similar to the user's scenario with headings and long wrapped entries
+	content := `# Project Tasks
+
+## Features
+- [ ] add priority filter mode with extensive description that should wrap around to multiple lines when displayed in the terminal
+- [x] make wrap the default setting for better user experience
+- [x] add new items after cursor with maybe command option to set after cursor or end of file
+- [ ] add command or keyboard shortcut to add a heading before or after the current cursor position
+- [ ] add vim functionality to new and edit mode for better keyboard navigation
+- [ ] improve the status bar with more useful information
+
+## Bug Fixes
+- [x] fix move bug that sometimes does not add item to the bottom of the next heading group when filter-done is active
+- [x] fix delete should move the cursor to the nearest task also if done tasks are hidden
+- [x] fix new entry should also respect word-wrap setting
+- [x] make sure we do not delete frontmatter when editing
+
+## Maybe Later
+- [ ] add tui theme picker via command which live previews themes
+- [ ] add keyboard shortcut h to toggle hide for done tasks
+- [ ] expose all commands in frontmatter configuration
+- [ ] provide a way to render code segments which can be copied
+`
+
+	_ = os.WriteFile(file, []byte(content), 0644)
+
+	// Navigate down several times and verify cursor position is correct
+	output := runPiped(t, file, "jjjjj")
+
+	// The cursor should be on the 6th item (0-indexed: 5)
+	// Check that the output contains the expected tasks
+	if !strings.Contains(output, "add priority filter") {
+		t.Errorf("Expected first task visible, got: %s", output)
+	}
+	if !strings.Contains(output, "improve the status bar") {
+		t.Errorf("Expected 'improve the status bar' visible, got: %s", output)
+	}
+}
+
+// TestTUI_EditModeWithLongWrappedEntry tests edit mode on a long wrapped entry
+func TestTUI_EditModeWithLongWrappedEntry(t *testing.T) {
+	file := tempTestFile(t)
+
+	// Create a file with a long entry that will wrap
+	content := `# Tasks
+
+- [ ] This is a very long task description that should definitely wrap around to multiple lines when displayed in the terminal because it contains so much text
+- [ ] Short task
+- [ ] Another short task
+`
+
+	_ = os.WriteFile(file, []byte(content), 0644)
+
+	// Enter edit mode on the first (long) task - don't press escape so we stay in edit mode
+	output := runPiped(t, file, "e")
+
+	// Should show the edit mode indicator and the task text
+	if !strings.Contains(output, "EDIT") {
+		t.Errorf("Expected EDIT mode indicator, got: %s", output)
+	}
+	if !strings.Contains(output, "very long task") {
+		t.Errorf("Expected long task text visible, got: %s", output)
+	}
+}
+
+// TestTUI_NavigationWithFilterDoneAndHeadings tests navigation with filter-done and headings
+func TestTUI_NavigationWithFilterDoneAndHeadings(t *testing.T) {
+	file := tempTestFile(t)
+
+	content := `# Project
+
+## Section A
+- [x] Done task A1
+- [ ] Pending task A1
+- [x] Done task A2
+
+## Section B
+- [ ] Pending task B1
+- [x] Done task B1
+- [ ] Pending task B2
+`
+
+	_ = os.WriteFile(file, []byte(content), 0644)
+
+	// Enable filter-done, then navigate
+	output := runPiped(t, file, ":filter-done\rjj")
+
+	// Only pending tasks should be visible
+	if strings.Contains(output, "Done task") {
+		t.Errorf("Done tasks should be hidden, got: %s", output)
+	}
+	if !strings.Contains(output, "Pending task A1") {
+		t.Errorf("Expected Pending task A1 visible, got: %s", output)
+	}
+	if !strings.Contains(output, "Pending task B1") {
+		t.Errorf("Expected Pending task B1 visible, got: %s", output)
+	}
+}
+
+// TestTUI_CursorPositionAfterFilterChange tests cursor position updates correctly after filter change
+func TestTUI_CursorPositionAfterFilterChange(t *testing.T) {
+	file := tempTestFile(t)
+
+	content := `- [x] Done task 1
+- [x] Done task 2
+- [ ] Pending task 1
+- [x] Done task 3
+- [ ] Pending task 2
+`
+
+	_ = os.WriteFile(file, []byte(content), 0644)
+
+	// Navigate to a done task, then enable filter-done
+	// Cursor should move to nearest visible task
+	output := runPiped(t, file, "jj:filter-done\r")
+
+	// Should show FILTERED indicator
+	if !strings.Contains(output, "FILTERED") {
+		t.Errorf("Expected FILTERED indicator, got: %s", output)
+	}
+
+	// Only pending tasks should be shown
+	if strings.Contains(output, "Done task") {
+		t.Errorf("Done tasks should be filtered out, got: %s", output)
+	}
+}
+
+// TestTUI_LongListScrollingWithMaxVisible tests scrolling behavior with max_visible set
+func TestTUI_LongListScrollingWithMaxVisible(t *testing.T) {
+	file := tempTestFile(t)
+
+	// Create a file with many tasks
+	var tasks []string
+	for i := 1; i <= 20; i++ {
+		tasks = append(tasks, "- [ ] Task number "+string(rune('0'+i/10))+string(rune('0'+i%10)))
+	}
+	content := strings.Join(tasks, "\n")
+
+	_ = os.WriteFile(file, []byte(content), 0644)
+
+	// Set max visible to 5 and navigate down
+	output := runPiped(t, file, ":set-max-visible\r5\rjjjjjjj")
+
+	// Should show scroll indicators
+	if !strings.Contains(output, "more") {
+		t.Errorf("Expected scroll indicator, got: %s", output)
+	}
+}
+
+// TestTUI_CursorAlwaysVisibleWithScroll tests that cursor is always visible when navigating
+func TestTUI_CursorAlwaysVisibleWithScroll(t *testing.T) {
+	file := tempTestFile(t)
+
+	// Create a file with many tasks
+	var tasks []string
+	for i := 1; i <= 30; i++ {
+		tasks = append(tasks, "- [ ] Task "+string(rune('A'+i-1)))
+	}
+	content := strings.Join(tasks, "\n")
+
+	_ = os.WriteFile(file, []byte(content), 0644)
+
+	// Set max visible to 5, navigate to middle, then to bottom
+	output := runPiped(t, file, ":set-max-visible\r5\rjjjjjjjjjjjjjjj")
+
+	// The cursor (line with "0" relative index) should always be visible
+	// When cursor is on item 15, we should see "  0" in the output
+	if !strings.Contains(output, "  0") && !strings.Contains(output, " 0 ") {
+		t.Errorf("Expected cursor (0 index) to be visible, got: %s", output)
+	}
+}
+
+// TestTUI_ScrollIndicatorsShowCorrectCounts tests that scroll indicators show correct item counts
+func TestTUI_ScrollIndicatorsShowCorrectCounts(t *testing.T) {
+	file := tempTestFile(t)
+
+	// Create exactly 10 tasks
+	var tasks []string
+	for i := 1; i <= 10; i++ {
+		tasks = append(tasks, "- [ ] Task "+string(rune('A'+i-1)))
+	}
+	content := strings.Join(tasks, "\n")
+
+	_ = os.WriteFile(file, []byte(content), 0644)
+
+	// Set max visible to 5 and navigate to middle (position 5)
+	output := runPiped(t, file, ":set-max-visible\r5\rjjjjj")
+
+	// Should show both "more" indicators (above and below)
+	if !strings.Contains(output, "▲") {
+		t.Errorf("Expected ▲ indicator for items above, got: %s", output)
+	}
+	if !strings.Contains(output, "▼") {
+		t.Errorf("Expected ▼ indicator for items below, got: %s", output)
 	}
 }

@@ -12,6 +12,11 @@ import (
 // TestRecentCommandClear tests clearing recent files
 func TestRecentCommandClear(t *testing.T) {
 	tmpDir := t.TempDir()
+
+	// Override config dir for testing to isolate from other tests
+	config.SetConfigDirForTesting(tmpDir)
+	defer config.ResetConfigDirForTesting()
+
 	testFile := filepath.Join(tmpDir, "test.md")
 
 	if err := os.WriteFile(testFile, []byte("- [ ] Task"), 0644); err != nil {
@@ -21,15 +26,20 @@ func TestRecentCommandClear(t *testing.T) {
 	// Add file to recent using TUI (open and quit with Escape)
 	runPiped(t, testFile, "\x1b")
 
-	// Clear recent files using CLI
-	// Note: CLI commands may fail in CI without TTY, so we just verify it doesn't crash
-	output := runCLI(t, "", "recent", "clear")
+	// Clear recent files using the config API directly
+	// (CLI commands require proper arg parsing which is complex with empty file path)
+	if err := config.ClearRecentFiles(); err != nil {
+		t.Fatalf("Failed to clear recent files: %v", err)
+	}
 
-	// Check for either success message or TTY error (both are acceptable in CI)
-	if !strings.Contains(output, "cleared") && !strings.Contains(output, "TTY") {
-		t.Logf("Output: %s", output)
-		// Don't fail - CLI commands may not work in CI without TTY
-		t.Skip("Skipping CLI test - requires TTY")
+	// Verify recent files are cleared
+	recentFiles, err := config.LoadRecentFiles()
+	if err != nil {
+		t.Fatalf("Failed to load recent files: %v", err)
+	}
+
+	if len(recentFiles.Files) != 0 {
+		t.Errorf("Expected 0 recent files after clear, got %d", len(recentFiles.Files))
 	}
 }
 

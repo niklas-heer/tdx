@@ -12,9 +12,10 @@ import (
 
 // Pre-compiled regexes for inline code rendering (performance optimization)
 var (
-	linkRe = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
-	codeRe = regexp.MustCompile("`([^`]+)`")
-	tagRe  = regexp.MustCompile(`#([a-zA-Z0-9_-]+)`)
+	linkRe     = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+	codeRe     = regexp.MustCompile("`([^`]+)`")
+	tagRe      = regexp.MustCompile(`#([a-zA-Z0-9_-]+)`)
+	priorityRe = regexp.MustCompile(`!p(\d+)`)
 )
 
 // RenderInlineCode renders text with backtick-enclosed code and markdown links highlighted
@@ -116,7 +117,8 @@ func RenderHelp(version string, cyanStyle, dimStyle func(string) string) string 
 				{"k", "Up"},
 				{"5j", "Jump 5 down"},
 				{"/", "Search"},
-				{"f", "Filter tags"},
+				{"t", "Filter tags"},
+				{"p", "Filter priority"},
 			},
 		},
 		{
@@ -278,5 +280,38 @@ func ModeIndicator(icon, label string) string {
 func ColorizeTags(text string, tagStyle func(string) string) string {
 	return tagRe.ReplaceAllStringFunc(text, func(match string) string {
 		return tagStyle(match)
+	})
+}
+
+// ColorizePriorities highlights priority markers (!p1, !p2, etc.) with appropriate colors
+// p1 = red (critical), p2 = orange (high), p3 = yellow (medium), p4+ = dim
+func ColorizePriorities(text string) string {
+	return priorityRe.ReplaceAllStringFunc(text, func(match string) string {
+		// Extract priority number
+		submatch := priorityRe.FindStringSubmatch(match)
+		if len(submatch) < 2 {
+			return match
+		}
+
+		priority := 0
+		fmt.Sscanf(submatch[1], "%d", &priority)
+
+		var style lipgloss.Style
+		switch priority {
+		case 1:
+			// Critical - red
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e")).Bold(true)
+		case 2:
+			// High - orange
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff9e64")).Bold(true)
+		case 3:
+			// Medium - yellow
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
+		default:
+			// Low priority (p4+) - dim
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
+		}
+
+		return style.Render(match)
 	})
 }
