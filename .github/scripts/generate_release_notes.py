@@ -123,9 +123,7 @@ def generate_release_notes_with_ai(
     commits_text = "\n\n".join(commits_context)
 
     # Craft the prompt
-    prompt = f"""You are a technical writer creating release notes for a developer tool called "tdx" - a fast, markdown-based CLI todo manager.
-
-Below are the commits for this release. Each commit includes the subject line and sometimes a detailed body with bullet points explaining the changes.
+    prompt = f"""You are writing release notes for "tdx" - a fast, markdown-based CLI todo manager.
 
 # Commits:
 
@@ -133,34 +131,33 @@ Below are the commits for this release. Each commit includes the subject line an
 
 # Task:
 
-Generate professional, user-friendly release notes in markdown format. Follow these guidelines:
+Generate concise release notes in markdown. Guidelines:
 
-1. **Structure**: Organize into sections like "✨ Features", "🐛 Bug Fixes", "📚 Documentation", "🔧 Improvements", "⚙️ Maintenance" (only include sections that apply)
+1. **Structure**: Use sections like "✨ Features", "🐛 Bug Fixes", "🔧 Improvements", "⚙️ Maintenance" (only if applicable)
 
 2. **Style**:
-   - Write in a friendly, developer-focused tone
-   - Use present tense ("Add" not "Added")
-   - Focus on user benefits, not implementation details
-   - Use the detailed commit bodies to provide context and explain the "why"
-   - You can add a brief summary paragraph for major features, then list all details
+   - Be terse - one short line per change (max 10-15 words per bullet)
+   - Present tense ("Add" not "Added")
+   - Focus on what changed, not why or how
+   - No introductory paragraphs or summaries
 
 3. **Format**:
-   - Use **bold** for emphasis on feature names and important terms
-   - Start each bullet with an action verb
-   - Add relevant emojis throughout (not just section headers) for visual appeal
-   - Use emojis that match the content (✅ for done, 🎯 for goals, ⚡ for performance, etc.)
-   - Keep bullets concise but informative
-   - Don't include commit hashes in the final output
+   - One emoji per bullet (at start), matching the change type
+   - **Bold** only for feature/command names
+   - No nested bullets - flatten everything to single-level lists
+   - No commit hashes
 
-4. **Content - IMPORTANT**:
-   - **List ALL features and changes** - don't skip or over-summarize
-   - If a commit body has multiple bullet points, preserve them as separate items
-   - You can group related items under a subheading (e.g., "**Command Palette**")
-   - For major features, you can add a summary sentence first, then list all specific changes
-   - Omit only trivial changes like "update todo.md" or "bump version"
-   - Be comprehensive - users want to see everything that changed
+4. **Content**:
+   - List all changes but keep each item to ONE line
+   - Consolidate related micro-changes into single bullets
+   - Omit version bumps, todo.md updates, merge commits
 
-Generate ONLY the release notes content, no preamble or explanation. Start directly with the first section header."""
+Example style:
+- ⚡ Add **priority filtering** with `p` key
+- 🐛 Fix crash when toggling empty list
+- 📝 Update installation docs for Homebrew
+
+Generate ONLY the release notes, starting with the first section header."""
 
     # Call OpenRouter API
     response = requests.post(
@@ -179,8 +176,8 @@ Generate ONLY the release notes content, no preamble or explanation. Start direc
                     "content": prompt
                 }
             ],
-            "temperature": 0.7,
-            "max_tokens": 2000
+            "temperature": 0.5,
+            "max_tokens": 1000
         },
         timeout=60
     )

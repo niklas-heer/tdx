@@ -14,8 +14,8 @@ echo "======================================"
 echo ""
 
 # Set environment variables
-export CURRENT_TAG="v0.6.0"
-export PREV_TAG="v0.5.0"
+export CURRENT_TAG="v0.9.1"
+export PREV_TAG="v0.9.0"
 export GITHUB_REPOSITORY="niklas-heer/tdx"
 export AI_MODEL="anthropic/claude-haiku-4.5"
 
