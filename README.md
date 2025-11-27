@@ -528,27 +528,27 @@ just clean      # Clean artifacts
 
 ## Theme Customization
 
+### Theme Picker
+
+Press `:` to open the command palette and select `theme` to open the theme picker:
+- Navigate with `↑/↓` or `j/k` to preview themes in real-time
+- Press `Enter` to apply and save the theme
+- Press `Esc` to cancel and restore the previous theme
+
+The selected theme is automatically saved to your config file.
+
 ### Theme Config File
 
-Create `~/.config/tdx/config.toml` to customize themes and display:
+Create `~/.config/tdx/config.toml` to set your theme and display preferences:
 
 ```toml
 [theme]
-name = "tokyo-night"  # or any builtin theme
+name = "tokyo-night"  # or any builtin/custom theme
 
 [display]
 check_symbol = "✓"     # symbol for completed items
 select_marker = "➜"    # symbol for selected item
-
-# Optional: override theme colors
-[colors]
-Base = "#c0caf5"
-Dim = "#565f89"
-Accent = "#7aa2f7"
-Success = "#9ece6a"
-Warning = "#e0af68"
-Important = "#bb9af7"
-AlertError = "#f7768e"
+max_visible = 0        # max todos to show (0 = unlimited)
 ```
 
 Note: Theme config is in TOML format (`config.toml`), while todo behavior config is in YAML format (`config.yaml`). Both files live in `~/.config/tdx/`.
@@ -556,15 +556,37 @@ Note: Theme config is in TOML format (`config.toml`), while todo behavior config
 ### Builtin Themes
 
 - `tokyo-night` (default)
-- `gruvbox-dark`
 - `catppuccin-mocha`
-- `nord`
 - `dracula`
-- `solarized-dark`
-- `one-dark`
-- `monokai`
 - `github-dark`
+- `gruvbox-dark`
+- `monokai`
+- `nord`
+- `one-dark`
 - `rose-pine`
+- `solarized-dark`
+
+### Custom Themes
+
+Create your own themes by adding `.toml` files to `~/.config/tdx/themes/`:
+
+```toml
+# ~/.config/tdx/themes/my-theme.toml
+[theme]
+name = "my-theme"
+author = "Your Name"
+
+[colors]
+Base = "#c0caf5"       # default foreground
+Dim = "#565f89"        # muted text
+Accent = "#7aa2f7"     # highlights, selections
+Success = "#9ece6a"    # completed items, matches
+Warning = "#e0af68"    # move mode
+Important = "#bb9af7"  # checked items
+AlertError = "#f7768e" # errors
+```
+
+Custom themes appear in the theme picker alongside builtin themes. You can also override builtin themes by creating a file with the same theme name.
 
 ### Custom File Path
 
