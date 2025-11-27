@@ -7,6 +7,14 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Pull latest changes first to avoid diverged branches
+echo "Pulling latest changes from remote..."
+git pull --rebase || {
+    echo -e "${RED}Failed to pull changes. Please resolve any conflicts first.${NC}"
+    exit 1
+}
+echo ""
+
 # Get current version from tdx.toml
 CURRENT_VERSION=$(grep '^version' tdx.toml | cut -d'"' -f2)
 
