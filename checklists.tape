@@ -3,8 +3,7 @@
 
 Output assets/checklists-0.10.0.gif
 
-# Use local binary (build with: just build)
-Require ./tdx
+Require tdx
 
 Set Shell "bash"
 Set FontSize 26
@@ -91,7 +90,7 @@ Enter
 Sleep 1.5s
 
 # Launch TUI
-Type "./tdx checklist.md"
+Type "tdx checklist.md"
 Sleep 400ms
 Enter
 Sleep 1.5s
@@ -193,15 +192,15 @@ Type@60ms "# CLI commands for quick operations"
 Enter
 Sleep 800ms
 
-Type "./tdx checklist.md list"
+Type "tdx checklist.md list"
 Enter
 Sleep 1.5s
 
-Type "./tdx checklist.md add 'Friday review #review'"
+Type "tdx checklist.md add 'Friday review #review'"
 Enter
 Sleep 1s
 
-Type "./tdx checklist.md toggle 1"
+Type "tdx checklist.md toggle 1"
 Enter
 Sleep 1s
 
@@ -210,7 +209,7 @@ Type@60ms "# Limit visible items with --max-visible"
 Enter
 Sleep 800ms
 
-Type "./tdx -m 3 checklist.md"
+Type "tdx -m 3 checklist.md"
 Enter
 Sleep 1.5s
 
@@ -223,7 +222,7 @@ Type@60ms "# Read-only mode prevents changes"
 Enter
 Sleep 800ms
 
-Type "./tdx -r checklist.md"
+Type "tdx -r checklist.md"
 Enter
 Sleep 1.5s
 
@@ -236,7 +235,7 @@ Escape
 Sleep 1s
 
 # Show it didn't change anything
-Type "./tdx checklist.md list"
+Type "tdx checklist.md list"
 Enter
 Sleep 1.5s
 
