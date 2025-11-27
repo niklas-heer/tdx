@@ -1,7 +1,7 @@
 # tdx checklists demo - Front matter and checklist features
 # Run with: vhs checklists.tape
 
-Output assets/checklists-0.8.0.gif
+Output assets/checklists-0.10.0.gif
 
 Require tdx
 
@@ -110,7 +110,7 @@ Space
 Sleep 800ms
 
 # Filter by #urgent tag
-Type "f"
+Type "t"
 Sleep 600ms
 Type "j"
 Sleep 300ms
@@ -120,7 +120,7 @@ Space
 Sleep 1s
 
 # Clear filter to show all
-Type "f"
+Type "t"
 Sleep 500ms
 Type "c"
 Sleep 500ms

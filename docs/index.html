@@ -20,7 +20,7 @@
         />
         <meta
             property="og:image"
-            content="https://raw.githubusercontent.com/niklas-heer/tdx/main/assets/demo-0.8.0.gif"
+            content="https://raw.githubusercontent.com/niklas-heer/tdx/main/assets/demo-0.10.0.gif"
         />
         <meta property="og:url" content="https://niklas-heer.github.io/tdx/" />
         <meta name="twitter:card" content="summary_large_image" />
@@ -253,6 +253,64 @@
                 font-size: 0.875rem;
             }
 
+            /* Advanced Section */
+            .advanced {
+                background: var(--bg-secondary);
+                border-radius: 12px;
+                padding: 40px;
+                margin-bottom: 60px;
+                border: 1px solid var(--border);
+            }
+
+            .advanced h2 {
+                font-size: 1.5rem;
+                margin-bottom: 12px;
+                text-align: center;
+            }
+
+            .section-desc {
+                color: var(--text-muted);
+                text-align: center;
+                margin-bottom: 24px;
+                font-size: 0.95rem;
+            }
+
+            .advanced .demo {
+                margin: 0 auto 30px;
+                max-width: 650px;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            }
+
+            .advanced-features {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+            }
+
+            .advanced-feature {
+                background: var(--bg);
+                border-radius: 8px;
+                padding: 20px;
+                border: 1px solid var(--border);
+            }
+
+            .advanced-feature h3 {
+                font-size: 1rem;
+                margin-bottom: 8px;
+            }
+
+            .advanced-feature p {
+                color: var(--text-muted);
+                font-size: 0.85rem;
+            }
+
+            .advanced-feature code {
+                background: var(--bg-secondary);
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 0.8rem;
+            }
+
             /* Shortcuts */
             .shortcuts {
                 background: var(--bg-secondary);
@@ -358,7 +416,7 @@
 
             <div class="demo">
                 <img
-                    src="https://raw.githubusercontent.com/niklas-heer/tdx/main/assets/demo-0.8.0.gif"
+                    src="https://raw.githubusercontent.com/niklas-heer/tdx/main/assets/demo-0.10.0.gif"
                     alt="tdx demo"
                 />
             </div>
@@ -507,6 +565,46 @@
                         Organize todos hierarchically with Tab/Shift+Tab.
                         Subtasks indent under parents automatically.
                     </p>
+                </div>
+            </section>
+
+            <section class="advanced">
+                <h2>Advanced: Checklists & Per-File Config</h2>
+                <p class="section-desc">
+                    Use YAML frontmatter for per-file settings. Perfect for
+                    reusable checklists, read-only templates, and organized
+                    project workflows.
+                </p>
+                <div class="demo">
+                    <img
+                        src="https://raw.githubusercontent.com/niklas-heer/tdx/main/assets/checklists-0.10.0.gif"
+                        alt="tdx checklists demo"
+                    />
+                </div>
+                <div class="advanced-features">
+                    <div class="advanced-feature">
+                        <h3>Frontmatter Config</h3>
+                        <p>
+                            Set <code>show-headings</code>,
+                            <code>filter-done</code>, <code>read-only</code>,
+                            and <code>max-visible</code> per file.
+                        </p>
+                    </div>
+                    <div class="advanced-feature">
+                        <h3>Batch Operations</h3>
+                        <p>
+                            <code>:check-all</code> and
+                            <code>:uncheck-all</code> for quick checklist
+                            resets.
+                        </p>
+                    </div>
+                    <div class="advanced-feature">
+                        <h3>Read-Only Mode</h3>
+                        <p>
+                            Use <code>-r</code> flag or frontmatter for
+                            view-only checklists and templates.
+                        </p>
+                    </div>
                 </div>
             </section>
 

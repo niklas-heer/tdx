@@ -1,7 +1,7 @@
 # tdx demo - Your todos, in markdown, done fast
 # Run with: vhs demo.tape
 
-Output assets/demo-0.9.0.gif
+Output assets/demo-0.10.0.gif
 
 Require tdx
 
@@ -18,7 +18,7 @@ Set Margin 10
 Set MarginFill "#1a1b26"
 Set CursorBlink false
 
-# Setup: Create a demo todo file with sections and tags
+# Setup: Create a demo todo file with sections, tags, and priorities
 Hide
 Type "rm -f demo_todo.md"
 Enter
@@ -29,7 +29,9 @@ Enter
 Enter
 Type "## Backend"
 Enter
-Type "- [ ] Set up CI/CD pipeline #devops #urgent"
+Type "- [ ] Fix security vulnerability !p1 #backend #urgent"
+Enter
+Type "- [ ] Set up CI/CD pipeline !p2 #devops"
 Enter
 Type "- [ ] Write unit tests #testing"
 Enter
@@ -38,16 +40,16 @@ Enter
 Enter
 Type "## Frontend"
 Enter
-Type "- [ ] Update documentation #docs"
+Type "- [ ] Update documentation !p3 #docs"
 Enter
-Type "- [ ] Add error handling #bugfix #urgent"
+Type "- [ ] Add error handling !p1 #bugfix #urgent"
 Enter
 Type "- [x] Design mockups #design"
 Enter
 Enter
 Type "## DevOps"
 Enter
-Type "- [ ] Configure monitoring #devops"
+Type "- [ ] Configure monitoring !p2 #devops"
 Enter
 Type "- [ ] Set up staging env #devops"
 Enter
@@ -71,7 +73,7 @@ Sleep 400ms
 Enter
 Sleep 1.5s
 
-# Navigate with j/k
+# Navigate with j/k - notice priority colors
 Type "j"
 Sleep 400ms
 Type "j"
@@ -101,54 +103,60 @@ Sleep 400ms
 Space
 Sleep 1s
 
-# Add new todo with n (after cursor)
+# Add new todo with priority
 Type "n"
 Sleep 600ms
-Type@50ms "Implement caching layer #backend"
+Type@50ms "Implement caching layer !p2 #backend"
 Sleep 400ms
 Enter
 Sleep 1s
 
-# Jump to end and add todo with N (at end)
-Type "N"
-Sleep 600ms
-Type@50ms "Deploy to production #release"
-Sleep 400ms
-Enter
-Sleep 1s
-
-# Nested tasks - indent with Tab
-Type "kkk"
-Sleep 400ms
-Type "n"
-Sleep 500ms
-Type@50ms "Configure nginx"
-Enter
-Sleep 600ms
-Tab
+# Priority filtering - show only p1 tasks
+Type "p"
 Sleep 800ms
-Type "n"
+Space
+Sleep 1s
+
+# Show p1 tasks are filtered - navigate
+Type "j"
 Sleep 500ms
-Type@50ms "Set up SSL certificates"
-Enter
-Sleep 600ms
-Tab
+Type "j"
 Sleep 800ms
 
-# Outdent with Shift+Tab
-Shift+Tab
+# Clear priority filter
+Type "p"
+Sleep 500ms
+Type "c"
+Sleep 500ms
+Escape
 Sleep 1s
 
-# Edit a todo
-Type "kkkk"
+# Sort by priority
+Type ":"
 Sleep 500ms
-Type "e"
+Type@60ms "sort-priority"
 Sleep 600ms
-Ctrl+E
-Sleep 200ms
-Type@50ms " with examples"
-Sleep 400ms
 Enter
+Sleep 1.2s
+
+# Undo the sort
+Type "u"
+Sleep 1s
+
+# Tag filtering - show #urgent tasks
+Type "t"
+Sleep 800ms
+Type "j"
+Sleep 400ms
+Space
+Sleep 1s
+
+# Clear tag filter
+Type "t"
+Sleep 500ms
+Type "c"
+Sleep 500ms
+Escape
 Sleep 1s
 
 # Fuzzy search
@@ -159,64 +167,53 @@ Sleep 1s
 Enter
 Sleep 1s
 
-# Tag filtering - show #urgent tasks
-Type "f"
-Sleep 800ms
-Type "j"
+# Nested tasks - indent with Tab
+Type "gg"
 Sleep 400ms
-Space
+Type "jjj"
+Sleep 400ms
+Type "n"
+Sleep 500ms
+Type@50ms "Configure nginx"
+Enter
+Sleep 600ms
+Tab
+Sleep 800ms
+
+# Outdent with Shift+Tab
+Shift+Tab
 Sleep 1s
 
-# Clear tag filter and show all
-Type "f"
+# Move mode - move task
+Type "m"
+Sleep 600ms
+Type "jj"
+Sleep 600ms
+Enter
+Sleep 1s
+
+# Theme picker - live preview
+Type ":"
 Sleep 500ms
-Type "c"
-Sleep 500ms
+Type@60ms "theme"
+Sleep 600ms
+Enter
+Sleep 1s
+
+# Navigate themes with live preview
+Type "j"
+Sleep 800ms
+Type "j"
+Sleep 800ms
+Type "j"
+Sleep 800ms
+
+# Cancel and restore original theme
 Escape
 Sleep 1s
 
-# Move mode - move task across sections
-Type "kkk"
-Sleep 400ms
-Type "m"
-Sleep 600ms
-Type "jjjj"
-Sleep 800ms
-Enter
-Sleep 1s
-
-# Command palette - sort tasks
-Type ":"
-Sleep 500ms
-Type@60ms "sort"
-Sleep 600ms
-Enter
-Sleep 1.2s
-
-# Undo the sort
-Type "u"
-Sleep 1s
-
-# Toggle line numbers
-Type ":"
-Sleep 400ms
-Type@60ms "line-numbers"
-Sleep 500ms
-Enter
-Sleep 1.2s
-
 # Copy to clipboard
 Type "c"
-Sleep 1s
-
-# Delete a todo
-Type "jj"
-Sleep 400ms
-Type "d"
-Sleep 1s
-
-# Undo the delete
-Type "u"
 Sleep 1s
 
 # Show help menu
@@ -238,7 +235,7 @@ Type "tdx demo_todo.md list"
 Enter
 Sleep 1.5s
 
-Type "tdx demo_todo.md add 'Review pull requests #review'"
+Type "tdx demo_todo.md add 'Review pull requests !p2 #review'"
 Enter
 Sleep 1s
 
@@ -246,17 +243,8 @@ Type "tdx demo_todo.md toggle 1"
 Enter
 Sleep 1s
 
-# Recent files feature
-Type@60ms "# Recent files with cursor restoration"
-Enter
-Sleep 800ms
-
-Type "tdx recent"
-Enter
-Sleep 1.5s
-
 # Final message
-Type@60ms "# Fast. Vim-style. Markdown-native."
+Type@60ms "# Fast. Vim-style. Priorities. Themes."
 Enter
 Sleep 2.5s
 
