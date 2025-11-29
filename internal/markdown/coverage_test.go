@@ -312,7 +312,7 @@ func TestFileModel_GetAST(t *testing.T) {
 
 	ast := fm.GetAST()
 	if ast == nil {
-		t.Error("GetAST() returned nil")
+		t.Fatal("GetAST() returned nil")
 	}
 	if ast.AST == nil {
 		t.Error("GetAST().AST is nil")
@@ -404,7 +404,7 @@ func TestCheckFileModified_DeletedFile(t *testing.T) {
 	}
 
 	// Delete the file
-	os.Remove(filePath)
+	_ = os.Remove(filePath)
 
 	// Should not report modified (file doesn't exist)
 	modified, err := fm.CheckFileModified()

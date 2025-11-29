@@ -143,8 +143,8 @@ func TestConfig_GetInt(t *testing.T) {
 func TestGetConfigDir(t *testing.T) {
 	// Test with XDG_CONFIG_HOME set
 	tmpDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
 
 	configDir, err := GetConfigDir()
 	if err != nil {
@@ -159,8 +159,8 @@ func TestGetConfigDir(t *testing.T) {
 
 func TestGetConfigPath(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
 
 	configPath, err := GetConfigPath()
 	if err != nil {
@@ -175,8 +175,8 @@ func TestGetConfigPath(t *testing.T) {
 
 func TestLoad_NoConfigFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -193,8 +193,8 @@ func TestLoad_NoConfigFile(t *testing.T) {
 
 func TestLoad_ValidConfigFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
 
 	// Create config directory and file
 	configDir := filepath.Join(tmpDir, "tdx")
@@ -229,8 +229,8 @@ show-headings: false
 
 func TestLoad_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
 
 	// Create config directory and file with invalid YAML
 	configDir := filepath.Join(tmpDir, "tdx")

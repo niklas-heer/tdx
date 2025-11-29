@@ -43,10 +43,10 @@ func TestNewStyleFuncs(t *testing.T) {
 func TestGetConfigPath_Coverage(t *testing.T) {
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
-	defer os.Setenv("XDG_CONFIG_HOME", origXDG)
+	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
 
 	tmpDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	path, err := getConfigPath()
 	if err != nil {
@@ -68,10 +68,10 @@ func TestGetConfigPath_Coverage(t *testing.T) {
 func TestSaveTheme_Coverage(t *testing.T) {
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
-	defer os.Setenv("XDG_CONFIG_HOME", origXDG)
+	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
 
 	tmpDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	err := SaveTheme("tokyo-night")
 	if err != nil {
@@ -98,14 +98,14 @@ func TestSaveTheme_Coverage(t *testing.T) {
 func TestSaveTheme_PreservesExisting_Coverage(t *testing.T) {
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
-	defer os.Setenv("XDG_CONFIG_HOME", origXDG)
+	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
 
 	tmpDir := t.TempDir()
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	_ = os.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	// Create initial config with display settings
 	configDir := filepath.Join(tmpDir, "tdx")
-	os.MkdirAll(configDir, 0755)
+	_ = os.MkdirAll(configDir, 0755)
 	configPath := filepath.Join(configDir, "config.toml")
 
 	initialConfig := `[theme]
@@ -114,7 +114,7 @@ name = "nord"
 [display]
 check_symbol = "x"
 `
-	os.WriteFile(configPath, []byte(initialConfig), 0644)
+	_ = os.WriteFile(configPath, []byte(initialConfig), 0644)
 
 	// Save new theme
 	err := SaveTheme("dracula")
@@ -132,12 +132,12 @@ check_symbol = "x"
 func TestLoadUserThemes_NoDirectory_Coverage(t *testing.T) {
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
-	defer os.Setenv("XDG_CONFIG_HOME", origXDG)
+	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
 
 	// Use a non-existent directory
 	tmpDir := t.TempDir()
 	nonExistent := filepath.Join(tmpDir, "does-not-exist")
-	os.Setenv("XDG_CONFIG_HOME", nonExistent)
+	_ = os.Setenv("XDG_CONFIG_HOME", nonExistent)
 
 	// Should not panic, just return empty or nil
 	themes := loadUserThemes()
