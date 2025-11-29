@@ -101,6 +101,7 @@ tdx
 | `/` | Fuzzy search |
 | `t` | Tag filter |
 | `p` | Priority filter |
+| `D` | Due date filter |
 | `r` | Recent files |
 | `:` | Command palette |
 | `u` | Undo |
@@ -118,7 +119,12 @@ Press `:` to open the command palette with fuzzy search. Available commands:
 | `uncheck-all` | Mark all todos as incomplete |
 | `sort-done` | Sort todos by completion (incomplete first) |
 | `sort-priority` | Sort todos by priority (p1 first, then p2, etc.) |
+| `sort-due` | Sort todos by due date (earliest first) |
 | `filter-done` | Toggle showing/hiding completed todos |
+| `filter-due` | Toggle showing only todos with due dates |
+| `filter-overdue` | Toggle showing only overdue todos |
+| `filter-today` | Toggle showing only todos due today |
+| `filter-week` | Toggle showing only todos due this week |
 | `clear-done` | Delete all completed todos |
 | `read-only` | Toggle read-only mode (changes not saved) |
 | `save` | Save current state to file |
@@ -212,6 +218,37 @@ Press `p` to open priority filter mode:
 - Press `Esc` when done
 
 Active priority filters are shown in the status bar (e.g., `⚡ p1 p2`). You can combine priority and tag filters to narrow down your view.
+
+**Due Dates:**
+
+Add due dates to your todos using `@due(YYYY-MM-DD)`:
+
+```markdown
+- [ ] Submit quarterly report @due(2025-12-01)
+- [ ] Review pull request @due(2025-11-30) #code-review
+- [ ] Fix critical bug !p1 @due(2025-11-29) #urgent
+- [ ] Plan team meeting @due(2025-12-15)
+```
+
+Due date display colors based on urgency:
+- **Overdue** - Red (past the due date)
+- **Due today** - Orange
+- **Due soon** - Yellow (within 3 days)
+- **Future** - Dimmed
+
+Use the `:sort-due` command to sort todos by due date (earliest first). Tasks without a due date are placed at the end. You can combine due dates with priorities and tags.
+
+**Due Date Filtering:**
+
+Press `D` (capital D) to open due date filter mode:
+- **Overdue** - Show only overdue tasks
+- **Today** - Show tasks due today
+- **This Week** - Show tasks due within 7 days
+- **Has Due Date** - Show all tasks with any due date
+
+Navigate with `↑/↓` or `j/k`, select with `Space` or `Enter`, clear with `c`, and press `Esc` when done.
+
+Active due date filters are shown in the status bar (e.g., `📅 overdue`). You can combine due date filters with priority and tag filters.
 
 ### CLI Commands
 
