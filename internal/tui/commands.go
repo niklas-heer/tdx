@@ -158,6 +158,47 @@ func InitCommands() []Command {
 			},
 		},
 		{
+			Name:        "sort-due",
+			Description: "Sort todos by due date (earliest first)",
+			Handler: func(m *Model) {
+				m.saveHistory()
+				// Get headings to sort within sections
+				headings := m.FileModel.GetHeadings()
+
+				// Sort function: by due date (earliest first), no due date at end (stable)
+				sortByDueDate := func(todos []markdown.Todo) {
+					sort.SliceStable(todos, func(i, j int) bool {
+						di, dj := todos[i].DueDate, todos[j].DueDate
+						// Both have no due date - maintain order
+						if di == nil && dj == nil {
+							return false
+						}
+						// No due date goes after those with due date
+						if di == nil {
+							return false
+						}
+						if dj == nil {
+							return true
+						}
+						// Both have due dates - earlier date first
+						return di.Before(*dj)
+					})
+				}
+
+				// Sort within each heading section
+				sortTodosInSections(m.FileModel.Todos, headings, sortByDueDate)
+
+				// Update indices and rebuild line structure
+				markdown.RebuildFileStructure(&m.FileModel)
+				m.InvalidateDocumentTree()
+				m.writeIfPersist()
+				// Adjust selection if needed
+				if m.SelectedIndex >= len(m.FileModel.Todos) {
+					m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
+				}
+			},
+		},
+		{
 			Name:        "sort-priority",
 			Description: "Sort todos by priority (p1 first, then p2, etc.)",
 			Handler: func(m *Model) {
@@ -207,6 +248,69 @@ func InitCommands() []Command {
 				m.InvalidateDocumentTree()
 				// Adjust selection if current item is now hidden
 				if m.FilterDone {
+					m.adjustSelectionForFilter()
+				}
+			},
+		},
+		{
+			Name:        "filter-due",
+			Description: "Toggle showing only todos with due dates",
+			Handler: func(m *Model) {
+				// Toggle between "all" (has due date) and "" (no filter)
+				if m.FilteredDueDate == "all" {
+					m.FilteredDueDate = ""
+				} else {
+					m.FilteredDueDate = "all"
+				}
+				// Invalidate document tree since visibility changed
+				m.InvalidateDocumentTree()
+				// Adjust selection if current item is now hidden
+				if m.FilteredDueDate != "" {
+					m.adjustSelectionForFilter()
+				}
+			},
+		},
+		{
+			Name:        "filter-overdue",
+			Description: "Toggle showing only overdue todos",
+			Handler: func(m *Model) {
+				if m.FilteredDueDate == "overdue" {
+					m.FilteredDueDate = ""
+				} else {
+					m.FilteredDueDate = "overdue"
+				}
+				m.InvalidateDocumentTree()
+				if m.FilteredDueDate != "" {
+					m.adjustSelectionForFilter()
+				}
+			},
+		},
+		{
+			Name:        "filter-today",
+			Description: "Toggle showing only todos due today",
+			Handler: func(m *Model) {
+				if m.FilteredDueDate == "today" {
+					m.FilteredDueDate = ""
+				} else {
+					m.FilteredDueDate = "today"
+				}
+				m.InvalidateDocumentTree()
+				if m.FilteredDueDate != "" {
+					m.adjustSelectionForFilter()
+				}
+			},
+		},
+		{
+			Name:        "filter-week",
+			Description: "Toggle showing only todos due this week",
+			Handler: func(m *Model) {
+				if m.FilteredDueDate == "week" {
+					m.FilteredDueDate = ""
+				} else {
+					m.FilteredDueDate = "week"
+				}
+				m.InvalidateDocumentTree()
+				if m.FilteredDueDate != "" {
 					m.adjustSelectionForFilter()
 				}
 			},

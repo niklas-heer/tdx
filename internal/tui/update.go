@@ -110,6 +110,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePriorityFilterKey(msg)
 	}
 
+	// Handle due date filter mode
+	if m.DueFilterMode {
+		return m.handleDueFilterKey(msg)
+	}
+
 	// Handle theme picker mode
 	if m.ThemeMode {
 		return m.handleThemeKey(msg)
@@ -301,6 +306,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Always allow entering priority filter mode - show helpful message if no priorities
 		m.PriorityFilterMode = true
 		m.PriorityFilterCursor = 0
+
+	case "D":
+		// Enter due date filter mode (capital D to not conflict with delete)
+		m.DueFilterMode = true
+		m.DueFilterCursor = 0
 
 	case "G":
 		// Go to bottom (vim-style)
@@ -761,6 +771,56 @@ func (m Model) handlePriorityFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Move up in priority list
 		if m.PriorityFilterCursor > 0 {
 			m.PriorityFilterCursor--
+		}
+	}
+
+	return m, nil
+}
+
+// Due date filter options
+var dueFilterOptions = []string{"overdue", "today", "week", "all"}
+
+func (m Model) handleDueFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	switch key {
+	case "enter", " ":
+		// Select due date filter
+		if m.DueFilterCursor < len(dueFilterOptions) {
+			selectedFilter := dueFilterOptions[m.DueFilterCursor]
+
+			// Toggle filter - if same filter is already active, clear it
+			if m.FilteredDueDate == selectedFilter {
+				m.FilteredDueDate = ""
+			} else {
+				m.FilteredDueDate = selectedFilter
+			}
+
+			// Filter change affects document tree
+			m.InvalidateDocumentTree()
+
+			// Close filter mode after selection
+			m.DueFilterMode = false
+		}
+
+	case "esc":
+		m.DueFilterMode = false
+
+	case "c":
+		// Clear due date filter
+		m.FilteredDueDate = ""
+		m.InvalidateDocumentTree()
+
+	case "down", "ctrl+n", "ctrl+j", "j":
+		// Move down in filter list
+		if m.DueFilterCursor < len(dueFilterOptions)-1 {
+			m.DueFilterCursor++
+		}
+
+	case "up", "ctrl+p", "ctrl+k", "k":
+		// Move up in filter list
+		if m.DueFilterCursor > 0 {
+			m.DueFilterCursor--
 		}
 	}
 
@@ -1321,12 +1381,17 @@ func (m *Model) isTodoVisible(idx int) bool {
 		return false
 	}
 
+	// Hidden by due date filter
+	if m.FilteredDueDate != "" && !todo.HasDueDateFilter(m.FilteredDueDate) {
+		return false
+	}
+
 	return true
 }
 
 // hasActiveFilters returns true if any visibility filter is active
 func (m *Model) hasActiveFilters() bool {
-	return m.FilterDone || len(m.FilteredTags) > 0 || len(m.FilteredPriorities) > 0
+	return m.FilterDone || len(m.FilteredTags) > 0 || len(m.FilteredPriorities) > 0 || m.FilteredDueDate != ""
 }
 
 func (m *Model) getVisibleTodos() []int {

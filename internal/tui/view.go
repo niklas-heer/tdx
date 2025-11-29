@@ -73,6 +73,21 @@ func (m Model) View() string {
 		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
 	}
 
+	if m.DueFilterMode {
+		// Ensure there's space for overlay positioning
+		contentLines := strings.Count(mainContent, "\n")
+		minLines := 10 // Minimum lines to ensure overlay positioning works well
+		if contentLines < minLines {
+			for i := contentLines; i < minLines; i++ {
+				background += "\n"
+			}
+		}
+
+		overlayContent := m.renderDueFilterOverlayCompact()
+		// Position overlay just above status bar
+		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+	}
+
 	if m.ThemeMode {
 		// Ensure there's space for overlay positioning
 		contentLines := strings.Count(mainContent, "\n")
@@ -137,6 +152,11 @@ func (m Model) renderMainContent() string {
 
 			// Apply priority filtering if active
 			if len(m.FilteredPriorities) > 0 && !todo.HasAnyPriority(m.FilteredPriorities) {
+				continue
+			}
+
+			// Apply due date filtering if active
+			if m.FilteredDueDate != "" && !todo.HasDueDateFilter(m.FilteredDueDate) {
 				continue
 			}
 
@@ -333,9 +353,10 @@ func (m Model) renderMainContent() string {
 			text = HighlightMatches(todo.Text, m.InputBuffer, styles.Green)
 		} else {
 			text = RenderInlineCode(todo.Text, todo.Checked, styles.Magenta, styles.Cyan, styles.Code)
-			// Colorize tags and priorities
+			// Colorize tags, priorities, and due dates
 			text = ColorizeTags(text, styles.Yellow)
 			text = ColorizePriorities(text)
+			text = ColorizeDueDates(text)
 		}
 
 		// Show edit cursor if in edit mode on this item
@@ -423,6 +444,9 @@ func (m Model) renderMainContent() string {
 				pStrs = append(pStrs, fmt.Sprintf("p%d", p))
 			}
 			activeFilters = append(activeFilters, fmt.Sprintf("priorities: %s", strings.Join(pStrs, " ")))
+		}
+		if m.FilteredDueDate != "" {
+			activeFilters = append(activeFilters, fmt.Sprintf("due: %s", m.FilteredDueDate))
 		}
 		if len(activeFilters) > 0 {
 			b.WriteString(styles.Dim(fmt.Sprintf("  Active: %s", strings.Join(activeFilters, ", "))))
@@ -518,6 +542,10 @@ func (m Model) renderStatusBar() string {
 		b.WriteString(ModeIndicator("⚡", "PRIORITY"))
 		b.WriteString("  ")
 		b.WriteString(styles.Dim("Select priorities to filter todos"))
+	} else if m.DueFilterMode {
+		b.WriteString(ModeIndicator("📅", "DUE DATE"))
+		b.WriteString("  ")
+		b.WriteString(styles.Dim("Select due date filter"))
 	} else if m.SearchMode {
 		b.WriteString(ModeIndicator("🔍", "SEARCH"))
 		b.WriteString("  ")
@@ -567,6 +595,9 @@ func (m Model) renderStatusBar() string {
 				priorityStrs = append(priorityStrs, fmt.Sprintf("p%d", p))
 			}
 			indicators = append(indicators, fmt.Sprintf("⚡ %s", strings.Join(priorityStrs, " ")))
+		}
+		if m.FilteredDueDate != "" {
+			indicators = append(indicators, fmt.Sprintf("📅 %s", m.FilteredDueDate))
 		}
 		if m.WordWrap {
 			indicators = append(indicators, "↩ WRAP")
@@ -667,6 +698,73 @@ func (m Model) renderCommandOverlayCompact() string {
 			b.WriteString("\n")
 		}
 	}
+
+	// Style as compact modal
+	content := b.String()
+	overlayStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "┌",
+			TopRight:    "┐",
+			BottomLeft:  "└",
+			BottomRight: "┘",
+		}).
+		BorderForeground(lipgloss.Color("#7aa2f7")).
+		Padding(0, 1)
+
+	return overlayStyle.Render(content)
+}
+
+// renderDueFilterOverlayCompact renders a compact modal due date filter selector
+func (m Model) renderDueFilterOverlayCompact() string {
+	var b strings.Builder
+	styles := m.Styles()
+
+	// Due date filter options with descriptions
+	options := []struct {
+		value string
+		label string
+		desc  string
+	}{
+		{"overdue", "Overdue", "Past due date"},
+		{"today", "Today", "Due today"},
+		{"week", "This Week", "Due within 7 days"},
+		{"all", "Has Due Date", "Any due date set"},
+	}
+
+	for i, opt := range options {
+		isSelected := i == m.DueFilterCursor
+		isActive := m.FilteredDueDate == opt.value
+
+		var marker string
+		if isSelected {
+			marker = styles.Cyan("→ ")
+		} else {
+			marker = "  "
+		}
+
+		var checkbox string
+		if isActive {
+			checkbox = styles.Green("[●] ")
+		} else {
+			checkbox = styles.Dim("[ ] ")
+		}
+
+		label := opt.label
+		if isSelected {
+			label = styles.Cyan(label)
+		}
+
+		b.WriteString(marker + checkbox + label + " " + styles.Dim(opt.desc))
+		b.WriteString("\n")
+	}
+
+	// Add help text
+	b.WriteString("\n")
+	b.WriteString(styles.Dim("space select  c clear  esc done"))
 
 	// Style as compact modal
 	content := b.String()

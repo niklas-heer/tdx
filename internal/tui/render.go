@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -16,6 +17,7 @@ var (
 	codeRe     = regexp.MustCompile("`([^`]+)`")
 	tagRe      = regexp.MustCompile(`#([a-zA-Z0-9_-]+)`)
 	priorityRe = regexp.MustCompile(`!p(\d+)`)
+	dueRe      = regexp.MustCompile(`@due\((\d{4}-\d{2}-\d{2})\)`)
 )
 
 // RenderInlineCode renders text with backtick-enclosed code and markdown links highlighted
@@ -119,6 +121,7 @@ func RenderHelp(version string, cyanStyle, dimStyle func(string) string) string 
 				{"/", "Search"},
 				{"t", "Filter tags"},
 				{"p", "Filter priority"},
+				{"D", "Filter due date"},
 			},
 		},
 		{
@@ -309,6 +312,45 @@ func ColorizePriorities(text string) string {
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
 		default:
 			// Low priority (p4+) - dim
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
+		}
+
+		return style.Render(match)
+	})
+}
+
+// ColorizeDueDates highlights due date markers (@due(YYYY-MM-DD)) with appropriate colors
+// based on urgency: overdue = red, today = orange, soon (3 days) = yellow, future = dim
+func ColorizeDueDates(text string) string {
+	return dueRe.ReplaceAllStringFunc(text, func(match string) string {
+		// Extract date string
+		submatch := dueRe.FindStringSubmatch(match)
+		if len(submatch) < 2 {
+			return match
+		}
+
+		dateStr := submatch[1]
+		dueDate, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			return match
+		}
+
+		today := time.Now().Truncate(24 * time.Hour)
+		dueDay := dueDate.Truncate(24 * time.Hour)
+
+		var style lipgloss.Style
+
+		if dueDay.Before(today) {
+			// Overdue - red
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e")).Bold(true)
+		} else if dueDay.Equal(today) {
+			// Due today - orange
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff9e64")).Bold(true)
+		} else if dueDay.Before(today.AddDate(0, 0, 4)) {
+			// Due soon (within 3 days) - yellow
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
+		} else {
+			// Future - dim
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
 		}
 

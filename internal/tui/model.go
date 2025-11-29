@@ -93,6 +93,11 @@ type Model struct {
 	AvailablePriorities  []int // All unique priorities from todos
 	PriorityFilterCursor int   // Cursor position in priority filter list
 
+	// Due date filtering state
+	DueFilterMode   bool   // Whether we're in due date filter mode
+	FilteredDueDate string // Currently active due date filter: "", "overdue", "today", "week", "all"
+	DueFilterCursor int    // Cursor position in due filter list
+
 	// Recent files state
 	RecentFiles       []config.RecentFile // List of recent files
 	RecentFilesCursor int                 // Cursor position in recent files list
