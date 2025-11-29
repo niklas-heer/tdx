@@ -29,9 +29,9 @@ Enter
 Enter
 Type "## Backend"
 Enter
-Type "- [ ] Fix security vulnerability !p1 #backend #urgent"
+Type "- [ ] Fix security vulnerability !p1 #backend #urgent @due(2025-11-28)"
 Enter
-Type "- [ ] Set up CI/CD pipeline !p2 #devops"
+Type "- [ ] Set up CI/CD pipeline !p2 #devops @due(2025-12-05)"
 Enter
 Type "- [ ] Write unit tests #testing"
 Enter
@@ -40,16 +40,16 @@ Enter
 Enter
 Type "## Frontend"
 Enter
-Type "- [ ] Update documentation !p3 #docs"
+Type "- [ ] Update documentation !p3 #docs @due(2025-12-15)"
 Enter
-Type "- [ ] Add error handling !p1 #bugfix #urgent"
+Type "- [ ] Add error handling !p1 #bugfix #urgent @due(2025-11-29)"
 Enter
 Type "- [x] Design mockups #design"
 Enter
 Enter
 Type "## DevOps"
 Enter
-Type "- [ ] Configure monitoring !p2 #devops"
+Type "- [ ] Configure monitoring !p2 #devops @due(2025-12-01)"
 Enter
 Type "- [ ] Set up staging env #devops"
 Enter
@@ -159,6 +159,28 @@ Sleep 500ms
 Escape
 Sleep 1s
 
+# Due date filtering - show overdue/upcoming tasks
+Type "D"
+Sleep 800ms
+Type "j"
+Sleep 400ms
+Enter
+Sleep 1s
+
+# Sort by due date
+Type ":"
+Sleep 500ms
+Type@60ms "sort-due"
+Sleep 600ms
+Enter
+Sleep 1.2s
+
+# Clear due filter
+Type "D"
+Sleep 500ms
+Escape
+Sleep 1s
+
 # Fuzzy search
 Type "/"
 Sleep 600ms
@@ -244,7 +266,7 @@ Enter
 Sleep 1s
 
 # Final message
-Type@60ms "# Fast. Vim-style. Priorities. Themes."
+Type@60ms "# Fast. Vim-style. Priorities. Due dates. Themes."
 Enter
 Sleep 2.5s
 
