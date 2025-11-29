@@ -99,6 +99,7 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 				Priority:    priority,
 				Depth:       depth,
 				ParentIndex: parentIdx,
+				DueDate:     ExtractDueDate(text),
 			}
 			todos = append(todos, todo)
 			currentIdx = todoIndex
