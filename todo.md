@@ -28,7 +28,7 @@ show-headings: true
 ## Reddit requests
 
 - [x] add priorities and a priority-sort command (p1, p2, ...) !p3
-- [ ] add date when task is due (@due(2025-11-24)) !p2
+- [x] add date when task is due (@due(2025-11-24)) !p2
 - [x] add nested tasks
 - [x] add tags and f shortcut to filter for tags (#tag)
 
@@ -52,7 +52,5 @@ show-headings: true
 
 ## Maybe
 
-- [ ] add tui theme picker via command ": theme" which live previews
-- [ ] add keyboard shortcut h to toggle hide for the done tasks (+config)
-- [ ] expose all commands in frontmatter
+- [x] add tui theme picker via command ": theme" which live previews
 - [ ] provide a way to render code segments which can be copied and are rendered as code maybe line code? maybe ctrl/cmd+shift+c
