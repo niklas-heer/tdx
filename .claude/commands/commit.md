@@ -1,15 +1,50 @@
 ---
 description: Create a conventional commit from staged changes.
 ---
-Analyze staged changes and create an appropriate conventional commit.
+Analyze all changes and create well-organized commits, grouping related changes together.
 
 **Steps**
-1. Run `git diff --cached` to see staged changes
-2. Run `git log --oneline -10` to understand commit style
-3. Determine the commit type (feat, fix, chore, docs, refactor, test, etc.)
-4. Identify the scope if applicable
-5. Write a concise commit message following conventional commits spec
-6. Create the commit
+
+1. Run `git status` to see all changes (staged, unstaged, untracked)
+2. Run `git diff` and `git diff --cached` to understand what changed
+3. Analyze the changes and group them logically (see grouping rules below)
+4. For each logical group:
+   - Stage only the files belonging to that group with `git add <files>`
+   - Run `git log --oneline -10` to understand commit style (first iteration only)
+   - Create a conventional commit for that group
+5. Repeat until all changes are committed
+
+**Grouping Rules**
+
+Group changes that belong together semantically:
+
+- **Feature + Tests**: Implementation files with their corresponding test files
+- **Refactor**: Related refactoring changes across multiple files
+- **Config changes**: Build configs, CI files, dependencies (go.mod, package.json, etc.)
+- **Documentation**: README, docs/, comments-only changes
+- **Bug fix**: The fix and any related test additions
+- **Single responsibility**: Each commit should do ONE thing
+
+**Examples of Good Grouping**
+
+- `feat(parser): add support for nested lists` → parser.go + parser_test.go
+- `chore: update dependencies` → go.mod + go.sum
+- `docs: add examples to README` → README.md
+- `fix(ui): resolve cursor positioning bug` → ui.go + ui_test.go
+- `refactor: extract validation logic` → multiple files touched by the refactor
+
+**Examples of Bad Grouping**
+
+- Mixing a bug fix with an unrelated new feature
+- Combining dependency updates with code changes
+- Docs changes mixed with implementation changes
+
+**Safety**
+
+- Before adding, check for files that should NOT be committed (secrets, .env files, large binaries)
+- If suspicious files are found, warn the user and exclude them
+- Respect .gitignore
+- If unsure whether changes belong together, ask the user
 
 **Conventional Commit Format**
 - `feat`: New feature
