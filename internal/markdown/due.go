@@ -14,6 +14,7 @@ var dueRegex = regexp.MustCompile(`@due\((\d{4}-\d{2}-\d{2})\)`)
 // ExtractDueDate extracts the due date from todo text.
 // Returns nil if no due date is set or if the date is invalid.
 // If multiple due dates exist, returns the earliest one.
+// The returned time is in local timezone at midnight.
 func ExtractDueDate(text string) *time.Time {
 	matches := dueRegex.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
@@ -24,7 +25,8 @@ func ExtractDueDate(text string) *time.Time {
 	for _, match := range matches {
 		if len(match) > 1 {
 			dateStr := match[1]
-			parsedDate, err := time.Parse("2006-01-02", dateStr)
+			// Parse in local timezone to ensure correct date comparisons
+			parsedDate, err := time.ParseInLocation("2006-01-02", dateStr, time.Local)
 			if err == nil {
 				if earliestDate == nil || parsedDate.Before(*earliestDate) {
 					earliestDate = &parsedDate
@@ -54,13 +56,20 @@ func GetDueDateMarker(text string) string {
 	return match
 }
 
+// startOfDay returns the start of day (midnight) for the given time in local timezone
+func startOfDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+}
+
 // IsOverdue checks if the due date is before today (start of day)
 func IsOverdue(dueDate *time.Time) bool {
 	if dueDate == nil {
 		return false
 	}
-	today := time.Now().Truncate(24 * time.Hour)
-	return dueDate.Before(today)
+	today := startOfDay(time.Now())
+	dueDay := startOfDay(*dueDate)
+	return dueDay.Before(today)
 }
 
 // IsDueToday checks if the due date is today
@@ -68,8 +77,8 @@ func IsDueToday(dueDate *time.Time) bool {
 	if dueDate == nil {
 		return false
 	}
-	today := time.Now().Truncate(24 * time.Hour)
-	dueDay := dueDate.Truncate(24 * time.Hour)
+	today := startOfDay(time.Now())
+	dueDay := startOfDay(*dueDate)
 	return dueDay.Equal(today)
 }
 
@@ -78,8 +87,8 @@ func IsDueSoon(dueDate *time.Time, days int) bool {
 	if dueDate == nil {
 		return false
 	}
-	today := time.Now().Truncate(24 * time.Hour)
-	dueDay := dueDate.Truncate(24 * time.Hour)
+	today := startOfDay(time.Now())
+	dueDay := startOfDay(*dueDate)
 
 	// Not overdue and not today
 	if dueDay.Before(today) || dueDay.Equal(today) {

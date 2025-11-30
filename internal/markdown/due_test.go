@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// testStartOfDay returns the start of day (midnight) for the given time in local timezone
+// This matches the startOfDay function in due.go
+func testStartOfDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+}
+
 func TestExtractDueDate(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -257,7 +264,7 @@ func TestGetDueDateMarker(t *testing.T) {
 }
 
 func TestIsOverdue(t *testing.T) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := testStartOfDay(time.Now())
 	yesterday := today.AddDate(0, 0, -1)
 	tomorrow := today.AddDate(0, 0, 1)
 
@@ -299,7 +306,7 @@ func TestIsOverdue(t *testing.T) {
 }
 
 func TestIsDueToday(t *testing.T) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := testStartOfDay(time.Now())
 	yesterday := today.AddDate(0, 0, -1)
 	tomorrow := today.AddDate(0, 0, 1)
 
@@ -341,7 +348,7 @@ func TestIsDueToday(t *testing.T) {
 }
 
 func TestIsDueSoon(t *testing.T) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := testStartOfDay(time.Now())
 	yesterday := today.AddDate(0, 0, -1)
 	tomorrow := today.AddDate(0, 0, 1)
 	in3Days := today.AddDate(0, 0, 3)
@@ -489,7 +496,7 @@ func TestGetAllDueDates(t *testing.T) {
 }
 
 func TestTodo_DueDateMethods(t *testing.T) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := testStartOfDay(time.Now())
 	yesterday := today.AddDate(0, 0, -1)
 	tomorrow := today.AddDate(0, 0, 1)
 	in3Days := today.AddDate(0, 0, 3)
@@ -563,7 +570,7 @@ func TestTodo_DueDateMethods(t *testing.T) {
 }
 
 func TestTodo_HasDueDateFilter(t *testing.T) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := testStartOfDay(time.Now())
 	yesterday := today.AddDate(0, 0, -1)
 	tomorrow := today.AddDate(0, 0, 1)
 	in5Days := today.AddDate(0, 0, 5)
@@ -648,7 +655,7 @@ func TestTodo_HasDueDateFilter(t *testing.T) {
 }
 
 func TestTodo_HasAnyDueDateFilter(t *testing.T) {
-	today := time.Now().Truncate(24 * time.Hour)
+	today := testStartOfDay(time.Now())
 	yesterday := today.AddDate(0, 0, -1)
 	tomorrow := today.AddDate(0, 0, 1)
 
