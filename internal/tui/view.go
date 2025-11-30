@@ -407,7 +407,8 @@ func (m Model) renderMainContent() string {
 	}
 
 	// Input mode at end - show new task at end when not inserting after cursor
-	if m.InputMode && !m.InsertAfterCursor {
+	// Also handles the case when inserting after cursor but there are no todos
+	if m.InputMode && (!m.InsertAfterCursor || len(m.FileModel.Todos) == 0) {
 		b.WriteString(m.renderInputLine(styles, config))
 	}
 
