@@ -19,12 +19,19 @@ func testConfig() *ConfigType {
 func testStyles() *StyleFuncsType {
 	identity := func(s string) string { return s }
 	return &StyleFuncsType{
-		Magenta: identity,
-		Cyan:    identity,
-		Dim:     identity,
-		Green:   identity,
-		Yellow:  identity,
-		Code:    identity,
+		Magenta:        identity,
+		Cyan:           identity,
+		Dim:            identity,
+		Green:          identity,
+		Yellow:         identity,
+		Code:           identity,
+		Tag:            identity,
+		PriorityHigh:   identity,
+		PriorityMedium: identity,
+		PriorityLow:    identity,
+		DueUrgent:      identity,
+		DueSoon:        identity,
+		DueFuture:      identity,
 	}
 }
 

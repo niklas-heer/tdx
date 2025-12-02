@@ -30,12 +30,19 @@ func TestMain(m *testing.M) {
 	tui.Config.Display.MaxVisible = appConfig.Display.MaxVisible
 
 	tui.StyleFuncs = &tui.StyleFuncsType{
-		Magenta: func(s string) string { return styles.Important.Render(s) },
-		Cyan:    func(s string) string { return styles.Accent.Render(s) },
-		Dim:     func(s string) string { return styles.Dim.Render(s) },
-		Green:   func(s string) string { return styles.Success.Render(s) },
-		Yellow:  func(s string) string { return styles.Warning.Render(s) },
-		Code:    func(s string) string { return styles.Code.Render(s) },
+		Magenta:        func(s string) string { return styles.Important.Render(s) },
+		Cyan:           func(s string) string { return styles.Accent.Render(s) },
+		Dim:            func(s string) string { return styles.Dim.Render(s) },
+		Green:          func(s string) string { return styles.Success.Render(s) },
+		Yellow:         func(s string) string { return styles.Warning.Render(s) },
+		Code:           func(s string) string { return styles.Code.Render(s) },
+		Tag:            func(s string) string { return styles.Tag.Render(s) },
+		PriorityHigh:   func(s string) string { return styles.PriorityHigh.Render(s) },
+		PriorityMedium: func(s string) string { return styles.PriorityMedium.Render(s) },
+		PriorityLow:    func(s string) string { return styles.PriorityLow.Render(s) },
+		DueUrgent:      func(s string) string { return styles.DueUrgent.Render(s) },
+		DueSoon:        func(s string) string { return styles.DueSoon.Render(s) },
+		DueFuture:      func(s string) string { return styles.DueFuture.Render(s) },
 	}
 	tui.Version = Version
 
@@ -50,12 +57,19 @@ func TestMain(m *testing.M) {
 		tempConfig := &UserConfig{Colors: colors}
 		newStyles := NewStyles(tempConfig)
 		return &tui.StyleFuncsType{
-			Magenta: func(s string) string { return newStyles.Important.Render(s) },
-			Cyan:    func(s string) string { return newStyles.Accent.Render(s) },
-			Dim:     func(s string) string { return newStyles.Dim.Render(s) },
-			Green:   func(s string) string { return newStyles.Success.Render(s) },
-			Yellow:  func(s string) string { return newStyles.Warning.Render(s) },
-			Code:    func(s string) string { return newStyles.Code.Render(s) },
+			Magenta:        func(s string) string { return newStyles.Important.Render(s) },
+			Cyan:           func(s string) string { return newStyles.Accent.Render(s) },
+			Dim:            func(s string) string { return newStyles.Dim.Render(s) },
+			Green:          func(s string) string { return newStyles.Success.Render(s) },
+			Yellow:         func(s string) string { return newStyles.Warning.Render(s) },
+			Code:           func(s string) string { return newStyles.Code.Render(s) },
+			Tag:            func(s string) string { return newStyles.Tag.Render(s) },
+			PriorityHigh:   func(s string) string { return newStyles.PriorityHigh.Render(s) },
+			PriorityMedium: func(s string) string { return newStyles.PriorityMedium.Render(s) },
+			PriorityLow:    func(s string) string { return newStyles.PriorityLow.Render(s) },
+			DueUrgent:      func(s string) string { return newStyles.DueUrgent.Render(s) },
+			DueSoon:        func(s string) string { return newStyles.DueSoon.Render(s) },
+			DueFuture:      func(s string) string { return newStyles.DueFuture.Render(s) },
 		}
 	}
 	tui.ThemeSaveFunc = func(themeName string) error {

@@ -1,0 +1,25 @@
+[theme]
+name = "catppuccin-latte"
+author = "Catppuccin"
+
+[colors]
+Base = "#4c4f69"
+Dim = "#9ca0b0"
+Accent = "#1e66f5"
+Success = "#40a02b"
+Warning = "#fe640b"
+Important = "#8839ef"
+AlertError = "#d20f39"
+
+# Tags - yellow
+Tag = "#df8e1d"
+
+# Priorities - red/mauve family
+PriorityHigh = "#d20f39"
+PriorityMedium = "#8839ef"
+PriorityLow = "#9ca0b0"
+
+# Due dates - sky/sapphire family
+DueUrgent = "#04a5e5"
+DueSoon = "#209fb5"
+DueFuture = "#9ca0b0"

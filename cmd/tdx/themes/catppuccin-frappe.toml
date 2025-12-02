@@ -1,0 +1,25 @@
+[theme]
+name = "catppuccin-frappe"
+author = "Catppuccin"
+
+[colors]
+Base = "#c6d0f5"
+Dim = "#737994"
+Accent = "#8caaee"
+Success = "#a6d189"
+Warning = "#ef9f76"
+Important = "#ca9ee6"
+AlertError = "#e78284"
+
+# Tags - yellow
+Tag = "#e5c890"
+
+# Priorities - red/mauve family
+PriorityHigh = "#e78284"
+PriorityMedium = "#ca9ee6"
+PriorityLow = "#737994"
+
+# Due dates - sky/sapphire family
+DueUrgent = "#99d1db"
+DueSoon = "#85c1dc"
+DueFuture = "#737994"

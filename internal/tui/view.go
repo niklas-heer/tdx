@@ -354,9 +354,9 @@ func (m Model) renderMainContent() string {
 		} else {
 			text = RenderInlineCode(todo.Text, todo.Checked, styles.Magenta, styles.Cyan, styles.Code)
 			// Colorize tags, priorities, and due dates
-			text = ColorizeTags(text, styles.Yellow)
-			text = ColorizePriorities(text)
-			text = ColorizeDueDates(text)
+			text = ColorizeTags(text, styles.Tag)
+			text = ColorizePriorities(text, styles.PriorityHigh, styles.PriorityMedium, styles.PriorityLow)
+			text = ColorizeDueDates(text, styles.DueUrgent, styles.DueSoon, styles.DueFuture)
 		}
 
 		// Show edit cursor if in edit mode on this item
@@ -1129,7 +1129,7 @@ func (m Model) renderPriorityFilterOverlayCompact() string {
 
 			// Color the priority marker based on level
 			priorityText := fmt.Sprintf("!p%d", priority)
-			priorityText = ColorizePriorities(priorityText)
+			priorityText = ColorizePriorities(priorityText, styles.PriorityHigh, styles.PriorityMedium, styles.PriorityLow)
 			b.WriteString(marker + checkbox + priorityText)
 			b.WriteString("\n")
 		}

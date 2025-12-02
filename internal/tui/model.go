@@ -16,6 +16,15 @@ type StyleFuncsType struct {
 	Green   func(string) string
 	Yellow  func(string) string
 	Code    func(string) string
+
+	// Style functions for tags, priorities, and due dates
+	Tag            func(string) string
+	PriorityHigh   func(string) string
+	PriorityMedium func(string) string
+	PriorityLow    func(string) string
+	DueUrgent      func(string) string
+	DueSoon        func(string) string
+	DueFuture      func(string) string
 }
 
 // ConfigType holds display configuration

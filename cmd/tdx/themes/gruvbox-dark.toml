@@ -10,3 +10,16 @@ Success = "#b8bb26"
 Warning = "#fe8019"
 Important = "#d3869b"
 AlertError = "#fb4934"
+
+# Tags - yellow
+Tag = "#fabd2f"
+
+# Priorities - red/purple family
+PriorityHigh = "#fb4934"
+PriorityMedium = "#d3869b"
+PriorityLow = "#928374"
+
+# Due dates - aqua/blue family
+DueUrgent = "#8ec07c"
+DueSoon = "#83a598"
+DueFuture = "#928374"

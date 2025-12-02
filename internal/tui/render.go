@@ -287,8 +287,8 @@ func ColorizeTags(text string, tagStyle func(string) string) string {
 }
 
 // ColorizePriorities highlights priority markers (!p1, !p2, etc.) with appropriate colors
-// p1 = red (critical), p2 = orange (high), p3 = yellow (medium), p4+ = dim
-func ColorizePriorities(text string) string {
+// p1 = high (critical), p2 = medium (high), p3/p4+ = low
+func ColorizePriorities(text string, highStyle, mediumStyle, lowStyle func(string) string) string {
 	return priorityRe.ReplaceAllStringFunc(text, func(match string) string {
 		// Extract priority number
 		submatch := priorityRe.FindStringSubmatch(match)
@@ -299,29 +299,20 @@ func ColorizePriorities(text string) string {
 		priority := 0
 		_, _ = fmt.Sscanf(submatch[1], "%d", &priority)
 
-		var style lipgloss.Style
 		switch priority {
 		case 1:
-			// Critical - red
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e")).Bold(true)
+			return highStyle(match)
 		case 2:
-			// High - orange
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff9e64")).Bold(true)
-		case 3:
-			// Medium - yellow
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
+			return mediumStyle(match)
 		default:
-			// Low priority (p4+) - dim
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
+			return lowStyle(match)
 		}
-
-		return style.Render(match)
 	})
 }
 
 // ColorizeDueDates highlights due date markers (@due(YYYY-MM-DD)) with appropriate colors
-// based on urgency: overdue = red, today = orange, soon (3 days) = yellow, future = dim
-func ColorizeDueDates(text string) string {
+// based on urgency: overdue/today = urgent, soon (3 days) = soon, future = future
+func ColorizeDueDates(text string, urgentStyle, soonStyle, futureStyle func(string) string) string {
 	return dueRe.ReplaceAllStringFunc(text, func(match string) string {
 		// Extract date string
 		submatch := dueRe.FindStringSubmatch(match)
@@ -338,22 +329,15 @@ func ColorizeDueDates(text string) string {
 		today := time.Now().Truncate(24 * time.Hour)
 		dueDay := dueDate.Truncate(24 * time.Hour)
 
-		var style lipgloss.Style
-
-		if dueDay.Before(today) {
-			// Overdue - red
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e")).Bold(true)
-		} else if dueDay.Equal(today) {
-			// Due today - orange
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff9e64")).Bold(true)
+		if dueDay.Before(today) || dueDay.Equal(today) {
+			// Overdue or due today
+			return urgentStyle(match)
 		} else if dueDay.Before(today.AddDate(0, 0, 4)) {
-			// Due soon (within 3 days) - yellow
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
+			// Due soon (within 3 days)
+			return soonStyle(match)
 		} else {
-			// Future - dim
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
+			// Future
+			return futureStyle(match)
 		}
-
-		return style.Render(match)
 	})
 }

@@ -723,7 +723,12 @@ func TestHandleMaxVisibleInputKey_Escape(t *testing.T) {
 // ==================== ColorizePriorities test ====================
 
 func TestColorizePriorities(t *testing.T) {
-	result := ColorizePriorities("Task !p1 with priority")
+	// Create mock style functions for testing
+	high := func(s string) string { return "[HIGH]" + s + "[/HIGH]" }
+	medium := func(s string) string { return "[MED]" + s + "[/MED]" }
+	low := func(s string) string { return "[LOW]" + s + "[/LOW]" }
+
+	result := ColorizePriorities("Task !p1 with priority", high, medium, low)
 	if result == "" {
 		t.Error("ColorizePriorities returned empty string")
 	}
@@ -731,10 +736,18 @@ func TestColorizePriorities(t *testing.T) {
 	if !strings.Contains(result, "Task") {
 		t.Error("Result should contain 'Task'")
 	}
+	// Should have applied high priority style to !p1
+	if !strings.Contains(result, "[HIGH]!p1[/HIGH]") {
+		t.Error("Result should contain styled !p1")
+	}
 }
 
 func TestColorizePriorities_NoPriority(t *testing.T) {
-	result := ColorizePriorities("Task without priority")
+	high := func(s string) string { return "[HIGH]" + s + "[/HIGH]" }
+	medium := func(s string) string { return "[MED]" + s + "[/MED]" }
+	low := func(s string) string { return "[LOW]" + s + "[/LOW]" }
+
+	result := ColorizePriorities("Task without priority", high, medium, low)
 	if result != "Task without priority" {
 		t.Errorf("Text without priority should be unchanged, got %q", result)
 	}

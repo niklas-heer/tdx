@@ -34,6 +34,19 @@ type ColorsConfig struct {
 	Warning    string `toml:"Warning"`    // move mode
 	Important  string `toml:"Important"`  // checked items
 	AlertError string `toml:"AlertError"` // errors
+
+	// Tag colors
+	Tag string `toml:"Tag"` // hashtag color (#tag)
+
+	// Priority colors (for !p1, !p2, !p3, !p4+)
+	PriorityHigh   string `toml:"PriorityHigh"`   // !p1 - critical
+	PriorityMedium string `toml:"PriorityMedium"` // !p2 - high
+	PriorityLow    string `toml:"PriorityLow"`    // !p3, !p4+ - medium/low
+
+	// Due date colors (for @due(...))
+	DueUrgent string `toml:"DueUrgent"` // overdue or due today
+	DueSoon   string `toml:"DueSoon"`   // due within 3 days
+	DueFuture string `toml:"DueFuture"` // due later
 }
 
 // DisplayConfig holds display settings
@@ -258,10 +271,40 @@ type Styles struct {
 	Important lipgloss.Style
 	Error     lipgloss.Style
 	Code      lipgloss.Style
+
+	// Tag style
+	Tag lipgloss.Style
+
+	// Priority styles
+	PriorityHigh   lipgloss.Style
+	PriorityMedium lipgloss.Style
+	PriorityLow    lipgloss.Style
+
+	// Due date styles
+	DueUrgent lipgloss.Style
+	DueSoon   lipgloss.Style
+	DueFuture lipgloss.Style
 }
 
 // NewStyles creates lipgloss styles from config colors
 func NewStyles(config *UserConfig) *Styles {
+	// Helper to get color with fallback
+	colorOrFallback := func(color, fallback string) string {
+		if color != "" {
+			return color
+		}
+		return fallback
+	}
+
+	// Fallback colors for new fields (Tokyo Night inspired defaults)
+	tagColor := colorOrFallback(config.Colors.Tag, config.Colors.Warning)        // Yellow/orange for tags
+	priorityHigh := colorOrFallback(config.Colors.PriorityHigh, "#f7768e")       // Red
+	priorityMedium := colorOrFallback(config.Colors.PriorityMedium, "#bb9af7")   // Purple/magenta
+	priorityLow := colorOrFallback(config.Colors.PriorityLow, config.Colors.Dim) // Dim
+	dueUrgent := colorOrFallback(config.Colors.DueUrgent, "#7dcfff")             // Cyan/blue
+	dueSoon := colorOrFallback(config.Colors.DueSoon, "#7aa2f7")                 // Blue
+	dueFuture := colorOrFallback(config.Colors.DueFuture, config.Colors.Dim)     // Dim
+
 	return &Styles{
 		Base:      lipgloss.NewStyle().Foreground(lipgloss.Color(config.Colors.Base)),
 		Dim:       lipgloss.NewStyle().Foreground(lipgloss.Color(config.Colors.Dim)),
@@ -271,6 +314,15 @@ func NewStyles(config *UserConfig) *Styles {
 		Important: lipgloss.NewStyle().Foreground(lipgloss.Color(config.Colors.Important)),
 		Error:     lipgloss.NewStyle().Foreground(lipgloss.Color(config.Colors.AlertError)),
 		Code:      lipgloss.NewStyle().Background(lipgloss.Color(config.Colors.Dim)).Foreground(lipgloss.Color(config.Colors.Base)),
+
+		// New styles for tags, priorities, and due dates
+		Tag:            lipgloss.NewStyle().Foreground(lipgloss.Color(tagColor)),
+		PriorityHigh:   lipgloss.NewStyle().Foreground(lipgloss.Color(priorityHigh)).Bold(true),
+		PriorityMedium: lipgloss.NewStyle().Foreground(lipgloss.Color(priorityMedium)),
+		PriorityLow:    lipgloss.NewStyle().Foreground(lipgloss.Color(priorityLow)),
+		DueUrgent:      lipgloss.NewStyle().Foreground(lipgloss.Color(dueUrgent)).Bold(true),
+		DueSoon:        lipgloss.NewStyle().Foreground(lipgloss.Color(dueSoon)),
+		DueFuture:      lipgloss.NewStyle().Foreground(lipgloss.Color(dueFuture)),
 	}
 }
 
@@ -283,6 +335,15 @@ func NewStyleFuncs(styles *Styles) *StyleFuncsType {
 		Green:   func(s string) string { return styles.Success.Render(s) },
 		Yellow:  func(s string) string { return styles.Warning.Render(s) },
 		Code:    func(s string) string { return styles.Code.Render(s) },
+
+		// New style functions for tags, priorities, and due dates
+		Tag:            func(s string) string { return styles.Tag.Render(s) },
+		PriorityHigh:   func(s string) string { return styles.PriorityHigh.Render(s) },
+		PriorityMedium: func(s string) string { return styles.PriorityMedium.Render(s) },
+		PriorityLow:    func(s string) string { return styles.PriorityLow.Render(s) },
+		DueUrgent:      func(s string) string { return styles.DueUrgent.Render(s) },
+		DueSoon:        func(s string) string { return styles.DueSoon.Render(s) },
+		DueFuture:      func(s string) string { return styles.DueFuture.Render(s) },
 	}
 }
 
@@ -294,6 +355,15 @@ type StyleFuncsType struct {
 	Green   func(string) string
 	Yellow  func(string) string
 	Code    func(string) string
+
+	// New style functions for tags, priorities, and due dates
+	Tag            func(string) string
+	PriorityHigh   func(string) string
+	PriorityMedium func(string) string
+	PriorityLow    func(string) string
+	DueUrgent      func(string) string
+	DueSoon        func(string) string
+	DueFuture      func(string) string
 }
 
 // getConfigPath returns the path to the TOML config file, creating directory if needed

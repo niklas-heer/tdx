@@ -1,0 +1,25 @@
+[theme]
+name = "catppuccin-macchiato"
+author = "Catppuccin"
+
+[colors]
+Base = "#cad3f5"
+Dim = "#6e738d"
+Accent = "#8aadf4"
+Success = "#a6da95"
+Warning = "#f5a97f"
+Important = "#c6a0f6"
+AlertError = "#ed8796"
+
+# Tags - yellow
+Tag = "#eed49f"
+
+# Priorities - red/mauve family
+PriorityHigh = "#ed8796"
+PriorityMedium = "#c6a0f6"
+PriorityLow = "#6e738d"
+
+# Due dates - sky/sapphire family
+DueUrgent = "#91d7e3"
+DueSoon = "#7dc4e4"
+DueFuture = "#6e738d"
