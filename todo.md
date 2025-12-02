@@ -42,9 +42,9 @@ show-headings: true
 - [ ] improve the status bar
 - [ ] add R? for raw editing with a embededded nvim/vim like experience so that you can set frontmatter
 - [ ] Add the special mode from Ben Vallack [video](https://youtu.be/Tsgj1_OwhPs?si=YtdttW-vgCz1t6Tw)
-- [ ] combine config.yaml with config.toml
-- [ ] add default file option to the config.toml
-- [ ] add option in config.toml to set default name
+- [x] combine config.yaml with config.toml
+- [x] add default file option to the config.toml
+- [x] add option in config.toml to set default name
 
 ## fix bugs
 
@@ -54,7 +54,7 @@ show-headings: true
 - [x] make sure we don't delete frontmatter
 - [x] sometimes the select pointer disappears
 - [x] If I delete a subtask it and then there are no other tasks in the parent task anymore it should select the parent task again since as a user I might want to do more things regarding this task. If there are other child tasks it should select the next closest. (default next down, if there is only one and it's up that is what we need to select)
-- [ ] fix tag bug not recognizing that you added a tag
+- [x] fix tag bug not recognizing that you added a tag
 
 ## Maybe
 

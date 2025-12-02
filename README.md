@@ -353,6 +353,7 @@ check_symbol = "✓"
 select_marker = "➜"
 
 [defaults]
+file = "todo.md"      # default file (use ~/path for central file)
 max_visible = 0       # 0 = unlimited
 word_wrap = true
 show_headings = false
@@ -372,6 +373,7 @@ You only need to include the settings you want to change from the defaults.
 | `[theme]` | `name` | string | "tokyo-night" | Theme to use |
 | `[display]` | `check_symbol` | string | "✓" | Symbol for completed items |
 | `[display]` | `select_marker` | string | "➜" | Symbol for selected item |
+| `[defaults]` | `file` | string | "todo.md" | Default file path (use `~/path` for central file) |
 | `[defaults]` | `max_visible` | number | 0 | Limit visible tasks (0 = unlimited) |
 | `[defaults]` | `word_wrap` | boolean | true | Enable word wrapping for long lines |
 | `[defaults]` | `show_headings` | boolean | false | Show markdown headings between tasks |

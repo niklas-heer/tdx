@@ -12,8 +12,6 @@ import (
 	"github.com/niklas-heer/tdx/internal/tui"
 )
 
-const defaultFile = "todo.md"
-
 func main() {
 	// Load user config
 	appConfig := LoadConfig()
@@ -86,7 +84,8 @@ func main() {
 	args := os.Args[1:]
 
 	// Determine file path, flags, and command
-	filePath := defaultFile
+	// Use config default file path (can be relative like "todo.md" or absolute like "~/todos.md")
+	filePath := appConfig.Defaults.File
 	var command string
 	var cmdArgs []string
 
@@ -137,7 +136,14 @@ func main() {
 		}
 	}
 
-	// Resolve to absolute path
+	// Expand ~ to home directory
+	if strings.HasPrefix(filePath, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			filePath = filepath.Join(home, filePath[2:])
+		}
+	}
+
+	// Resolve to absolute path (for relative paths like "todo.md")
 	if !filepath.IsAbs(filePath) {
 		cwd, _ := os.Getwd()
 		filePath = filepath.Join(cwd, filePath)
@@ -155,6 +161,7 @@ func main() {
 		fmt.Printf("Colors.Success: %s\n", appConfig.Colors.Success)
 		fmt.Printf("Display.CheckSymbol: %s\n", appConfig.Display.CheckSymbol)
 		fmt.Printf("Display.SelectMarker: %s\n", appConfig.Display.SelectMarker)
+		fmt.Printf("Defaults.File: %s\n", appConfig.Defaults.File)
 		fmt.Printf("Defaults.MaxVisible: %d\n", appConfig.Defaults.MaxVisible)
 		fmt.Printf("Defaults.WordWrap: %v\n", appConfig.Defaults.WordWrap)
 		fmt.Printf("Defaults.ShowHeadings: %v\n", appConfig.Defaults.ShowHeadings)

@@ -59,11 +59,12 @@ type DisplayConfig struct {
 
 // DefaultsConfig holds default behavior settings
 type DefaultsConfig struct {
-	MaxVisible   int  `toml:"max_visible"`   // max todos to show (0 = unlimited)
-	WordWrap     bool `toml:"word_wrap"`     // enable word wrapping (default: true)
-	ShowHeadings bool `toml:"show_headings"` // show headings between tasks (default: false)
-	ReadOnly     bool `toml:"read_only"`     // open in read-only mode (default: false)
-	FilterDone   bool `toml:"filter_done"`   // filter out completed tasks (default: false)
+	File         string `toml:"file"`          // default file path (default: "todo.md", use absolute/~ for central file)
+	MaxVisible   int    `toml:"max_visible"`   // max todos to show (0 = unlimited)
+	WordWrap     bool   `toml:"word_wrap"`     // enable word wrapping (default: true)
+	ShowHeadings bool   `toml:"show_headings"` // show headings between tasks (default: false)
+	ReadOnly     bool   `toml:"read_only"`     // open in read-only mode (default: false)
+	FilterDone   bool   `toml:"filter_done"`   // filter out completed tasks (default: false)
 }
 
 // RecentConfig holds recent files settings
@@ -215,11 +216,12 @@ func DefaultConfig() *UserConfig {
 			SelectMarker: "➜", // default select marker
 		},
 		Defaults: DefaultsConfig{
-			MaxVisible:   0,     // unlimited by default
-			WordWrap:     true,  // word wrap on by default
-			ShowHeadings: false, // headings off by default
-			ReadOnly:     false, // editing enabled by default
-			FilterDone:   false, // show completed tasks by default
+			File:         "todo.md", // default file name
+			MaxVisible:   0,         // unlimited by default
+			WordWrap:     true,      // word wrap on by default
+			ShowHeadings: false,     // headings off by default
+			ReadOnly:     false,     // editing enabled by default
+			FilterDone:   false,     // show completed tasks by default
 		},
 		Recent: RecentConfig{
 			MaxFiles: 20, // default max recent files
@@ -284,6 +286,11 @@ func LoadConfig() *UserConfig {
 	if _, err := toml.DecodeFile(configPath, &rawConfig); err == nil {
 		// Check if defaults section exists and apply only set values
 		if defaultsRaw, ok := rawConfig["defaults"].(map[string]interface{}); ok {
+			if _, set := defaultsRaw["file"]; set {
+				// Already parsed into config.Defaults.File
+			} else {
+				config.Defaults.File = defaults.Defaults.File
+			}
 			if _, set := defaultsRaw["max_visible"]; set {
 				// Value was explicitly set (could be 0)
 				// Already parsed into config.Defaults.MaxVisible
@@ -328,6 +335,11 @@ func LoadConfig() *UserConfig {
 	// Ensure MaxFiles has a sensible minimum
 	if config.Recent.MaxFiles <= 0 {
 		config.Recent.MaxFiles = defaults.Recent.MaxFiles
+	}
+
+	// Ensure File has a default value
+	if config.Defaults.File == "" {
+		config.Defaults.File = defaults.Defaults.File
 	}
 
 	// Apply colors from theme (user themes override builtin)
@@ -506,7 +518,8 @@ func SaveTheme(themeName string) error {
 	}
 
 	// Preserve defaults settings if any were customized
-	if existingConfig.Defaults.MaxVisible != defaults.Defaults.MaxVisible ||
+	if existingConfig.Defaults.File != defaults.Defaults.File ||
+		existingConfig.Defaults.MaxVisible != defaults.Defaults.MaxVisible ||
 		existingConfig.Defaults.WordWrap != defaults.Defaults.WordWrap ||
 		existingConfig.Defaults.ShowHeadings != defaults.Defaults.ShowHeadings ||
 		existingConfig.Defaults.ReadOnly != defaults.Defaults.ReadOnly ||
