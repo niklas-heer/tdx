@@ -268,6 +268,9 @@ tdx edit 2 "Updated text"
 # Delete a todo
 tdx delete 3
 
+# Open most recent file
+tdx last
+
 # Use custom file
 tdx ~/notes/work.md list
 tdx project.md add "Task"
@@ -288,6 +291,9 @@ Press `r` in the TUI to open the recent files overlay:
 **CLI Commands:**
 
 ```bash
+# Open the most recently used file
+tdx last
+
 # List recently opened files (sorted by frequency and recency)
 tdx recent
 
