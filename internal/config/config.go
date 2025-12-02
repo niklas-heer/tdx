@@ -1,9 +1,7 @@
 // Package config provides configuration management for tdx.
-//
-// Deprecated: The YAML-based config (config.yaml) is deprecated.
-// Use config.toml instead. Settings are now managed via cmd/tdx/userconfig.go.
-// This file is kept for backwards compatibility and will be removed in a future version.
-// The recent files functionality (recent.go) is still actively used.
+// This package handles recent files tracking and legacy YAML config support.
+// Note: YAML config (config.yaml) is deprecated - use config.toml instead.
+// Settings are now managed via cmd/tdx/userconfig.go.
 package config
 
 import (
