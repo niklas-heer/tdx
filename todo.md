@@ -40,6 +40,8 @@ show-headings: true
 - [ ] add command or keyboard shortcut (# or h) to add a heading before? after? the current cursor maybe that should go together with the insert setting?
 - [ ] add vim functionality to new and edit mode
 - [ ] improve the status bar
+- [ ] add R? for raw editing with a embededded nvim/vim like experience so that you can set frontmatter
+- [ ] Add the special mode from Ben Vallack [video](https://youtu.be/Tsgj1_OwhPs?si=YtdttW-vgCz1t6Tw)
 
 ## fix bugs
 
