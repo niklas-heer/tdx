@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/niklas-heer/tdx/internal/cmd"
-	"github.com/niklas-heer/tdx/internal/config"
+	"github.com/niklas-heer/tdx/internal/config" // Still needed for recent files
 	"github.com/niklas-heer/tdx/internal/tui"
 )
 
@@ -24,11 +24,18 @@ func main() {
 	cmd.DimStyle = func(s string) string { return styles.Dim.Render(s) }
 	cmd.CheckSymbol = appConfig.Display.CheckSymbol
 
+	// Set recent files config
+	config.MaxRecentFiles = appConfig.Recent.MaxFiles
+
 	// Setup TUI package globals
 	tui.Config = &tui.ConfigType{}
 	tui.Config.Display.CheckSymbol = appConfig.Display.CheckSymbol
 	tui.Config.Display.SelectMarker = appConfig.Display.SelectMarker
-	tui.Config.Display.MaxVisible = appConfig.Display.MaxVisible
+	tui.Config.Display.MaxVisible = appConfig.Defaults.MaxVisible
+	tui.Config.Defaults.WordWrap = appConfig.Defaults.WordWrap
+	tui.Config.Defaults.FilterDone = appConfig.Defaults.FilterDone
+	tui.Config.Defaults.ShowHeadings = appConfig.Defaults.ShowHeadings
+	tui.Config.Defaults.ReadOnly = appConfig.Defaults.ReadOnly
 
 	tui.StyleFuncs = &tui.StyleFuncsType{
 		Magenta:        func(s string) string { return styles.Important.Render(s) },
@@ -82,9 +89,11 @@ func main() {
 	filePath := defaultFile
 	var command string
 	var cmdArgs []string
-	readOnly := false
-	showHeadings := false
-	maxVisible := -1 // -1 means use config default
+
+	// Use config defaults - CLI flags override these
+	readOnly := appConfig.Defaults.ReadOnly
+	showHeadings := appConfig.Defaults.ShowHeadings
+	maxVisible := -1 // -1 means use config default (set in TUI)
 
 	// Process arguments
 	var remainingArgs []string
@@ -142,9 +151,16 @@ func main() {
 		fmt.Printf("tdx v%s\n", Version)
 	case "--debug-config":
 		fmt.Printf("Theme: %s\n", appConfig.Theme.Name)
-		fmt.Printf("Accent: %s\n", appConfig.Colors.Accent)
-		fmt.Printf("Success: %s\n", appConfig.Colors.Success)
-		fmt.Printf("MaxVisible: %d\n", appConfig.Display.MaxVisible)
+		fmt.Printf("Colors.Accent: %s\n", appConfig.Colors.Accent)
+		fmt.Printf("Colors.Success: %s\n", appConfig.Colors.Success)
+		fmt.Printf("Display.CheckSymbol: %s\n", appConfig.Display.CheckSymbol)
+		fmt.Printf("Display.SelectMarker: %s\n", appConfig.Display.SelectMarker)
+		fmt.Printf("Defaults.MaxVisible: %d\n", appConfig.Defaults.MaxVisible)
+		fmt.Printf("Defaults.WordWrap: %v\n", appConfig.Defaults.WordWrap)
+		fmt.Printf("Defaults.ShowHeadings: %v\n", appConfig.Defaults.ShowHeadings)
+		fmt.Printf("Defaults.ReadOnly: %v\n", appConfig.Defaults.ReadOnly)
+		fmt.Printf("Defaults.FilterDone: %v\n", appConfig.Defaults.FilterDone)
+		fmt.Printf("Recent.MaxFiles: %d\n", appConfig.Recent.MaxFiles)
 	case "list", "add", "toggle", "edit", "delete":
 		cmd.HandleCommand(command, cmdArgs, filePath)
 	case "recent":

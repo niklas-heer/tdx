@@ -14,9 +14,11 @@ var themesFS embed.FS
 
 // UserConfig holds user configuration
 type UserConfig struct {
-	Theme   ThemeConfig   `toml:"theme"`
-	Colors  ColorsConfig  // Populated from builtin theme, not from config file
-	Display DisplayConfig `toml:"display"`
+	Theme    ThemeConfig    `toml:"theme"`
+	Colors   ColorsConfig   // Populated from builtin theme, not from config file
+	Display  DisplayConfig  `toml:"display"`
+	Defaults DefaultsConfig `toml:"defaults"`
+	Recent   RecentConfig   `toml:"recent"`
 }
 
 // ThemeConfig holds theme metadata
@@ -51,9 +53,22 @@ type ColorsConfig struct {
 
 // DisplayConfig holds display settings
 type DisplayConfig struct {
-	MaxVisible   int    `toml:"max_visible"`   // max todos to show (0 = unlimited)
 	CheckSymbol  string `toml:"check_symbol"`  // symbol for checked items (default: ✓)
 	SelectMarker string `toml:"select_marker"` // symbol for selected item (default: ➜)
+}
+
+// DefaultsConfig holds default behavior settings
+type DefaultsConfig struct {
+	MaxVisible   int  `toml:"max_visible"`   // max todos to show (0 = unlimited)
+	WordWrap     bool `toml:"word_wrap"`     // enable word wrapping (default: true)
+	ShowHeadings bool `toml:"show_headings"` // show headings between tasks (default: false)
+	ReadOnly     bool `toml:"read_only"`     // open in read-only mode (default: false)
+	FilterDone   bool `toml:"filter_done"`   // filter out completed tasks (default: false)
+}
+
+// RecentConfig holds recent files settings
+type RecentConfig struct {
+	MaxFiles int `toml:"max_files"` // max recent files to track (default: 20)
 }
 
 // loadBuiltinThemes loads themes from embedded TOML files
@@ -196,9 +211,18 @@ func DefaultConfig() *UserConfig {
 		},
 		Colors: builtinThemes["tokyo-night"],
 		Display: DisplayConfig{
-			MaxVisible:   0,   // unlimited by default
 			CheckSymbol:  "✓", // default check symbol
 			SelectMarker: "➜", // default select marker
+		},
+		Defaults: DefaultsConfig{
+			MaxVisible:   0,     // unlimited by default
+			WordWrap:     true,  // word wrap on by default
+			ShowHeadings: false, // headings off by default
+			ReadOnly:     false, // editing enabled by default
+			FilterDone:   false, // show completed tasks by default
+		},
+		Recent: RecentConfig{
+			MaxFiles: 20, // default max recent files
 		},
 	}
 }
@@ -234,7 +258,7 @@ func LoadConfig() *UserConfig {
 		return defaults
 	}
 
-	// Load and parse config (theme name and display settings only)
+	// Load and parse config
 	if _, err := toml.DecodeFile(configPath, config); err != nil {
 		return defaults
 	}
@@ -249,7 +273,62 @@ func LoadConfig() *UserConfig {
 	if config.Display.SelectMarker == "" {
 		config.Display.SelectMarker = defaults.Display.SelectMarker
 	}
-	// MaxVisible 0 is valid (unlimited), so we don't override it
+
+	// For Defaults section, we need to track which fields were explicitly set
+	// Since TOML doesn't distinguish between "not set" and "set to zero value",
+	// we use the parsed values directly - users only add what they want to change
+	// The defaults are already set above, so we merge with parsed values
+
+	// Re-parse to detect which keys are present (for defaults that use zero values)
+	rawConfig := make(map[string]interface{})
+	if _, err := toml.DecodeFile(configPath, &rawConfig); err == nil {
+		// Check if defaults section exists and apply only set values
+		if defaultsRaw, ok := rawConfig["defaults"].(map[string]interface{}); ok {
+			if _, set := defaultsRaw["max_visible"]; set {
+				// Value was explicitly set (could be 0)
+				// Already parsed into config.Defaults.MaxVisible
+			} else {
+				config.Defaults.MaxVisible = defaults.Defaults.MaxVisible
+			}
+			if _, set := defaultsRaw["word_wrap"]; set {
+				// Already parsed
+			} else {
+				config.Defaults.WordWrap = defaults.Defaults.WordWrap
+			}
+			if _, set := defaultsRaw["show_headings"]; set {
+				// Already parsed
+			} else {
+				config.Defaults.ShowHeadings = defaults.Defaults.ShowHeadings
+			}
+			if _, set := defaultsRaw["read_only"]; set {
+				// Already parsed
+			} else {
+				config.Defaults.ReadOnly = defaults.Defaults.ReadOnly
+			}
+			if _, set := defaultsRaw["filter_done"]; set {
+				// Already parsed
+			} else {
+				config.Defaults.FilterDone = defaults.Defaults.FilterDone
+			}
+		} else {
+			// No defaults section - use all defaults
+			config.Defaults = defaults.Defaults
+		}
+
+		// Check if recent section exists
+		if recentRaw, ok := rawConfig["recent"].(map[string]interface{}); ok {
+			if _, set := recentRaw["max_files"]; !set {
+				config.Recent.MaxFiles = defaults.Recent.MaxFiles
+			}
+		} else {
+			config.Recent = defaults.Recent
+		}
+	}
+
+	// Ensure MaxFiles has a sensible minimum
+	if config.Recent.MaxFiles <= 0 {
+		config.Recent.MaxFiles = defaults.Recent.MaxFiles
+	}
 
 	// Apply colors from theme (user themes override builtin)
 	if config.Theme.Name != "" {
@@ -390,12 +469,14 @@ func getConfigPath() (string, error) {
 	return filepath.Join(configDir, "config.toml"), nil
 }
 
-// minimalThemeConfig is used for saving only the theme name without colors
-type minimalThemeConfig struct {
+// minimalSaveConfig is used for saving config without colors (colors come from theme)
+type minimalSaveConfig struct {
 	Theme struct {
 		Name string `toml:"name"`
 	} `toml:"theme"`
-	Display *DisplayConfig `toml:"display,omitempty"`
+	Display  *DisplayConfig  `toml:"display,omitempty"`
+	Defaults *DefaultsConfig `toml:"defaults,omitempty"`
+	Recent   *RecentConfig   `toml:"recent,omitempty"`
 }
 
 // SaveTheme saves the theme name to the config file
@@ -406,22 +487,36 @@ func SaveTheme(themeName string) error {
 		return err
 	}
 
-	// Load existing config to preserve display settings
+	// Load existing config to preserve other settings
 	existingConfig := &UserConfig{}
 	if _, err := os.Stat(configPath); err == nil {
-		// File exists, load it to preserve display settings
+		// File exists, load it to preserve settings
 		_, _ = toml.DecodeFile(configPath, existingConfig)
 	}
 
-	// Create minimal config with only theme name and display settings
-	minConfig := &minimalThemeConfig{}
+	// Create config with theme name and preserve other settings
+	minConfig := &minimalSaveConfig{}
 	minConfig.Theme.Name = themeName
 
 	// Preserve display settings if they were customized
-	if existingConfig.Display.MaxVisible != 0 ||
-		existingConfig.Display.CheckSymbol != "" ||
+	defaults := DefaultConfig()
+	if existingConfig.Display.CheckSymbol != "" ||
 		existingConfig.Display.SelectMarker != "" {
 		minConfig.Display = &existingConfig.Display
+	}
+
+	// Preserve defaults settings if any were customized
+	if existingConfig.Defaults.MaxVisible != defaults.Defaults.MaxVisible ||
+		existingConfig.Defaults.WordWrap != defaults.Defaults.WordWrap ||
+		existingConfig.Defaults.ShowHeadings != defaults.Defaults.ShowHeadings ||
+		existingConfig.Defaults.ReadOnly != defaults.Defaults.ReadOnly ||
+		existingConfig.Defaults.FilterDone != defaults.Defaults.FilterDone {
+		minConfig.Defaults = &existingConfig.Defaults
+	}
+
+	// Preserve recent settings if customized
+	if existingConfig.Recent.MaxFiles != 0 && existingConfig.Recent.MaxFiles != defaults.Recent.MaxFiles {
+		minConfig.Recent = &existingConfig.Recent
 	}
 
 	// Write config to file

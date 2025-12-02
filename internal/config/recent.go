@@ -49,6 +49,10 @@ func ResetConfigDirForTesting() {
 // DefaultMaxRecent is the default maximum number of recent files to track
 const DefaultMaxRecent = 20
 
+// MaxRecentFiles can be set by main.go to override the default
+// This allows the config to be loaded from config.toml instead of config.yaml
+var MaxRecentFiles = DefaultMaxRecent
+
 // computeFileHash computes SHA256 hash of file content
 func computeFileHash(filePath string) (string, error) {
 	file, err := os.Open(filePath)
@@ -168,11 +172,11 @@ func LoadRecentFiles() (*RecentFiles, error) {
 
 // getMaxRecentFromConfig gets the max recent files value from config or returns default
 func getMaxRecentFromConfig() int {
-	cfg, err := Load()
-	if err != nil || cfg == nil {
-		return DefaultMaxRecent
+	// Use the global MaxRecentFiles which is set by main.go from config.toml
+	if MaxRecentFiles > 0 {
+		return MaxRecentFiles
 	}
-	return cfg.GetInt("max-recent-files", DefaultMaxRecent)
+	return DefaultMaxRecent
 }
 
 // Save writes the recent files list to disk

@@ -27,7 +27,11 @@ func TestMain(m *testing.M) {
 	tui.Config = &tui.ConfigType{}
 	tui.Config.Display.CheckSymbol = appConfig.Display.CheckSymbol
 	tui.Config.Display.SelectMarker = appConfig.Display.SelectMarker
-	tui.Config.Display.MaxVisible = appConfig.Display.MaxVisible
+	tui.Config.Display.MaxVisible = appConfig.Defaults.MaxVisible
+	tui.Config.Defaults.WordWrap = appConfig.Defaults.WordWrap
+	tui.Config.Defaults.FilterDone = appConfig.Defaults.FilterDone
+	tui.Config.Defaults.ShowHeadings = appConfig.Defaults.ShowHeadings
+	tui.Config.Defaults.ReadOnly = appConfig.Defaults.ReadOnly
 
 	tui.StyleFuncs = &tui.StyleFuncsType{
 		Magenta:        func(s string) string { return styles.Important.Render(s) },

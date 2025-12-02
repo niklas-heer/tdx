@@ -34,6 +34,12 @@ type ConfigType struct {
 		SelectMarker string
 		MaxVisible   int
 	}
+	Defaults struct {
+		WordWrap     bool
+		FilterDone   bool
+		ShowHeadings bool
+		ReadOnly     bool
+	}
 }
 
 // Global variables for backward compatibility (deprecated - use Model methods instead)

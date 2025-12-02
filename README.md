@@ -306,10 +306,11 @@ tdx recent clear
 
 **Configuration:**
 
-In `~/.config/tdx/config.yaml`:
+In `~/.config/tdx/config.toml`:
 
-```yaml
-max-recent-files: 20  # Maximum number of recent files to track
+```toml
+[recent]
+max_files = 20  # Maximum number of recent files to track
 ```
 
 Recent files are stored in `~/.config/tdx/recent.json` and include:
@@ -341,26 +342,42 @@ tdx supports three levels of configuration with the following priority:
 
 #### Global Configuration
 
-Create `~/.config/tdx/config.yaml` (or `$XDG_CONFIG_HOME/tdx/config.yaml`) to set defaults:
+Create `~/.config/tdx/config.toml` (or `$XDG_CONFIG_HOME/tdx/config.toml`) to set defaults:
 
-```yaml
-# Global defaults for all todo files
-read-only: false
-filter-done: false
-max-visible: 0
-show-headings: false
-word-wrap: true  # Enabled by default
+```toml
+[theme]
+name = "tokyo-night"
+
+[display]
+check_symbol = "✓"
+select_marker = "➜"
+
+[defaults]
+max_visible = 0       # 0 = unlimited
+word_wrap = true
+show_headings = false
+read_only = false
+filter_done = false
+
+[recent]
+max_files = 20
 ```
+
+You only need to include the settings you want to change from the defaults.
 
 **Available options:**
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `read-only` | boolean | false | Prevent all edits (view-only mode) |
-| `filter-done` | boolean | false | Hide completed tasks by default |
-| `max-visible` | number | 0 | Limit visible tasks (0 = unlimited) |
-| `show-headings` | boolean | false | Show markdown headings between tasks |
-| `word-wrap` | boolean | true | Enable word wrapping for long lines |
+| Section | Option | Type | Default | Description |
+|---------|--------|------|---------|-------------|
+| `[theme]` | `name` | string | "tokyo-night" | Theme to use |
+| `[display]` | `check_symbol` | string | "✓" | Symbol for completed items |
+| `[display]` | `select_marker` | string | "➜" | Symbol for selected item |
+| `[defaults]` | `max_visible` | number | 0 | Limit visible tasks (0 = unlimited) |
+| `[defaults]` | `word_wrap` | boolean | true | Enable word wrapping for long lines |
+| `[defaults]` | `show_headings` | boolean | false | Show markdown headings between tasks |
+| `[defaults]` | `read_only` | boolean | false | Prevent all edits (view-only mode) |
+| `[defaults]` | `filter_done` | boolean | false | Hide completed tasks by default |
+| `[recent]` | `max_files` | number | 20 | Maximum recent files to track |
 
 #### Per-File Configuration
 
@@ -410,15 +427,15 @@ Settings are applied in this order (highest to lowest priority):
 
 1. **CLI flags** - `tdx -r --show-headings todo.md`
 2. **Frontmatter** - YAML at top of individual todo files
-3. **Global config** - `~/.config/tdx/config.yaml`
-4. **Defaults** - Built-in defaults (word-wrap: true, others: false/0)
+3. **Global config** - `~/.config/tdx/config.toml`
+4. **Defaults** - Built-in defaults (word_wrap: true, others: false/0)
 
 **Example:**
 ```bash
-# Global config sets word-wrap: false
+# config.toml sets word_wrap = false
 # Frontmatter sets read-only: true
 # CLI flag: --show-headings
-# Result: word-wrap=false, read-only=true, show-headings=true
+# Result: word_wrap=false, read_only=true, show_headings=true
 tdx --show-headings todo.md
 ```
 
@@ -521,7 +538,8 @@ tdx/
 │   ├── cmd/             # CLI command handlers
 │   │   └── cli.go       # List, add, toggle, etc.
 │   ├── config/          # Configuration handling
-│   │   └── config.go    # Global config loader
+│   │   ├── config.go    # Legacy YAML config (deprecated)
+│   │   └── recent.go    # Recent files tracking
 │   └── util/            # Utilities
 │       ├── text.go      # Text processing, fuzzy search
 │       ├── clipboard.go # Clipboard operations
@@ -576,19 +594,14 @@ The selected theme is automatically saved to your config file.
 
 ### Theme Config File
 
-Create `~/.config/tdx/config.toml` to set your theme and display preferences:
+Set your theme in `~/.config/tdx/config.toml`:
 
 ```toml
 [theme]
 name = "tokyo-night"  # or any builtin/custom theme
-
-[display]
-check_symbol = "✓"     # symbol for completed items
-select_marker = "➜"    # symbol for selected item
-max_visible = 0        # max todos to show (0 = unlimited)
 ```
 
-Note: Theme config is in TOML format (`config.toml`), while todo behavior config is in YAML format (`config.yaml`). Both files live in `~/.config/tdx/`.
+See the [Global Configuration](#global-configuration) section for all available settings.
 
 ### Builtin Themes
 

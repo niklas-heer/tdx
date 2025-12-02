@@ -1,3 +1,9 @@
+// Package config provides configuration management for tdx.
+//
+// Deprecated: The YAML-based config (config.yaml) is deprecated.
+// Use config.toml instead. Settings are now managed via cmd/tdx/userconfig.go.
+// This file is kept for backwards compatibility and will be removed in a future version.
+// The recent files functionality (recent.go) is still actively used.
 package config
 
 import (
@@ -8,6 +14,8 @@ import (
 )
 
 // Config represents the global configuration for tdx
+//
+// Deprecated: Use config.toml instead. See cmd/tdx/userconfig.go for the new config structure.
 type Config struct {
 	FilterDone     *bool `yaml:"filter-done,omitempty"`      // Filter out completed tasks
 	MaxVisible     *int  `yaml:"max-visible,omitempty"`      // Maximum visible tasks
