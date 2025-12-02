@@ -593,6 +593,9 @@ Note: Theme config is in TOML format (`config.toml`), while todo behavior config
 ### Builtin Themes
 
 - `tokyo-night` (default)
+- `catppuccin-latte` (light)
+- `catppuccin-frappe`
+- `catppuccin-macchiato`
 - `catppuccin-mocha`
 - `dracula`
 - `github-dark`
@@ -614,6 +617,7 @@ name = "my-theme"
 author = "Your Name"
 
 [colors]
+# Core colors
 Base = "#c0caf5"       # default foreground
 Dim = "#565f89"        # muted text
 Accent = "#7aa2f7"     # highlights, selections
@@ -621,9 +625,24 @@ Success = "#9ece6a"    # completed items, matches
 Warning = "#e0af68"    # move mode
 Important = "#bb9af7"  # checked items
 AlertError = "#f7768e" # errors
+
+# Tags (hashtags like #urgent)
+Tag = "#e0af68"
+
+# Priorities (!p1, !p2, !p3+)
+PriorityHigh = "#f7768e"    # !p1 - critical
+PriorityMedium = "#bb9af7"  # !p2 - high
+PriorityLow = "#565f89"     # !p3+ - medium/low
+
+# Due dates (@due(YYYY-MM-DD))
+DueUrgent = "#7dcfff"  # overdue or due today
+DueSoon = "#7aa2f7"    # due within 3 days
+DueFuture = "#565f89"  # due later
 ```
 
 Custom themes appear in the theme picker alongside builtin themes. You can also override builtin themes by creating a file with the same theme name.
+
+**Note:** The Tag, Priority*, and Due* colors are optional. If omitted, sensible defaults are used based on the core colors.
 
 ### Custom File Path
 
