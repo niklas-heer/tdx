@@ -49,8 +49,12 @@ show-headings: true
 - [x] make sure we don't delete frontmatter
 - [x] sometimes the select pointer disappears
 - [x] If I delete a subtask it and then there are no other tasks in the parent task anymore it should select the parent task again since as a user I might want to do more things regarding this task. If there are other child tasks it should select the next closest. (default next down, if there is only one and it's up that is what we need to select)
+- [ ] fix tag bug not recognizing that you added a tag
 
 ## Maybe
 
 - [x] add tui theme picker via command ": theme" which live previews
 - [ ] provide a way to render code segments which can be copied and are rendered as code maybe line code? maybe ctrl/cmd+shift+c
+- [ ] add feature to respect newlines in todos if possible
+- [ ] mouse mode: scrolling and clicking (if possible?)
+- [ ] pictures? (rendering)
