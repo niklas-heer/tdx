@@ -160,6 +160,8 @@ func main() {
 		fmt.Printf("Recent.MaxFiles: %d\n", appConfig.Recent.MaxFiles)
 	case "list", "add", "toggle", "edit", "delete":
 		cmd.HandleCommand(command, cmdArgs, filePath)
+	case "last":
+		handleLastCommand(readOnly, showHeadings, maxVisible)
 	case "recent":
 		handleRecentCommand(cmdArgs, readOnly, showHeadings, maxVisible)
 	case "":
@@ -190,6 +192,7 @@ Commands:
   toggle <index>      Toggle todo completion
   edit <index> "text" Edit todo text
   delete <index>      Delete a todo
+  last                Open the most recently used file
   recent              List recently opened files
   recent <number>     Open a recent file by number
   recent clear        Clear recent files history
@@ -208,6 +211,25 @@ TUI Controls:
   ?                   Toggle help
   Esc                 Quit`, Description)
 	fmt.Println(help)
+}
+
+func handleLastCommand(readOnly bool, showHeadings bool, maxVisible int) {
+	// Load recent files
+	recentFiles, err := config.LoadRecentFiles()
+	if err != nil {
+		fmt.Printf("Error loading recent files: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(recentFiles.Files) == 0 {
+		fmt.Println("No recent files. Open a file first with 'tdx <file.md>'")
+		os.Exit(1)
+	}
+
+	// Sort by score and open the most recent
+	recentFiles.SortByScore()
+	filePath := recentFiles.Files[0].Path
+	tui.Run(filePath, readOnly, showHeadings, maxVisible)
 }
 
 func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVisible int) {
