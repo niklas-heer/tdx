@@ -272,6 +272,27 @@ func (m *Model) InvalidateDocumentTree() {
 	m.treeDirty = true
 }
 
+// RefreshAvailableTags updates AvailableTags from the current todos and cleans up
+// FilteredTags to remove any tags that no longer exist.
+func (m *Model) RefreshAvailableTags() {
+	m.AvailableTags = markdown.GetAllTags(m.FileModel.Todos)
+
+	// Clean up FilteredTags - remove any tags that no longer exist
+	if len(m.FilteredTags) > 0 {
+		validTags := make([]string, 0, len(m.FilteredTags))
+		tagSet := make(map[string]bool)
+		for _, tag := range m.AvailableTags {
+			tagSet[tag] = true
+		}
+		for _, tag := range m.FilteredTags {
+			if tagSet[tag] {
+				validTags = append(validTags, tag)
+			}
+		}
+		m.FilteredTags = validTags
+	}
+}
+
 // searchDebounceCmd returns a command that triggers search update after a delay
 func searchDebounceCmd() tea.Cmd {
 	return tea.Tick(50*time.Millisecond, func(t time.Time) tea.Msg {

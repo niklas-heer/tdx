@@ -299,6 +299,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "t":
 		// Always allow entering tag filter mode - show helpful message if no tags
+		// Refresh available tags to pick up any new tags added during this session
+		m.RefreshAvailableTags()
 		m.FilterMode = true
 		m.TagFilterCursor = 0
 
@@ -396,6 +398,7 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				todo := m.FileModel.Todos[m.SelectedIndex]
 				_ = m.FileModel.UpdateTodoItem(m.SelectedIndex, m.InputBuffer, todo.Checked)
 				m.InvalidateDocumentTree() // Text change affects document tree
+				m.RefreshAvailableTags()   // Edit may add or remove tags
 				m.writeIfPersist()
 			}
 			m.EditMode = false
@@ -962,6 +965,7 @@ func (m *Model) addNewTodo() {
 	}
 	m.InvalidateHeadingsCache() // New todo may affect heading positions
 	m.InvalidateDocumentTree()  // New todo affects document tree
+	m.RefreshAvailableTags()    // New todo may introduce new tags
 	m.writeIfPersist()
 }
 
@@ -1135,6 +1139,7 @@ func (m *Model) deleteCurrent() {
 	_ = m.FileModel.DeleteTodoItem(deletedIdx)
 	m.InvalidateHeadingsCache()
 	m.InvalidateDocumentTree()
+	m.RefreshAvailableTags() // Delete may remove tags
 
 	// Set the new selection
 	if len(m.FileModel.Todos) == 0 {
