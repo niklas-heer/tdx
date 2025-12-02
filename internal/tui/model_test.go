@@ -12,6 +12,10 @@ func testConfig() *ConfigType {
 	cfg.Display.CheckSymbol = "[x]"
 	cfg.Display.SelectMarker = ">"
 	cfg.Display.MaxVisible = 10
+	cfg.Defaults.WordWrap = true
+	cfg.Defaults.FilterDone = false
+	cfg.Defaults.ShowHeadings = false
+	cfg.Defaults.ReadOnly = false
 	return cfg
 }
 
@@ -229,5 +233,146 @@ func TestModel_CommandsInitialized(t *testing.T) {
 
 	if len(m.Commands) == 0 {
 		t.Error("Commands should be initialized")
+	}
+}
+
+// Tests for ConfigType.Defaults
+
+func TestConfigType_HasDefaultsStruct(t *testing.T) {
+	cfg := &ConfigType{}
+
+	// Defaults should be accessible
+	cfg.Defaults.WordWrap = true
+	cfg.Defaults.FilterDone = true
+	cfg.Defaults.ShowHeadings = true
+	cfg.Defaults.ReadOnly = true
+
+	if !cfg.Defaults.WordWrap {
+		t.Error("Defaults.WordWrap should be settable")
+	}
+	if !cfg.Defaults.FilterDone {
+		t.Error("Defaults.FilterDone should be settable")
+	}
+	if !cfg.Defaults.ShowHeadings {
+		t.Error("Defaults.ShowHeadings should be settable")
+	}
+	if !cfg.Defaults.ReadOnly {
+		t.Error("Defaults.ReadOnly should be settable")
+	}
+}
+
+func TestConfigType_DefaultsUsedInRun(t *testing.T) {
+	// This test verifies the ConfigType structure includes Defaults
+	// which Run() uses to set initial model state
+	cfg := testConfig()
+
+	// Verify testConfig sets Defaults
+	if !cfg.Defaults.WordWrap {
+		t.Error("testConfig should set WordWrap=true")
+	}
+	if cfg.Defaults.FilterDone {
+		t.Error("testConfig should set FilterDone=false")
+	}
+	if cfg.Defaults.ShowHeadings {
+		t.Error("testConfig should set ShowHeadings=false")
+	}
+	if cfg.Defaults.ReadOnly {
+		t.Error("testConfig should set ReadOnly=false")
+	}
+}
+
+func TestModel_UsesInjectedConfig(t *testing.T) {
+	cfg := &ConfigType{}
+	cfg.Display.CheckSymbol = "✓"
+	cfg.Display.SelectMarker = "→"
+	cfg.Display.MaxVisible = 25
+	cfg.Defaults.WordWrap = false  // Non-default value
+	cfg.Defaults.FilterDone = true // Non-default value
+
+	fm := &markdown.FileModel{
+		Todos: []markdown.Todo{{Text: "Test", Checked: false}},
+	}
+
+	m := New("/tmp/test.md", fm, false, false, -1, cfg, testStyles(), "")
+
+	// Verify model uses injected config
+	if m.Config().Display.CheckSymbol != "✓" {
+		t.Errorf("Model should use injected config CheckSymbol")
+	}
+	if m.Config().Display.SelectMarker != "→" {
+		t.Errorf("Model should use injected config SelectMarker")
+	}
+	if m.Config().Display.MaxVisible != 25 {
+		t.Errorf("Model should use injected config MaxVisible")
+	}
+}
+
+func TestStyleFuncsType_HasAllRequiredFields(t *testing.T) {
+	styles := testStyles()
+
+	// Core styles
+	if styles.Magenta == nil {
+		t.Error("Magenta style function should not be nil")
+	}
+	if styles.Cyan == nil {
+		t.Error("Cyan style function should not be nil")
+	}
+	if styles.Dim == nil {
+		t.Error("Dim style function should not be nil")
+	}
+	if styles.Green == nil {
+		t.Error("Green style function should not be nil")
+	}
+	if styles.Yellow == nil {
+		t.Error("Yellow style function should not be nil")
+	}
+	if styles.Code == nil {
+		t.Error("Code style function should not be nil")
+	}
+
+	// New style functions for tags, priorities, and due dates
+	if styles.Tag == nil {
+		t.Error("Tag style function should not be nil")
+	}
+	if styles.PriorityHigh == nil {
+		t.Error("PriorityHigh style function should not be nil")
+	}
+	if styles.PriorityMedium == nil {
+		t.Error("PriorityMedium style function should not be nil")
+	}
+	if styles.PriorityLow == nil {
+		t.Error("PriorityLow style function should not be nil")
+	}
+	if styles.DueUrgent == nil {
+		t.Error("DueUrgent style function should not be nil")
+	}
+	if styles.DueSoon == nil {
+		t.Error("DueSoon style function should not be nil")
+	}
+	if styles.DueFuture == nil {
+		t.Error("DueFuture style function should not be nil")
+	}
+}
+
+func TestStyleFuncsType_FunctionsWork(t *testing.T) {
+	styles := testStyles()
+	testInput := "test text"
+
+	// Test all style functions return non-empty output
+	styleFuncs := map[string]func(string) string{
+		"Tag":            styles.Tag,
+		"PriorityHigh":   styles.PriorityHigh,
+		"PriorityMedium": styles.PriorityMedium,
+		"PriorityLow":    styles.PriorityLow,
+		"DueUrgent":      styles.DueUrgent,
+		"DueSoon":        styles.DueSoon,
+		"DueFuture":      styles.DueFuture,
+	}
+
+	for name, fn := range styleFuncs {
+		result := fn(testInput)
+		if result == "" {
+			t.Errorf("%s style function returned empty string", name)
+		}
 	}
 }

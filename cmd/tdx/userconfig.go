@@ -237,12 +237,17 @@ func LoadConfig() *UserConfig {
 	// Try multiple config locations
 	var configPaths []string
 
-	// First try XDG style: ~/.config/tdx/config.toml
+	// First check XDG_CONFIG_HOME environment variable
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		configPaths = append(configPaths, filepath.Join(xdgConfig, "tdx", "config.toml"))
+	}
+
+	// Then try ~/.config/tdx/config.toml
 	if home, err := os.UserHomeDir(); err == nil {
 		configPaths = append(configPaths, filepath.Join(home, ".config", "tdx", "config.toml"))
 	}
 
-	// Then try OS-specific config dir
+	// Finally try OS-specific config dir
 	if configDir, err := os.UserConfigDir(); err == nil {
 		configPaths = append(configPaths, filepath.Join(configDir, "tdx", "config.toml"))
 	}

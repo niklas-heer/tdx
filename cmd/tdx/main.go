@@ -136,18 +136,8 @@ func main() {
 		}
 	}
 
-	// Expand ~ to home directory
-	if strings.HasPrefix(filePath, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			filePath = filepath.Join(home, filePath[2:])
-		}
-	}
-
-	// Resolve to absolute path (for relative paths like "todo.md")
-	if !filepath.IsAbs(filePath) {
-		cwd, _ := os.Getwd()
-		filePath = filepath.Join(cwd, filePath)
-	}
+	// Resolve file path (expand ~ and make absolute)
+	filePath = resolveFilePath(filePath)
 
 	// Handle commands
 	switch command {
@@ -278,4 +268,23 @@ func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVis
 			file.LastAccessed.Format("2006-01-02 15:04"))
 	}
 	fmt.Println("\nUse 'tdx recent <number>' to open a file")
+}
+
+// resolveFilePath expands ~ to home directory and resolves relative paths to absolute
+func resolveFilePath(filePath string) string {
+	// Expand ~ to home directory
+	if strings.HasPrefix(filePath, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			filePath = filepath.Join(home, filePath[2:])
+		}
+	}
+
+	// Resolve to absolute path (for relative paths like "todo.md")
+	if !filepath.IsAbs(filePath) {
+		if cwd, err := os.Getwd(); err == nil {
+			filePath = filepath.Join(cwd, filePath)
+		}
+	}
+
+	return filePath
 }
