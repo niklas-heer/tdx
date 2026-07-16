@@ -10,11 +10,11 @@ The project SHALL provide a version-pinned Dagger pipeline written in Go that ru
 - The Dagger module SHALL be isolated from the application Go module.
 - The Dagger engine, Go toolchain, linter, and workflow linter versions SHALL be pinned.
 - The pipeline SHALL not depend on Dagger Cloud for correctness.
-- A documented `just` command SHALL execute the complete portable pipeline.
+- A documented `mask ci` command SHALL execute the complete portable pipeline.
 
 #### Scenario: Developer runs CI locally
 
-- **WHEN** a developer with Dagger and a compatible container runtime runs the local CI command
+- **WHEN** a developer with Mask, Dagger, and a compatible container runtime runs `mask ci`
 - **THEN** Dagger SHALL execute all portable checks used by GitHub CI
 - **AND** the command SHALL return a non-zero status if any check fails
 

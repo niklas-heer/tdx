@@ -23,4 +23,4 @@
 - [x] 4.1 Run formatting, vet, lint, race tests, coverage generation, and workflow linting through Dagger.
 - [x] 4.2 Export release artifacts and verify the Linux executable metadata.
 - [x] 4.3 Run native filesystem tests on the host.
-- [ ] 4.4 Confirm hosted Linux, macOS, Windows, and CodeRabbit checks pass.
+- [x] 4.4 Confirm hosted Linux, macOS, Windows, and CodeRabbit checks pass.
