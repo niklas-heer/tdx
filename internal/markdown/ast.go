@@ -227,6 +227,9 @@ func (doc *ASTDocument) extractTodoText(listItem ast.Node, checkbox ast.Node) st
 			if n.Kind() == ast.KindList {
 				return ast.WalkSkipChildren, nil
 			}
+			if entering && writeInlineNodeText(&buf, doc, n) {
+				return ast.WalkSkipChildren, nil
+			}
 
 			// Collect text content
 			switch node := n.(type) {
@@ -271,18 +274,6 @@ func (doc *ASTDocument) extractTodoText(listItem ast.Node, checkbox ast.Node) st
 					buf.WriteByte('(')
 					buf.Write(node.Destination)
 					buf.WriteByte(')')
-					return ast.WalkSkipChildren, nil
-				}
-			case *ast.AutoLink:
-				if entering {
-					buf.WriteByte('<')
-					buf.Write(node.Label(doc.Source))
-					buf.WriteByte('>')
-					return ast.WalkSkipChildren, nil
-				}
-			case *ast.RawHTML:
-				if entering {
-					buf.Write(node.Segments.Value(doc.Source))
 					return ast.WalkSkipChildren, nil
 				}
 			case *ast.Emphasis:
