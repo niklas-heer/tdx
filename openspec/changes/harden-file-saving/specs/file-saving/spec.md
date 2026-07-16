@@ -5,7 +5,8 @@
 The system SHALL base markdown save conflicts on the exact bytes read from disk, not on file timestamps.
 
 - A loaded file revision SHALL include whether the path existed and a SHA-256 digest of the exact source bytes.
-- A normal save SHALL replace the target only when its current existence and digest match the loaded revision.
+- Conditional write APIs SHALL reject models without a revision established by loading the target.
+- A normal save SHALL replace the target only when its existence and digest match the loaded revision at the final validation immediately before replacement.
 - An absent loaded path SHALL conflict if any file appears at that path before commit.
 - A conflict SHALL leave the current disk bytes unchanged and retain the caller's in-memory edits.
 - The external disk bytes SHALL be treated as authoritative unless the user explicitly force-saves.
@@ -68,7 +69,7 @@ Every tdx markdown write, including force-save and version restore, SHALL use th
 
 #### Scenario: Process stops around replacement
 
-- **WHEN** a tdx process stops after preparing a replacement or immediately after replacing the target
+- **WHEN** a tdx process stops after preparing a replacement or immediately after replacing the target on a platform and filesystem that provide atomic replace semantics
 - **THEN** the target SHALL contain either the complete previous revision or the complete replacement revision
 - **AND** a partially written target SHALL never be visible
 
@@ -78,6 +79,7 @@ The save pipeline SHALL preserve the user's logical file path and portable permi
 
 - When the opened path is a symlink to an existing regular file, tdx SHALL update the resolved target and SHALL not replace the symlink entry.
 - When replacing an existing file, tdx SHALL apply its portable permission bits to the replacement.
+- When creating a new file, tdx SHALL retain the temporary file's restrictive creation mode rather than widening it after creation.
 - Unsupported targets such as directories SHALL fail before replacement.
 
 #### Scenario: Save through a symlink
@@ -91,6 +93,11 @@ The save pipeline SHALL preserve the user's logical file path and portable permi
 - **WHEN** an existing markdown file has restrictive permission bits
 - **AND** tdx saves it
 - **THEN** those permission bits SHALL remain on the replacement file
+
+#### Scenario: Create a file with restrictive permissions
+
+- **WHEN** tdx saves a newly loaded absent path
+- **THEN** the new file SHALL not grant group or other permissions on platforms with portable mode bits
 
 ### Requirement: Explicit overwrite policy
 
@@ -132,6 +139,7 @@ Normal saves and version restores SHALL be conditional; only an explicit force-s
 The system SHALL accurately communicate and test the boundary of coordination with non-tdx applications.
 
 - tdx SHALL detect external content changes observed before its atomic replacement and reject conditional saves.
+- An external change that starts after final validation is outside the conditional-save guarantee because non-cooperating applications do not share the tdx lock.
 - tdx SHALL NOT claim that advisory locks can detect every open handle or block applications that do not use the tdx lock.
 - Regardless of external lock cooperation, a tdx replacement SHALL never intentionally expose partial content.
 
@@ -140,3 +148,9 @@ The system SHALL accurately communicate and test the boundary of coordination wi
 - **WHEN** an external application that ignores tdx locks replaces the file before tdx's final revision validation
 - **THEN** the conditional tdx save SHALL report a conflict
 - **AND** SHALL not overwrite that observed external revision
+
+#### Scenario: Non-cooperating editor changes after validation
+
+- **WHEN** an external application changes the target after tdx's final revision validation
+- **THEN** tdx SHALL make no compare-and-swap guarantee for that unobserved change
+- **AND** tdx SHALL still use the strongest replacement and durability primitives available on the platform

@@ -19,12 +19,13 @@ var (
 	ErrFileChanged = errors.New("file changed externally")
 	// ErrFileBusy identifies a save that could not acquire the tdx lock in time.
 	ErrFileBusy = errors.New("file is busy in another tdx process")
+	// ErrRevisionUnknown identifies a conditional save attempted without a loaded baseline.
+	ErrRevisionUnknown = errors.New("file revision unavailable; load with ReadFile or use an unchecked write")
 )
 
 const (
-	defaultFileMode = 0o644
-	lockWait        = 2 * time.Second
-	lockRetry       = 10 * time.Millisecond
+	lockWait  = 2 * time.Second
+	lockRetry = 10 * time.Millisecond
 )
 
 var (
@@ -33,7 +34,7 @@ var (
 	}
 	statTarget          = os.Stat
 	readCurrentRevision = readDiskRevision
-	renameFile          = os.Rename
+	renameFile          = replaceFile
 	syncParentDirectory = syncDirectory
 	saveStageHook       func(string)
 )
@@ -148,12 +149,14 @@ func lockPath(target string) (string, error) {
 }
 
 func prepareReplacement(target, content string) (name string, err error) {
-	mode := fs.FileMode(defaultFileMode)
+	var mode fs.FileMode
+	preserveMode := false
 	if info, statErr := statTarget(target); statErr == nil {
 		if !info.Mode().IsRegular() {
 			return "", fmt.Errorf("%q is not a regular file", target)
 		}
 		mode = info.Mode().Perm()
+		preserveMode = true
 	} else if !errors.Is(statErr, fs.ErrNotExist) {
 		return "", fmt.Errorf("stat target before save: %w", statErr)
 	}
@@ -175,8 +178,10 @@ func prepareReplacement(target, content string) (name string, err error) {
 		}
 	}()
 
-	if err = tmp.Chmod(mode); err != nil {
-		return "", fmt.Errorf("set replacement permissions: %w", err)
+	if preserveMode {
+		if err = tmp.Chmod(mode); err != nil {
+			return "", fmt.Errorf("set replacement permissions: %w", err)
+		}
 	}
 	if _, err = tmp.WriteString(content); err != nil {
 		return "", fmt.Errorf("write replacement: %w", err)

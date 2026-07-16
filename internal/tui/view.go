@@ -1204,25 +1204,11 @@ func renderDiff(diffs []diffmatchpatch.Diff, styles *StyleFuncsType) string {
 }
 
 func (m Model) renderConflictDiff() string {
+	rawLines := m.conflictDiffLines()
+	m.clampConflictDiffScroll(len(rawLines))
+	height := m.conflictDiffHeight()
 	styles := m.Styles()
-	dmp := diffmatchpatch.New()
-	dmp.MatchDistance = 120
-	diffs := dmp.DiffMain(m.ConflictLocalContent, m.ConflictDiskContent, false)
-	dmp.DiffCleanupSemantic(diffs)
-	rawLines := strings.Split(renderDiff(diffs, styles), "\n")
-
-	height := m.TermHeight - 7
-	if height < 3 {
-		height = 3
-	}
-	start := m.ConflictDiffScroll
-	if start > len(rawLines)-1 {
-		start = len(rawLines) - 1
-	}
-	if start < 0 {
-		start = 0
-	}
-	visible := rawLines[start:]
+	visible := rawLines[m.ConflictDiffScroll:]
 	if len(visible) > height {
 		visible = visible[:height]
 	}
@@ -1247,6 +1233,36 @@ func (m Model) renderConflictDiff() string {
 		Width(width).
 		Padding(0, 1).
 		Render(body)
+}
+
+func (m Model) conflictDiffLines() []string {
+	styles := m.Styles()
+	dmp := diffmatchpatch.New()
+	dmp.MatchDistance = 120
+	diffs := dmp.DiffMain(m.ConflictLocalContent, m.ConflictDiskContent, false)
+	dmp.DiffCleanupSemantic(diffs)
+	return strings.Split(renderDiff(diffs, styles), "\n")
+}
+
+func (m Model) conflictDiffHeight() int {
+	height := m.TermHeight - 7
+	if height < 3 {
+		height = 3
+	}
+	return height
+}
+
+func (m *Model) clampConflictDiffScroll(lineCount int) {
+	maxScroll := lineCount - m.conflictDiffHeight()
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.ConflictDiffScroll > maxScroll {
+		m.ConflictDiffScroll = maxScroll
+	}
+	if m.ConflictDiffScroll < 0 {
+		m.ConflictDiffScroll = 0
+	}
 }
 
 // renderVersionsBrowser renders the full-screen version browser modal.

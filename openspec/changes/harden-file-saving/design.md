@@ -11,7 +11,7 @@ Context7 is unavailable in this environment. The proposed lock dependency was ch
 ### Goals
 
 - Never expose partially written markdown through a tdx save.
-- Never silently overwrite a revision that changed after tdx loaded it.
+- Never silently overwrite a revision changed by a cooperating tdx writer or an external revision observed before final validation.
 - Serialize competing saves from tdx instances and return a bounded busy/conflict error rather than hanging.
 - Preserve the target's symlink, permission bits, and exact restored bytes.
 - Distinguish failures before replacement from failures in post-commit durability or version capture.
@@ -41,10 +41,10 @@ The operation will:
 
 1. Resolve an existing symlink to its target and derive a canonical lock identity.
 2. Create an operation-unique temporary file in the target directory.
-3. Apply the existing target's permission bits when present, write all bytes, sync, and close the temporary file.
+3. Apply the existing target's permission bits when present; otherwise retain the temporary file's restrictive creation mode. Write all bytes, sync, and close the temporary file.
 4. Acquire the canonical target's process-shared lock with a bounded timeout.
 5. Read and hash the current target while holding the lock and reject a stale expected revision.
-6. Atomically replace the target where the platform and filesystem support it.
+6. Replace the target with the strongest platform primitive available: POSIX rename on Unix-like systems and write-through replacement on Windows. Atomic crash semantics remain conditional on platform and filesystem support.
 7. Sync the containing directory where supported, update the in-memory revision, invoke post-commit version capture, release the lock, and remove any leftover temporary file.
 
 Preparing and syncing the temporary file before taking the lock keeps the serialized section short. Revalidation happens after the lock is acquired and immediately before replacement.
@@ -94,7 +94,7 @@ Before an explicit force overwrite, the current disk bytes will be sent to versi
 
 ## Risks / Trade-offs
 
-- Advisory locks cannot control other applications. Mitigation: exact precondition checks, a minimal check-to-replace window, atomic replacement, post-commit verification where useful, and recoverable versions.
+- Advisory locks cannot control other applications, including changes that begin after final validation. Mitigation: exact precondition checks, a minimal check-to-replace window, the strongest available replacement primitive, post-commit verification where useful, and recoverable versions.
 - Atomic replacement can affect attributes beyond portable permission bits. Mitigation: preserve supported mode bits now and document filesystem-specific attributes as follow-up work.
 - Locking in the config directory adds a dependency on that directory. This matches the existing version-store requirement; lock setup failures are surfaced before replacement.
 - Removing heuristic auto-merge is more conservative. It prefers an explicit conflict over silent loss and keeps local state available for a user decision.

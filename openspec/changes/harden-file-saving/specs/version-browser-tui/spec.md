@@ -11,7 +11,8 @@ The system SHALL allow the user to restore the current file to any historic vers
   3. Reload `m.FileModel` from the committed file and apply restored frontmatter settings.
   4. Close confirmation and version browser modes after success.
 - Pressing `n`, `N`, or `Esc` SHALL return to the version list without writing.
-- Read, conflict, busy, or save failures SHALL set `m.Err`, close confirmation, and leave the disk file and active in-memory model unchanged.
+- Read, conflict, busy, or other pre-commit save failures SHALL set `m.Err`, close confirmation, and leave the disk file and active in-memory model unchanged.
+- Post-commit failures SHALL set `m.Err`, close both version modes, and reload the already-committed disk content into the active model.
 
 #### Scenario: Restore replaces unchanged file content
 
@@ -35,4 +36,3 @@ The system SHALL allow the user to restore the current file to any historic vers
 - **AND** then presses `Esc` or `n`
 - **THEN** `VersionsConfirmMode` SHALL be `false`
 - **AND** `VersionsMode` SHALL remain `true`
-

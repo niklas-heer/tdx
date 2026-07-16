@@ -413,7 +413,7 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Force save even if file was modified externally",
 			Handler: func(m *Model) {
 				content := m.ConflictLocalContent
-				if content == "" {
+				if !m.ConflictPending {
 					content = markdown.SerializeMarkdown(&m.FileModel)
 				}
 				saveErr := markdown.WriteContentUnchecked(m.FilePath, content)
@@ -434,7 +434,7 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Name:        "diff",
 			Description: "Compare retained local changes with external disk content",
 			Handler: func(m *Model) {
-				if m.ConflictLocalContent == "" {
+				if !m.ConflictPending {
 					m.Err = fmt.Errorf("no unresolved file conflict")
 					return
 				}

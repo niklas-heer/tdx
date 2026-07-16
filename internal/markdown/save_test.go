@@ -162,6 +162,122 @@ func TestWriteFileDetectsTimestampPreservingEdit(t *testing.T) {
 	}
 }
 
+func TestWriteFileDetectsAtomicExternalReplacement(t *testing.T) {
+	isolateSaveLocks(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "todo.md")
+	original := "# Todos\n\n- [ ] original\n"
+	external := "# Todos\n\n- [ ] replaced externally\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	replacement, err := os.CreateTemp(dir, ".external-*.tmp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementPath := replacement.Name()
+	if _, err := replacement.WriteString(external); err != nil {
+		_ = replacement.Close()
+		t.Fatal(err)
+	}
+	if err := replacement.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacementPath, path); err != nil {
+		t.Fatal(err)
+	}
+
+	err = WriteFile(path, fm)
+	if !errors.Is(err, ErrFileChanged) {
+		t.Fatalf("WriteFile() error = %v, want ErrFileChanged", err)
+	}
+	var conflict *ConflictError
+	if !errors.As(err, &conflict) || conflict.DiskContent != external {
+		t.Fatalf("conflict = %#v, want replacement content", conflict)
+	}
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != external {
+		t.Fatalf("disk content = %q, want replacement content", got)
+	}
+}
+
+func TestConditionalWritesRequireLoadedRevision(t *testing.T) {
+	isolateSaveLocks(t)
+	path := filepath.Join(t.TempDir(), "todo.md")
+	original := "# authoritative\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm := ParseMarkdown("# local\n")
+	fm.FilePath = path
+
+	if err := WriteFile(path, fm); !errors.Is(err, ErrRevisionUnknown) {
+		t.Fatalf("WriteFile() error = %v, want ErrRevisionUnknown", err)
+	}
+	if err := WriteContent(path, "# exact local\n", fm); !errors.Is(err, ErrRevisionUnknown) {
+		t.Fatalf("WriteContent() error = %v, want ErrRevisionUnknown", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != original {
+		t.Fatalf("conditional write changed disk to %q", got)
+	}
+}
+
+func TestCloneRetainsLoadedRevisionForConditionalSave(t *testing.T) {
+	isolateSaveLocks(t)
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("# Todos\n\n- [ ] task\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clone := fm.Clone()
+	if err := clone.UpdateTodoItem(0, "task", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFile(path, clone); err != nil {
+		t.Fatalf("WriteFile(clone) error = %v", err)
+	}
+	if clone.FilePath != fm.FilePath || clone.Metadata != fm.Metadata {
+		t.Fatal("Clone() did not retain file identity and metadata")
+	}
+}
+
+func TestNewFileKeepsSecureTemporaryMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("portable Windows mode bits do not express ACL security")
+	}
+	isolateSaveLocks(t)
+	path := filepath.Join(t.TempDir(), "todo.md")
+	fm, err := ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFile(path, fm); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got&0o077 != 0 {
+		t.Fatalf("new file mode = %o, want no group or other permissions", got)
+	}
+}
+
 func TestWriteFileConflictsWhenAbsentPathCreated(t *testing.T) {
 	isolateSaveLocks(t)
 	path := filepath.Join(t.TempDir(), "todo.md")
@@ -416,6 +532,9 @@ func TestReplaceFailureLeavesOriginalAndCleansTemp(t *testing.T) {
 
 func TestPrepareReplacementStageFailures(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(target, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	originalCreate := createTempFile
 	originalStat := statTarget
 	t.Cleanup(func() {

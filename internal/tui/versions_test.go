@@ -174,7 +174,11 @@ func TestRestoreSelectedVersion_PreservesSnapshotBytes(t *testing.T) {
 		return snapshot, nil
 	}
 
-	m := New(path, markdown.ParseMarkdown("# Current\n\n- [ ] current\n"), false, false, -1, cfg, testStyles(), "test")
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(path, fm, false, false, -1, cfg, testStyles(), "test")
 	m.VersionsMode = true
 	m.VersionsConfirmMode = true
 	m.VersionsList = []VersionInfo{{ID: 1}}

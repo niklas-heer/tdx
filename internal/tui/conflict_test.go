@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -42,6 +43,9 @@ func TestSaveConflictRetainsLocalAndAuthoritativeDiskContent(t *testing.T) {
 	if !m.ConflictDiffMode {
 		t.Fatal("conflict diff did not open")
 	}
+	if !m.ConflictPending {
+		t.Fatal("conflict was not marked pending")
+	}
 	if m.ConflictLocalContent != local || m.ConflictDiskContent != external {
 		t.Fatalf("retained local=%q disk=%q", m.ConflictLocalContent, m.ConflictDiskContent)
 	}
@@ -58,6 +62,117 @@ func TestSaveConflictRetainsLocalAndAuthoritativeDiskContent(t *testing.T) {
 	m = result.(Model)
 	if m.ConflictDiffMode || m.ConflictLocalContent != local || m.ConflictDiskContent != external {
 		t.Fatal("closing diff did not retain both candidates")
+	}
+}
+
+func TestEmptyConflictCandidateCanBeInspectedAndForceSaved(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "todo.md")
+	external := "# external\n"
+	if err := os.WriteFile(path, []byte(external), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(path, fm, false, false, -1, testConfig(), testStyles(), "test")
+	m.recordSaveError(&markdown.ConflictError{Path: path, DiskContent: external}, "")
+
+	if !m.ConflictPending || !m.ConflictDiffMode {
+		t.Fatal("empty local candidate was not retained as a pending conflict")
+	}
+	m.ConflictDiffMode = false
+	executeCommand(&m, "diff")
+	if !errors.Is(m.Err, markdown.ErrFileChanged) || !m.ConflictDiffMode {
+		t.Fatalf("diff rejected empty candidate: mode=%v err=%v", m.ConflictDiffMode, m.Err)
+	}
+	m.ConflictDiffMode = false
+	executeCommand(&m, "force-save")
+	if m.Err != nil || m.ConflictPending {
+		t.Fatalf("force-save did not resolve empty candidate: pending=%v err=%v", m.ConflictPending, m.Err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("force-saved content = %q, want empty", got)
+	}
+}
+
+func TestExternalReloadRetainsReadHookErrorAndDiskModel(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "todo.md")
+	initial := "# Todos\n\n- [ ] initial\n"
+	external := "# Todos\n\n- [ ] external\n"
+	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(path, fm, false, false, -1, testConfig(), testStyles(), "test")
+	if err := os.WriteFile(path, []byte(external), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	originalHook := markdown.ReadHook
+	hookErr := errors.New("version capture failed")
+	markdown.ReadHook = func(string, string) error { return hookErr }
+	t.Cleanup(func() { markdown.ReadHook = originalHook })
+
+	cmd := m.checkAndReloadFile()
+	msg := cmd()
+	reloaded, ok := msg.(reloadedMsg)
+	if !ok {
+		t.Fatalf("reload message = %T, want reloadedMsg", msg)
+	}
+	if !errors.Is(reloaded.model.Err, hookErr) {
+		t.Fatalf("reload error = %v, want hook error", reloaded.model.Err)
+	}
+	if got := markdown.SerializeMarkdown(&reloaded.model.FileModel); got != external {
+		t.Fatalf("reloaded model = %q, want authoritative disk content", got)
+	}
+}
+
+func TestConflictDiffScrollIsClampedAfterKeysAndResize(t *testing.T) {
+	m := testModel(nil)
+	m.TermWidth = 80
+	m.TermHeight = 10
+	m.ConflictDiffMode = true
+	m.ConflictPending = true
+	m.ConflictLocalContent = strings.Repeat("local line\n", 30)
+	m.ConflictDiskContent = strings.Repeat("disk line\n", 30)
+
+	for range 100 {
+		updated, _ := m.handleConflictDiffKey("down")
+		m = updated.(Model)
+	}
+	maxScroll := len(m.conflictDiffLines()) - m.conflictDiffHeight()
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.ConflictDiffScroll != maxScroll {
+		t.Fatalf("scroll = %d, want maximum %d", m.ConflictDiffScroll, maxScroll)
+	}
+	previous := m.ConflictDiffScroll
+	updated, _ := m.handleConflictDiffKey("up")
+	m = updated.(Model)
+	if previous > 0 && m.ConflictDiffScroll >= previous {
+		t.Fatalf("up did not move immediately from maximum: before=%d after=%d", previous, m.ConflictDiffScroll)
+	}
+
+	m.ConflictDiffScroll = 1_000
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	m = updated.(Model)
+	resizedMax := len(m.conflictDiffLines()) - m.conflictDiffHeight()
+	if resizedMax < 0 {
+		resizedMax = 0
+	}
+	if m.ConflictDiffScroll > resizedMax {
+		t.Fatalf("resized scroll = %d, maximum = %d", m.ConflictDiffScroll, resizedMax)
 	}
 }
 

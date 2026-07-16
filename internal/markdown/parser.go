@@ -101,11 +101,7 @@ func (fm *FileModel) CheckFileModified() (bool, error) {
 // Returns an error if the file was modified externally
 func WriteFile(filePath string, fm *FileModel) error {
 	if !fm.revisionKnown {
-		revision, _, modTime, err := readDiskRevision(filePath)
-		if err != nil {
-			return err
-		}
-		fm.setRevision(revision, modTime)
+		return ErrRevisionUnknown
 	}
 	content := SerializeMarkdown(fm)
 	return writeContent(filePath, content, &fm.revision, fm, false)
@@ -121,11 +117,7 @@ func WriteFileUnchecked(filePath string, fm *FileModel) error {
 // WriteContent writes exact content only if the file still matches fm's loaded revision.
 func WriteContent(filePath, content string, fm *FileModel) error {
 	if !fm.revisionKnown {
-		revision, _, modTime, err := readDiskRevision(filePath)
-		if err != nil {
-			return err
-		}
-		fm.setRevision(revision, modTime)
+		return ErrRevisionUnknown
 	}
 	return writeContent(filePath, content, &fm.revision, fm, false)
 }
@@ -492,11 +484,30 @@ func (fm *FileModel) Clone() *FileModel {
 	}
 
 	return &FileModel{
-		Lines: lines,
-		Todos: todos,
-		ast:   astCopy,
-		dirty: fm.dirty,
+		Lines:         lines,
+		Todos:         todos,
+		ast:           astCopy,
+		dirty:         fm.dirty,
+		FilePath:      fm.FilePath,
+		ModTime:       fm.ModTime,
+		Metadata:      fm.Metadata,
+		revision:      fm.revision,
+		revisionKnown: fm.revisionKnown,
 	}
+}
+
+// RestoreContent replaces the editable document state from a snapshot while
+// retaining the receiver's current disk revision for the next conditional save.
+func (fm *FileModel) RestoreContent(snapshot *FileModel) {
+	if fm == nil || snapshot == nil {
+		return
+	}
+	restored := snapshot.Clone()
+	restored.FilePath = fm.FilePath
+	restored.ModTime = fm.ModTime
+	restored.revision = fm.revision
+	restored.revisionKnown = fm.revisionKnown
+	*fm = *restored
 }
 
 // RebuildFileStructure reconstructs Lines from Todos, preserving non-todo content

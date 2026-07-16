@@ -119,6 +119,11 @@ func Open(maxVersions int) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
+	if _, err := db.Exec("PRAGMA busy_timeout=5000;"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("versioning: set busy timeout: %w", err)
+	}
+
 	// Optimise for high-frequency writes.
 	if _, err := db.Exec("PRAGMA journal_mode=WAL;"); err != nil {
 		_ = db.Close()
@@ -128,11 +133,6 @@ func Open(maxVersions int) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("versioning: set synchronous: %w", err)
 	}
-	if _, err := db.Exec("PRAGMA busy_timeout=5000;"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("versioning: set busy timeout: %w", err)
-	}
-
 	if _, err := db.Exec(initSQL); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("versioning: init schema: %w", err)
@@ -230,17 +230,21 @@ func (s *Store) Prune(filePath string, maxVersions int) error {
 }
 
 // PruneAll prunes every file path seen this session using maxVersions.
-// Intended to be called before Close.
-func (s *Store) PruneAll(maxVersions int) {
+// Intended to be called before Close. It reports every path that could not be pruned.
+func (s *Store) PruneAll(maxVersions int) error {
 	s.cacheMu.RLock()
 	paths := make([]string, 0, len(s.fileIDCache))
 	for filePath := range s.fileIDCache {
 		paths = append(paths, filePath)
 	}
 	s.cacheMu.RUnlock()
+	var pruneErr error
 	for _, filePath := range paths {
-		_ = s.Prune(filePath, maxVersions)
+		if err := s.Prune(filePath, maxVersions); err != nil {
+			pruneErr = errors.Join(pruneErr, fmt.Errorf("%s: %w", filePath, err))
+		}
 	}
+	return pruneErr
 }
 
 // ListVersions returns the version history for filePath ordered most-recent-first.
@@ -293,7 +297,19 @@ func (s *Store) ListVersions(filePath string) (versions []VersionInfo, err error
 func (s *Store) Close() error {
 	// TRUNCATE mode writes all WAL frames to the database and truncates the WAL
 	// file to zero bytes, leaving a clean single-file state on exit.
-	_, checkpointErr := s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	var busy, logFrames, checkpointedFrames int
+	checkpointErr := s.db.QueryRow("PRAGMA wal_checkpoint(TRUNCATE)").Scan(
+		&busy,
+		&logFrames,
+		&checkpointedFrames,
+	)
+	if checkpointErr == nil && busy != 0 {
+		checkpointErr = fmt.Errorf(
+			"checkpoint remained busy (%d WAL frames, %d checkpointed)",
+			logFrames,
+			checkpointedFrames,
+		)
+	}
 	closeErr := s.db.Close()
 	if checkpointErr != nil {
 		checkpointErr = fmt.Errorf("versioning: checkpoint WAL: %w", checkpointErr)

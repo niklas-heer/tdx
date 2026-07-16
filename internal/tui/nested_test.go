@@ -1,12 +1,28 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
+
+func persistentNestedModel(t *testing.T, content string) Model {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(path, fm, false, false, -1, testConfig(), testStyles(), "")
+}
 
 func TestHandleKey_IndentTodo(t *testing.T) {
 	content := `# Todos
@@ -15,8 +31,7 @@ func TestHandleKey_IndentTodo(t *testing.T) {
 - [ ] Task 2
 - [ ] Task 3
 `
-	fm := markdown.ParseMarkdown(content)
-	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m := persistentNestedModel(t, content)
 	m.SelectedIndex = 1 // Select Task 2
 
 	// Press Tab to indent Task 2
@@ -41,8 +56,7 @@ func TestHandleKey_IndentFirstTodoFails(t *testing.T) {
 - [ ] Task 1
 - [ ] Task 2
 `
-	fm := markdown.ParseMarkdown(content)
-	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m := persistentNestedModel(t, content)
 	m.SelectedIndex = 0 // Select first task
 
 	// Press Tab - should silently fail
@@ -111,8 +125,7 @@ func TestHandleKey_IndentOutdentRoundTrip(t *testing.T) {
 - [ ] Task 2
 - [ ] Task 3
 `
-	fm := markdown.ParseMarkdown(content)
-	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m := persistentNestedModel(t, content)
 	m.SelectedIndex = 1 // Select Task 2
 
 	// Indent
@@ -201,8 +214,7 @@ func TestHandleKey_IndentWithUndo(t *testing.T) {
 - [ ] Task 1
 - [ ] Task 2
 `
-	fm := markdown.ParseMarkdown(content)
-	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m := persistentNestedModel(t, content)
 	m.SelectedIndex = 1
 
 	// Indent Task 2

@@ -30,6 +30,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.TermWidth = msg.Width
 		m.TermHeight = msg.Height
+		if m.ConflictDiffMode {
+			m.clampConflictDiffScroll(len(m.conflictDiffLines()))
+		}
 		return m, nil
 	case ClearCopyFeedbackMsg:
 		m.CopyFeedback = false
@@ -263,7 +266,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "u":
 		if m.History != nil {
-			m.FileModel = *m.History
+			m.FileModel.RestoreContent(m.History)
 			m.History = nil
 			m.InvalidateDocumentTree()
 			m.writeIfPersist()
@@ -416,7 +419,7 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.InputMode = false
 		m.EditMode = false
 		if m.History != nil {
-			m.FileModel = *m.History
+			m.FileModel.RestoreContent(m.History)
 			m.History = nil
 		}
 
@@ -608,7 +611,7 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "esc":
 		if m.History != nil {
-			m.FileModel = *m.History
+			m.FileModel.RestoreContent(m.History)
 			m.History = nil
 			m.InvalidateDocumentTree()
 			m.InvalidateHeadingsCache()
@@ -1262,7 +1265,7 @@ func (m *Model) writeIfPersist() {
 
 // checkAndReloadFile checks if the file changed and reloads if safe
 func (m Model) checkAndReloadFile() tea.Cmd {
-	if m.ConflictLocalContent != "" {
+	if m.ConflictPending {
 		return watchFileChanges() // Continue watching
 	}
 
@@ -1274,11 +1277,12 @@ func (m Model) checkAndReloadFile() tea.Cmd {
 
 	// With no pending local candidate, external disk content is authoritative.
 	diskFM, err := markdown.ReadFile(m.FilePath)
-	if err != nil {
+	if diskFM == nil {
 		return watchFileChanges()
 	}
 	m.FileModel = *diskFM
 	m.History = nil
+	m.Err = err
 	return func() tea.Msg { return reloadedMsg{model: m} }
 }
 
@@ -1286,6 +1290,7 @@ func (m *Model) recordSaveError(err error, localContent string) {
 	m.Err = err
 	var conflict *markdown.ConflictError
 	if errors.As(err, &conflict) {
+		m.ConflictPending = true
 		m.ConflictLocalContent = localContent
 		m.ConflictDiskContent = conflict.DiskContent
 		m.ConflictDiffScroll = 0
@@ -1299,6 +1304,7 @@ func (m *Model) clearConflict() {
 	}
 	m.ConflictDiffMode = false
 	m.ConflictDiffScroll = 0
+	m.ConflictPending = false
 	m.ConflictLocalContent = ""
 	m.ConflictDiskContent = ""
 }
@@ -1322,6 +1328,7 @@ func (m Model) handleConflictDiffKey(key string) (tea.Model, tea.Cmd) {
 			m.Err = nil
 		}
 	}
+	m.clampConflictDiffScroll(len(m.conflictDiffLines()))
 	return m, nil
 }
 

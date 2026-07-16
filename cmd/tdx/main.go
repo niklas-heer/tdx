@@ -30,8 +30,8 @@ func openVersionStore(maxVersions int) error {
 
 // closeVersionStore prunes all tracked files then closes the store.
 func closeVersionStore() error {
-	versionStore.PruneAll(versionStore.MaxVersions)
-	return versionStore.Close()
+	pruneErr := versionStore.PruneAll(versionStore.MaxVersions)
+	return errors.Join(pruneErr, versionStore.Close())
 }
 
 // registerVersioningHooks wires the single shared store into the markdown package hooks.

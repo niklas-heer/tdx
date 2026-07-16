@@ -146,6 +146,7 @@ type Model struct {
 	// Conflict state retains both candidates until the user explicitly resolves it.
 	ConflictDiffMode     bool
 	ConflictDiffScroll   int
+	ConflictPending      bool
 	ConflictLocalContent string
 	ConflictDiskContent  string
 
