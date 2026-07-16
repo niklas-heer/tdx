@@ -1,7 +1,7 @@
 # ci-pipeline Specification
 
 ## Purpose
-TBD - created by archiving change adopt-dagger-ci. Update Purpose after archive.
+Define the portable Dagger CI pipeline, native platform verification, reproducible release artifacts, GitHub orchestration, and coverage-badge responsibilities.
 ## Requirements
 ### Requirement: Locally reproducible portable CI
 
@@ -51,13 +51,13 @@ The Dagger pipeline SHALL produce the complete release artifact set from the ver
 #### Scenario: Release tag is pushed
 
 - **WHEN** a `v*` tag triggers the release workflow
-- **THEN** GitHub Actions SHALL call the Dagger release-artifact function
+- **THEN** GitHub Actions SHALL call the Dagger `release-artifacts` function
 - **AND** SHALL publish all five returned binaries to the GitHub release
 - **AND** the Homebrew update job SHALL consume those published asset names without modification
 
 #### Scenario: Developer dry-runs release builds
 
-- **WHEN** a developer calls the local release-artifact command
+- **WHEN** a developer calls the local `release-artifacts` command
 - **THEN** Dagger SHALL export the same five filenames that the tag workflow would publish
 - **AND** SHALL not require GitHub or Homebrew write credentials
 
@@ -90,4 +90,3 @@ The Dagger pipeline SHALL calculate repository test coverage and produce the exi
 - **AND** the calculated badge differs from the tracked badge
 - **THEN** GitHub Actions SHALL commit and push the updated badge
 - **AND** the badge commit SHALL not trigger an endless workflow loop
-

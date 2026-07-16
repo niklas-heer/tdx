@@ -49,19 +49,31 @@ func captureStdout(t *testing.T, run func()) string {
 
 	defer func() {
 		os.Stdout = originalStdout
+		_ = writer.Close()
 		_ = reader.Close()
 	}()
 
+	type readResult struct {
+		output []byte
+		err    error
+	}
+	result := make(chan readResult, 1)
+	go func() {
+		output, err := io.ReadAll(reader)
+		result <- readResult{output: output, err: err}
+	}()
+
 	run()
+	os.Stdout = originalStdout
 	if err := writer.Close(); err != nil {
 		t.Fatalf("close stdout writer: %v", err)
 	}
 
-	output, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("read stdout: %v", err)
+	captured := <-result
+	if captured.err != nil {
+		t.Fatalf("read stdout: %v", captured.err)
 	}
-	return string(output)
+	return string(captured.output)
 }
 
 func TestTodoCommandsRoundTrip(t *testing.T) {
