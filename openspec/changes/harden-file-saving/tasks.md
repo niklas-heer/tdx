@@ -26,6 +26,6 @@
 ## 4. Review and verification
 
 - [x] 4.1 Run `go fmt ./...`, `go vet ./...`, `go test ./...`, targeted and full `go test -race`, and repeated multi-process stress tests.
-- [ ] 4.2 Build the CLI for Linux, macOS, and Windows and verify platform-specific filesystem tests in CI.
+- [x] 4.2 Build the CLI for Linux, macOS, and Windows and verify platform-specific filesystem tests in CI.
 - [x] 4.3 Run `go mod tidy` and `openspec validate --all --strict`.
 - [x] 4.4 Perform a general correctness review of persistence, error handling, resource ownership, and concurrent state; fix in-scope findings and record separate follow-ups only when they require distinct design work.
