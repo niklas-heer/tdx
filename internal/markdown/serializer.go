@@ -192,6 +192,14 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 		}
 		buf.WriteString(")")
 
+	case *ast.AutoLink:
+		buf.WriteString("<")
+		buf.Write(n.Label(doc.Source))
+		buf.WriteString(">")
+
+	case *ast.RawHTML:
+		buf.Write(n.Segments.Value(doc.Source))
+
 	case *ast.Emphasis:
 		// Check emphasis level
 		if n.Level == 2 {
