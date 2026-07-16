@@ -5,8 +5,37 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
+
+func TestSaveVersion_ConcurrentAccessIsRaceFree(t *testing.T) {
+	dir := t.TempDir()
+	SetStoreDirForTesting(dir)
+	defer ResetStoreDirForTesting()
+	s := openStore(t)
+
+	const writers = 24
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs <- s.SaveVersion("/shared/todo.md", fmt.Sprintf("# version %d\n", i))
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("SaveVersion() error: %v", err)
+		}
+	}
+	if got := rowCount(t, s.db); got != writers {
+		t.Fatalf("version rows = %d, want %d", got, writers)
+	}
+}
 
 // --- helpers ---
 

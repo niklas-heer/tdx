@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -78,6 +79,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+
+	if m.ConflictDiffMode {
+		return m.handleConflictDiffKey(key)
+	}
 
 	// Handle error display - any key dismisses
 	if m.Err != nil {
@@ -202,8 +207,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.saveHistory()
 			todo := m.FileModel.Todos[m.SelectedIndex]
 			_ = m.FileModel.UpdateTodoItem(m.SelectedIndex, todo.Text, !todo.Checked)
-			// Mark this todo as locally modified
-			m.LocallyModified[todo.Text] = true
 			m.writeIfPersist()
 			// Adjust selection if item is now hidden by any filter
 			if !m.isTodoVisible(m.SelectedIndex) {
@@ -1248,100 +1251,18 @@ func (m *Model) updateFilteredCommands() {
 
 func (m *Model) writeIfPersist() {
 	if !m.ReadOnly {
-		// Check for external modifications first
-		modified, err := m.FileModel.CheckFileModified()
-		if err != nil {
-			m.Err = err
+		local := markdown.SerializeMarkdown(&m.FileModel)
+		if err := markdown.WriteFile(m.FilePath, &m.FileModel); err != nil {
+			m.recordSaveError(err, local)
 			return
 		}
-
-		if modified {
-			// Try smart reload: check if we can auto-reload safely
-			if m.trySmartReload() {
-				// Successfully auto-reloaded, now write (unchecked since we just loaded)
-				if err := markdown.WriteFileUnchecked(m.FilePath, &m.FileModel); err != nil {
-					m.Err = err
-				} else {
-					// Clear locally modified tracking after successful write
-					m.LocallyModified = make(map[string]bool)
-				}
-				return
-			}
-			// Can't auto-merge, show error
-			m.Err = fmt.Errorf("file changed externally")
-			return
-		}
-
-		// No conflict, write normally (unchecked since we just checked)
-		if err := markdown.WriteFileUnchecked(m.FilePath, &m.FileModel); err != nil {
-			m.Err = err
-		} else {
-			// Clear locally modified tracking after successful write
-			m.LocallyModified = make(map[string]bool)
-		}
+		m.clearConflict()
 	}
-}
-
-// trySmartReload attempts to reload external changes and reapply local changes
-// Returns true if successful, false if there's a conflict that needs user intervention
-// Only a real conflict if the same todo's TEXT was modified by both sides
-func (m *Model) trySmartReload() bool {
-	// Load current file state
-	diskFM, err := markdown.ReadFile(m.FilePath)
-	if err != nil {
-		return false
-	}
-
-	// The key insight: we only have local CHECKBOX changes (TUI only toggles checkboxes)
-	// So we can merge as long as no todo TEXT was modified on disk for todos we touched
-
-	// Build map of our todos: text -> checkbox state
-	ourTodos := make(map[string]bool)
-	for _, todo := range m.FileModel.Todos {
-		ourTodos[todo.Text] = todo.Checked
-	}
-
-	// Build map of disk todos: text -> exists
-	diskTodos := make(map[string]bool)
-	for _, todo := range diskFM.Todos {
-		diskTodos[todo.Text] = true
-	}
-
-	// Check for conflicts: do we have todos that don't exist on disk?
-	// If they deleted a todo we didn't touch, that's fine
-	// We can only detect "didn't touch" by checking if checkbox differs from disk
-	// But we don't know the original state... so let's be optimistic:
-	// If todo text exists on disk, we can merge. If it doesn't, they deleted it - accept deletion.
-
-	// Real conflict: A todo text was MODIFIED on disk (not just deleted/added)
-	// Since we only change checkboxes, we can't detect text modifications perfectly
-	// But we can use this heuristic: If all our todos either exist on disk OR are clearly deletions, merge
-
-	// Simple approach: Start with disk version, apply our checkbox states ONLY for todos we modified
-	resultFM := diskFM
-
-	for i, diskTodo := range resultFM.Todos {
-		// If this todo exists in our list AND we locally modified it, apply our checkbox state
-		if ourCheckState, exists := ourTodos[diskTodo.Text]; exists {
-			// Only apply our change if we actually toggled this todo
-			if m.LocallyModified[diskTodo.Text] {
-				_ = resultFM.UpdateTodoItem(i, diskTodo.Text, ourCheckState)
-			}
-			// Otherwise keep disk's checkbox state (they might have changed it)
-		}
-		// If it doesn't exist in our list, it's new - keep disk's checkbox state
-	}
-
-	// Clear locally modified tracking after successful merge
-	m.LocallyModified = make(map[string]bool)
-
-	m.FileModel = *resultFM
-	return true
 }
 
 // checkAndReloadFile checks if the file changed and reloads if safe
 func (m Model) checkAndReloadFile() tea.Cmd {
-	if m.ReadOnly {
+	if m.ConflictLocalContent != "" {
 		return watchFileChanges() // Continue watching
 	}
 
@@ -1351,17 +1272,57 @@ func (m Model) checkAndReloadFile() tea.Cmd {
 		return watchFileChanges() // Continue watching
 	}
 
-	// File changed - try smart reload
-	if m.trySmartReload() {
-		// Successfully auto-reloaded, the model is updated
-		return func() tea.Msg {
-			// Return updated model through a custom message
-			return reloadedMsg{model: m}
+	// With no pending local candidate, external disk content is authoritative.
+	diskFM, err := markdown.ReadFile(m.FilePath)
+	if err != nil {
+		return watchFileChanges()
+	}
+	m.FileModel = *diskFM
+	m.History = nil
+	return func() tea.Msg { return reloadedMsg{model: m} }
+}
+
+func (m *Model) recordSaveError(err error, localContent string) {
+	m.Err = err
+	var conflict *markdown.ConflictError
+	if errors.As(err, &conflict) {
+		m.ConflictLocalContent = localContent
+		m.ConflictDiskContent = conflict.DiskContent
+		m.ConflictDiffScroll = 0
+		m.ConflictDiffMode = true
+	}
+}
+
+func (m *Model) clearConflict() {
+	if errors.Is(m.Err, markdown.ErrFileChanged) {
+		m.Err = nil
+	}
+	m.ConflictDiffMode = false
+	m.ConflictDiffScroll = 0
+	m.ConflictLocalContent = ""
+	m.ConflictDiskContent = ""
+}
+
+func (m Model) handleConflictDiffKey(key string) (tea.Model, tea.Cmd) {
+	scrollStep := m.TermHeight / 3
+	if scrollStep < 1 {
+		scrollStep = 1
+	}
+	switch key {
+	case "up", "k", "pgup", "ctrl+u":
+		m.ConflictDiffScroll -= scrollStep
+		if m.ConflictDiffScroll < 0 {
+			m.ConflictDiffScroll = 0
+		}
+	case "down", "j", "pgdown", "ctrl+d":
+		m.ConflictDiffScroll += scrollStep
+	case "esc", "q":
+		m.ConflictDiffMode = false
+		if errors.Is(m.Err, markdown.ErrFileChanged) {
+			m.Err = nil
 		}
 	}
-
-	// Can't auto-merge, will show error on next write attempt
-	return watchFileChanges() // Continue watching
+	return m, nil
 }
 
 // reloadedMsg carries the updated model after successful reload
@@ -1814,24 +1775,25 @@ func (m Model) restoreSelectedVersion() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Restore the captured bytes exactly; parsing and serialization can normalize Markdown.
-	if err := markdown.WriteContentUnchecked(m.FilePath, content); err != nil {
-		m.Err = err
+	// Restore exact bytes only if the active revision is still current.
+	saveErr := markdown.WriteContent(m.FilePath, content, &m.FileModel)
+	var postCommit *markdown.PostCommitError
+	if saveErr != nil && !errors.As(saveErr, &postCommit) {
+		m.recordSaveError(saveErr, content)
 		m.VersionsMode = false
 		m.VersionsConfirmMode = false
 		return m, nil
 	}
 
 	// Reload from disk.
-	reloaded, err := markdown.ReadFile(m.FilePath)
-	if err != nil {
-		m.Err = err
-	} else {
+	reloaded, readErr := markdown.ReadFile(m.FilePath)
+	if reloaded != nil {
 		m.FileModel = *reloaded
 		m.applyFileMetadata()
 		m.InvalidateHeadingsCache()
 		m.InvalidateDocumentTree()
 	}
+	m.Err = errors.Join(saveErr, readErr)
 
 	m.VersionsMode = false
 	m.VersionsConfirmMode = false

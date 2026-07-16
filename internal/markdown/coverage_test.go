@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // Tests for functions with 0% coverage
@@ -354,8 +353,7 @@ func TestCheckFileModified(t *testing.T) {
 		t.Error("File should not be modified immediately after reading")
 	}
 
-	// Wait a bit and modify the file
-	time.Sleep(1100 * time.Millisecond) // Wait more than 1 second for filesystem precision
+	// Modify immediately; exact revisions do not depend on timestamp precision.
 	newContent := `# Todos
 
 - [ ] Task 1
@@ -406,13 +404,13 @@ func TestCheckFileModified_DeletedFile(t *testing.T) {
 	// Delete the file
 	_ = os.Remove(filePath)
 
-	// Should not report modified (file doesn't exist)
+	// Deletion changes the exact loaded revision and must be treated as a conflict.
 	modified, err := fm.CheckFileModified()
 	if err != nil {
 		t.Errorf("CheckFileModified failed: %v", err)
 	}
-	if modified {
-		t.Error("Deleted file should not be detected as modified")
+	if !modified {
+		t.Error("Deleted file should be detected as modified")
 	}
 }
 
@@ -436,7 +434,6 @@ func TestWriteFile_ConflictDetection(t *testing.T) {
 	}
 
 	// Modify the file externally
-	time.Sleep(1100 * time.Millisecond)
 	newContent := "# Todos\n\n- [ ] Task 1\n- [ ] External change\n"
 	err = os.WriteFile(filePath, []byte(newContent), 0644)
 	if err != nil {

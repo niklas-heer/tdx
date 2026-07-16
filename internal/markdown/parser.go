@@ -2,13 +2,11 @@ package markdown
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
-// WriteHook, if non-nil, is called after every successful WriteFileUnchecked.
+// WriteHook, if non-nil, is called after every committed markdown replacement.
 // It receives the file path and the serialised content that was written.
 // Set this at startup to enable versioning or other post-write side-effects.
 var WriteHook func(filePath, content string) error
@@ -33,13 +31,15 @@ type Todo struct {
 
 // FileModel holds parsed file content with AST backend
 type FileModel struct {
-	Lines    []string     // Deprecated: kept for compatibility, use AST instead
-	Todos    []Todo       // Cached todos extracted from AST
-	ast      *ASTDocument // The goldmark AST (source of truth)
-	dirty    bool         // Whether todos have been modified
-	FilePath string       // Path to the file
-	ModTime  time.Time    // File modification time when loaded
-	Metadata *Metadata    // Per-file configuration from YAML frontmatter
+	Lines         []string     // Deprecated: kept for compatibility, use AST instead
+	Todos         []Todo       // Cached todos extracted from AST
+	ast           *ASTDocument // The goldmark AST (source of truth)
+	dirty         bool         // Whether todos have been modified
+	FilePath      string       // Path to the file
+	ModTime       time.Time    // File modification time when loaded
+	Metadata      *Metadata    // Per-file configuration from YAML frontmatter
+	revision      fileRevision // Exact disk revision used for conditional saves
+	revisionKnown bool
 }
 
 // GetAST returns the underlying AST document
@@ -49,26 +49,20 @@ func (fm *FileModel) GetAST() *ASTDocument {
 
 // ReadFile reads and parses a markdown file using AST
 func ReadFile(filePath string) (*FileModel, error) {
-	fileInfo, err := os.Stat(filePath)
+	revision, content, modTime, err := readDiskRevision(filePath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			// Create default document
-			fm := ParseMarkdown("# Todos\n\n")
-			fm.FilePath = filePath
-			fm.ModTime = time.Time{} // Zero time for new file
-			fm.Metadata = &Metadata{}
-			return fm, nil
-		}
 		return nil, err
 	}
-
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
+	if !revision.exists {
+		fm := ParseMarkdown("# Todos\n\n")
+		fm.FilePath = filePath
+		fm.Metadata = &Metadata{}
+		fm.setRevision(revision, time.Time{})
+		return fm, nil
 	}
 
 	// Parse metadata first
-	metadata, contentWithoutMeta, metaErr := ParseMetadata(string(content))
+	metadata, contentWithoutMeta, metaErr := ParseMetadata(content)
 	if metaErr != nil {
 		// Log warning but continue with empty metadata
 		// The error is logged but doesn't block file loading
@@ -77,11 +71,11 @@ func ReadFile(filePath string) (*FileModel, error) {
 
 	fm := ParseMarkdown(contentWithoutMeta)
 	fm.FilePath = filePath
-	fm.ModTime = fileInfo.ModTime()
 	fm.Metadata = metadata
+	fm.setRevision(revision, modTime)
 
 	if ReadHook != nil {
-		return fm, ReadHook(filePath, string(content))
+		return fm, ReadHook(revision.target, content)
 	}
 
 	return fm, nil
@@ -93,80 +87,53 @@ func (fm *FileModel) CheckFileModified() (bool, error) {
 		return false, nil // No file path, can't check
 	}
 
-	fileInfo, err := os.Stat(fm.FilePath)
+	current, _, _, err := readDiskRevision(fm.FilePath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil // File doesn't exist, no conflict
-		}
 		return false, err
 	}
-
-	// Compare modification times (with 1 second tolerance for filesystem precision)
-	diskModTime := fileInfo.ModTime()
-	if diskModTime.Sub(fm.ModTime).Abs() > time.Second {
-		return true, nil
+	if !fm.revisionKnown {
+		return false, fmt.Errorf("file revision unavailable")
 	}
-
-	return false, nil
+	return !fm.revision.equal(current), nil
 }
 
 // WriteFile writes a FileModel to disk using AST serialization
 // Returns an error if the file was modified externally
 func WriteFile(filePath string, fm *FileModel) error {
-	// Check if file was modified externally
-	modified, err := fm.CheckFileModified()
-	if err != nil {
-		return err
+	if !fm.revisionKnown {
+		revision, _, modTime, err := readDiskRevision(filePath)
+		if err != nil {
+			return err
+		}
+		fm.setRevision(revision, modTime)
 	}
-	if modified {
-		return fmt.Errorf("file changed externally")
-	}
-
-	return WriteFileUnchecked(filePath, fm)
+	content := SerializeMarkdown(fm)
+	return writeContent(filePath, content, &fm.revision, fm, false)
 }
 
 // WriteFileUnchecked writes a FileModel to disk without checking for external modifications
-// Use this when you've already checked for conflicts and handled them
+// Use this only for an explicit overwrite after the caller has handled conflicts.
 func WriteFileUnchecked(filePath string, fm *FileModel) error {
 	content := SerializeMarkdown(fm)
-	modTime, err := writeContentUnchecked(filePath, content)
-	if !modTime.IsZero() {
-		fm.ModTime = modTime
+	return writeContent(filePath, content, nil, fm, true)
+}
+
+// WriteContent writes exact content only if the file still matches fm's loaded revision.
+func WriteContent(filePath, content string, fm *FileModel) error {
+	if !fm.revisionKnown {
+		revision, _, modTime, err := readDiskRevision(filePath)
+		if err != nil {
+			return err
+		}
+		fm.setRevision(revision, modTime)
 	}
-	return err
+	return writeContent(filePath, content, &fm.revision, fm, false)
 }
 
 // WriteContentUnchecked writes content byte-for-byte without parsing or serializing it.
-// It is intended for restoring a previously captured file snapshot.
+// It is intended for explicit force-overwrite operations.
 func WriteContentUnchecked(filePath, content string) error {
-	_, err := writeContentUnchecked(filePath, content)
-	return err
-}
-
-func writeContentUnchecked(filePath, content string) (time.Time, error) {
-	// Atomic write: temp file + rename
-	dir := filepath.Dir(filePath)
-	tmpFile := filepath.Join(dir, fmt.Sprintf(".tmp.%d", os.Getpid()))
-
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
-		return time.Time{}, err
-	}
-
-	if err := os.Rename(tmpFile, filePath); err != nil {
-		return time.Time{}, err
-	}
-
-	var modTime time.Time
-	fileInfo, err := os.Stat(filePath)
-	if err == nil {
-		modTime = fileInfo.ModTime()
-	}
-
-	if WriteHook != nil {
-		return modTime, WriteHook(filePath, content)
-	}
-
-	return modTime, nil
+	return writeContent(filePath, content, nil, nil, true)
 }
 
 // ParseMarkdown parses markdown content into a FileModel with AST backend

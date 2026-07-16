@@ -173,27 +173,6 @@ func TestInvalidateHeadingsCache_SetsFlag(t *testing.T) {
 	}
 }
 
-func TestModel_LocallyModifiedTracking(t *testing.T) {
-	fm := &markdown.FileModel{
-		Todos: []markdown.Todo{
-			{Text: "Task 1", Checked: false},
-		},
-	}
-
-	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
-
-	// Initially empty
-	if len(m.LocallyModified) != 0 {
-		t.Errorf("LocallyModified should be empty, got %d items", len(m.LocallyModified))
-	}
-
-	// Can track modifications
-	m.LocallyModified["Task 1"] = true
-	if !m.LocallyModified["Task 1"] {
-		t.Error("Should track locally modified tasks")
-	}
-}
-
 func TestModel_InitialModeStates(t *testing.T) {
 	m := testModel([]string{"Task 1"})
 

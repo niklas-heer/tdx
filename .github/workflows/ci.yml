@@ -110,6 +110,9 @@ jobs:
       - name: Build
         run: go build -v ./cmd/tdx
 
+      - name: Run platform filesystem tests
+        run: go test -v ./internal/markdown ./internal/versioning
+
       - name: Test binary execution
         shell: bash
         run: |

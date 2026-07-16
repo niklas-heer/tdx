@@ -105,9 +105,6 @@ type Model struct {
 	MaxVisibleOverride int
 	ShowHeadings       bool
 
-	// Track which todos we've locally modified (by text) since last sync
-	LocallyModified map[string]bool // todo text -> true if we toggled it
-
 	// Tag filtering state
 	FilterMode      bool     // Whether we're in tag filter mode
 	FilteredTags    []string // Currently active tag filters
@@ -145,6 +142,12 @@ type Model struct {
 	VersionsCursor      int           // Selected row index in the version list
 	VersionsDiffScroll  int           // Scroll offset for the diff pane
 	VersionsList        []VersionInfo // Versions for the currently open file
+
+	// Conflict state retains both candidates until the user explicitly resolves it.
+	ConflictDiffMode     bool
+	ConflictDiffScroll   int
+	ConflictLocalContent string
+	ConflictDiskContent  string
 
 	// Cached headings for performance (avoid re-extraction on every render)
 	cachedHeadings []markdown.Heading
@@ -189,7 +192,6 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 		ReadOnly:            readOnly,
 		ShowHeadings:        showHeadings,
 		MaxVisibleOverride:  maxVisible,
-		LocallyModified:     make(map[string]bool),
 		AvailableTags:       availableTags,
 		FilteredTags:        []string{},
 		AvailablePriorities: availablePriorities,
