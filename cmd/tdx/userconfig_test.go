@@ -209,6 +209,9 @@ func TestDefaultConfig_HasAllFields(t *testing.T) {
 	if config.Recent.MaxFiles != 20 {
 		t.Errorf("Default MaxFiles should be 20, got %d", config.Recent.MaxFiles)
 	}
+	if config.Versioning.MaxVersions != 100 {
+		t.Errorf("Default MaxVersions should be 100, got %d", config.Versioning.MaxVersions)
+	}
 }
 
 func TestLoadConfig_DefaultsWhenNoFile(t *testing.T) {

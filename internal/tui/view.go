@@ -11,6 +11,7 @@ import (
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/niklas-heer/tdx/internal/util"
 	overlay "github.com/rmhubbert/bubbletea-overlay"
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // View renders the TUI
@@ -18,6 +19,11 @@ func (m Model) View() string {
 	styles := m.Styles()
 	if m.HelpMode {
 		return RenderHelp(m.Version(), styles.Cyan, styles.Dim)
+	}
+
+	// Full-screen version browser bypasses the normal overlay compositor.
+	if m.VersionsMode {
+		return m.renderVersionsBrowser()
 	}
 
 	// Render main content and status bar
@@ -1156,4 +1162,204 @@ func (m Model) renderPriorityFilterOverlayCompact() string {
 		Padding(0, 1)
 
 	return overlayStyle.Render(content)
+}
+
+// renderDiff renders a character-level diff using lipgloss ANSI colours.
+// Insert → Green, Delete → Magenta, Equal → Dim.
+//
+// Each diff segment's text is split at newlines before styling so that lipgloss
+// never sees a multi-line string. If a multi-line string is passed to a lipgloss
+// style function, lipgloss pads every line to the width of the longest line in
+// that chunk, inserting spurious trailing spaces that corrupt alignment.
+func renderDiff(diffs []diffmatchpatch.Diff, styles *StyleFuncsType) string {
+	var b strings.Builder
+	diffStyle := map[string]lipgloss.Style{
+		"insert": lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#00FF00")),
+		"delete": lipgloss.NewStyle().
+			Foreground(lipgloss.Color("9")).
+			Strikethrough(true).StrikethroughSpaces(true).Faint(true),
+	}
+	for _, d := range diffs {
+		parts := strings.Split(d.Text, "\n")
+		for i, part := range parts {
+			if i > 0 {
+				b.WriteString("\n")
+			}
+			switch d.Type {
+			case diffmatchpatch.DiffInsert:
+				b.WriteString(diffStyle["insert"].Render(part))
+			case diffmatchpatch.DiffDelete:
+				b.WriteString(diffStyle["delete"].Render(part))
+			case diffmatchpatch.DiffEqual:
+				b.WriteString(styles.Dim(part))
+			}
+		}
+	}
+	return b.String()
+}
+
+// renderVersionsBrowser renders the full-screen version browser modal.
+func (m Model) renderVersionsBrowser() string {
+	styles := m.Styles()
+	browserHeight := int(float64(m.TermHeight) * 0.9)
+	if browserHeight < 10 {
+		browserHeight = 10
+	}
+	browserWidth := m.TermWidth
+	if browserWidth < 40 {
+		browserWidth = 40
+	}
+
+	// innerWidth is the Width() argument passed to outerStyle (content+padding, excluding borders).
+	// outerStyle uses Padding(0, 1), so the actual text area = innerWidth - 2.
+	// All content (left pane, right pane, dividers) must fit in contentWidth to prevent wrapping.
+	innerWidth := browserWidth - 4 // subtract 2 border chars + 2 to keep box inside terminal
+	if innerWidth < 22 {
+		innerWidth = 22
+	}
+	contentWidth := innerWidth - 2 // subtract left+right padding (1 each)
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+
+	leftWidth := contentWidth / 4
+	if leftWidth < 15 {
+		leftWidth = 15
+	}
+	rightWidth := contentWidth - leftWidth - 1 // -1 for separator char
+	if rightWidth < 10 {
+		rightWidth = 10
+	}
+
+	// content rows = browserHeight - title row - divider - footer divider - footer - 2 border rows
+	contentRows := browserHeight - 6
+	if contentRows < 3 {
+		contentRows = 3
+	}
+
+	// --- Left pane: version list ---
+	var leftLines []string
+	if len(m.VersionsList) == 0 {
+		leftLines = append(leftLines, styles.Dim("(no versions)"))
+	} else {
+		listStart := 0
+		if m.VersionsCursor >= contentRows {
+			listStart = m.VersionsCursor - contentRows + 1
+		}
+		listEnd := min(listStart+contentRows, len(m.VersionsList))
+		for i := listStart; i < listEnd; i++ {
+			v := m.VersionsList[i]
+			row := fmt.Sprintf("%s - #%03d", v.CreatedAt.Format("2006-01-02 15:04"), v.ID)
+			if len(row) > leftWidth {
+				row = row[:leftWidth]
+			}
+			if i == m.VersionsCursor {
+				row = lipgloss.NewStyle().Reverse(true).Width(leftWidth).Render(row)
+			} else {
+				row = lipgloss.NewStyle().Width(leftWidth).Render(row)
+			}
+			leftLines = append(leftLines, row)
+		}
+	}
+	for len(leftLines) < contentRows {
+		leftLines = append(leftLines, lipgloss.NewStyle().Width(leftWidth).Render(""))
+	}
+	leftLines = leftLines[:contentRows]
+
+	// --- Right pane: diff ---
+	var rightContent string
+	if len(m.VersionsList) == 0 {
+		rightContent = styles.Dim("No versions available")
+	} else {
+		cfg := m.Config()
+		currentContent := markdown.SerializeMarkdown(&m.FileModel)
+		var versionContent string
+		if cfg != nil && cfg.ReadVersionFunc != nil {
+			sel := m.VersionsList[m.VersionsCursor]
+			if vc, err := cfg.ReadVersionFunc(m.FilePath, sel.ID); err == nil {
+				versionContent = vc
+			}
+		}
+		dmp := diffmatchpatch.New()
+		dmp.MatchDistance = 120 // sane default to match entire lines that are deleted without creating character-based diff
+		diffs := dmp.DiffMain(currentContent, versionContent, false)
+		dmp.DiffCleanupSemantic(diffs)
+		rightContent = renderDiff(diffs, styles)
+	}
+
+	rawLines := strings.Split(rightContent, "\n")
+	start := m.VersionsDiffScroll
+	if start > len(rawLines)-1 {
+		start = len(rawLines) - 1
+	}
+	if start < 0 {
+		start = 0
+	}
+	visible := rawLines[start:]
+	if len(visible) > contentRows {
+		visible = visible[:contentRows]
+	}
+	for len(visible) < contentRows {
+		visible = append(visible, "")
+	}
+	var rightLines []string
+	for _, line := range visible {
+		// Use lipgloss.Width to measure visible width (strips ANSI codes correctly),
+		// then pad manually. Avoid Width().Render() which may reflow ANSI-coded text
+		// at space boundaries and produce spurious spacing inside colored segments.
+		visWidth := lipgloss.Width(line)
+		if visWidth < rightWidth {
+			line += strings.Repeat(" ", rightWidth-visWidth)
+		}
+		rightLines = append(rightLines, line)
+	}
+
+	// --- Assemble rows ---
+	var rows []string
+	for i := 0; i < contentRows; i++ {
+		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, leftLines[i], " ", rightLines[i]))
+	}
+
+	// Confirm prompt
+	if m.VersionsConfirmMode && len(m.VersionsList) > 0 {
+		sel := m.VersionsList[m.VersionsCursor]
+		prompt := fmt.Sprintf("Restore version #%03d (%s)? [y/N]",
+			sel.ID, sel.CreatedAt.Format("2006-01-02 15:04"))
+		rows = append(rows, styles.Yellow(prompt))
+	}
+
+	body := strings.Join(rows, "\n")
+
+	title := fmt.Sprintf("FILE VERSION HISTORY - [%s]", filepath.Base(m.FilePath))
+	footer := "[↑/↓] Navigate  •  [PgUp/PgDn] Scroll Diff  •  [Enter] Restore  •  [Esc] Close"
+
+	divider := strings.Repeat("─", contentWidth)
+	headerRendered := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#7aa2f7")).
+		Bold(true).
+		Render(title)
+	footerRendered := styles.Dim(footer)
+
+	fullContent := headerRendered + "\n" + divider + "\n" +
+		body + "\n" +
+		divider + "\n" +
+		footerRendered
+
+	outerStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "┌",
+			TopRight:    "┐",
+			BottomLeft:  "└",
+			BottomRight: "┘",
+		}).
+		BorderForeground(lipgloss.Color("#7aa2f7")).
+		Width(innerWidth).
+		Padding(0, 1)
+
+	return outerStyle.Render(fullContent)
 }

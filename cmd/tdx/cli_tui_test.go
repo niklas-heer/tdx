@@ -113,6 +113,49 @@ func runCLI(t *testing.T, file string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func TestCLI_VersionDoesNotRequireWritableConfigDir(t *testing.T) {
+	blockedPath := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blockedPath, []byte("blocked"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command(testBinary, "--version")
+	command.Env = append(os.Environ(), "XDG_CONFIG_HOME="+blockedPath)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("--version failed: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "tdx v") {
+		t.Fatalf("unexpected --version output: %q", output)
+	}
+}
+
+func TestCommandUsesVersioning(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		args    []string
+		want    bool
+	}{
+		{name: "TUI", want: true},
+		{name: "file command", command: "list", want: true},
+		{name: "last file", command: "last", want: true},
+		{name: "recent selection", command: "recent", args: []string{"1"}, want: true},
+		{name: "version", command: "--version", want: false},
+		{name: "help", command: "help", want: false},
+		{name: "recent list", command: "recent", want: false},
+		{name: "recent clear", command: "recent", args: []string{"clear"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := commandUsesVersioning(tt.command, tt.args); got != tt.want {
+				t.Fatalf("commandUsesVersioning(%q, %q) = %v, want %v", tt.command, tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
 // Helper to run piped input to TUI
 func runPiped(t *testing.T, file string, input string) string {
 	output := tui.RunPiped(file, []byte(input), false)

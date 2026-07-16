@@ -27,6 +27,13 @@ type StyleFuncsType struct {
 	DueFuture      func(string) string
 }
 
+// VersionInfo holds metadata for a single stored version — adapter type that keeps
+// the tui package import-free of the versioning package.
+type VersionInfo struct {
+	ID        int64
+	CreatedAt time.Time
+}
+
 // ConfigType holds display configuration
 type ConfigType struct {
 	Display struct {
@@ -40,6 +47,11 @@ type ConfigType struct {
 		ShowHeadings bool
 		ReadOnly     bool
 	}
+
+	// Optional versioning functions injected by cmd/tdx/main.go.
+	// When nil, versioning functionality is disabled.
+	ListVersionsFunc func(filePath string) ([]VersionInfo, error)
+	ReadVersionFunc  func(filePath string, id int64) (string, error)
 }
 
 // Global variables for backward compatibility (deprecated - use Model methods instead)
@@ -127,6 +139,13 @@ type Model struct {
 	ThemeApplyFunc   func(themeName string) *StyleFuncsType // Function to apply a theme and return new style funcs
 	ThemeSaveFunc    func(themeName string) error           // Function to save theme to config
 
+	// Version browser state
+	VersionsMode        bool          // Whether the version browser modal is active
+	VersionsConfirmMode bool          // Whether the restore confirmation prompt is shown
+	VersionsCursor      int           // Selected row index in the version list
+	VersionsDiffScroll  int           // Scroll offset for the diff pane
+	VersionsList        []VersionInfo // Versions for the currently open file
+
 	// Cached headings for performance (avoid re-extraction on every render)
 	cachedHeadings []markdown.Heading
 	headingsDirty  bool
@@ -166,7 +185,7 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 		FilePath:            filePath,
 		FileModel:           *fm,
 		SelectedIndex:       0,
-		Commands:            InitCommands(),
+		Commands:            InitCommands(config),
 		ReadOnly:            readOnly,
 		ShowHeadings:        showHeadings,
 		MaxVisibleOverride:  maxVisible,
@@ -189,15 +208,7 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 		ThemeSaveFunc:    ThemeSaveFunc,
 	}
 
-	// Apply metadata settings (including FilterDone) from file
-	if fm.Metadata != nil {
-		if fm.Metadata.FilterDone != nil {
-			m.FilterDone = *fm.Metadata.FilterDone
-		}
-		if fm.Metadata.WordWrap != nil {
-			m.WordWrap = *fm.Metadata.WordWrap
-		}
-	}
+	m.applyFileMetadata()
 
 	// Position cursor on first visible item if filters are active
 	if m.hasActiveFilters() || m.ShowHeadings {
@@ -217,6 +228,28 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 	}
 
 	return m
+}
+
+func (m *Model) applyFileMetadata() {
+	metadata := m.FileModel.Metadata
+	if metadata == nil {
+		return
+	}
+	if metadata.FilterDone != nil {
+		m.FilterDone = *metadata.FilterDone
+	}
+	if metadata.WordWrap != nil {
+		m.WordWrap = *metadata.WordWrap
+	}
+	if metadata.ShowHeadings != nil {
+		m.ShowHeadings = *metadata.ShowHeadings
+	}
+	if metadata.ReadOnly != nil {
+		m.ReadOnly = *metadata.ReadOnly
+	}
+	if metadata.MaxVisible != nil {
+		m.MaxVisibleOverride = *metadata.MaxVisible
+	}
 }
 
 // Config returns the model's configuration (for backward compatibility during transition)

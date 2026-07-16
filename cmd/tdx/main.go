@@ -9,12 +9,76 @@ import (
 
 	"github.com/niklas-heer/tdx/internal/cmd"
 	"github.com/niklas-heer/tdx/internal/config" // Still needed for recent files
+	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/niklas-heer/tdx/internal/tui"
+	"github.com/niklas-heer/tdx/internal/versioning"
 )
+
+// versionStore is the single shared versioning store for all markdown files.
+var versionStore *versioning.Store
+
+// openVersionStore opens the shared versions.sqlite database and returns an error on failure.
+func openVersionStore(maxVersions int) error {
+	s, err := versioning.Open(maxVersions)
+	if err != nil {
+		return err
+	}
+	versionStore = s
+	return nil
+}
+
+// closeVersionStore prunes all tracked files then closes the store.
+func closeVersionStore() {
+	versionStore.PruneAll(versionStore.MaxVersions)
+	_ = versionStore.Close()
+}
+
+// registerVersioningHooks wires the single shared store into the markdown package hooks.
+func registerVersioningHooks() {
+	markdown.WriteHook = func(filePath, content string) (err error) {
+		err = versionStore.SaveVersion(filePath, content)
+		_ = versionStore.Prune(filePath, versionStore.MaxVersions)
+		return err
+	}
+	markdown.ReadHook = func(filePath, content string) (err error) {
+		err = versionStore.SaveVersion(filePath, content)
+		_ = versionStore.Prune(filePath, versionStore.MaxVersions)
+		return err
+	}
+}
+
+func wireVersioningTUI() {
+	tui.Config.ListVersionsFunc = func(filePath string) ([]tui.VersionInfo, error) {
+		versions, err := versionStore.ListVersions(filePath)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]tui.VersionInfo, len(versions))
+		for i, version := range versions {
+			out[i] = tui.VersionInfo{ID: version.ID, CreatedAt: version.CreatedAt}
+		}
+		return out, nil
+	}
+	tui.Config.ReadVersionFunc = func(filePath string, id int64) (string, error) {
+		return versionStore.ReadVersion(filePath, id)
+	}
+}
+
+func commandUsesVersioning(command string, args []string) bool {
+	switch command {
+	case "", "list", "add", "toggle", "edit", "delete", "last":
+		return true
+	case "recent":
+		return len(args) > 0 && args[0] != "clear"
+	default:
+		return false
+	}
+}
 
 func main() {
 	// Load user config
 	appConfig := LoadConfig()
+
 	styles := NewStyles(appConfig)
 
 	// Inject config and styles into packages
@@ -138,6 +202,16 @@ func main() {
 
 	// Resolve file path (expand ~ and make absolute)
 	filePath = resolveFilePath(filePath)
+
+	if commandUsesVersioning(command, cmdArgs) {
+		if err := openVersionStore(appConfig.Versioning.MaxVersions); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: failed to open version store: %v\n", err)
+			os.Exit(1)
+		}
+		defer closeVersionStore()
+		registerVersioningHooks()
+		wireVersioningTUI()
+	}
 
 	// Handle commands
 	switch command {

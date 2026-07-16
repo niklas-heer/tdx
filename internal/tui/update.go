@@ -85,6 +85,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Version browser mode takes priority over all other modes.
+	if m.VersionsMode {
+		return m.handleVersionsKey(msg)
+	}
+
 	// Handle input/edit mode
 	if m.InputMode || m.EditMode {
 		return m.handleInputKey(msg)
@@ -1729,4 +1734,106 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		// Save with current cursor position
 		_ = config.SaveRecentFile(filePath, m.SelectedIndex)
 	}
+}
+
+// handleVersionsKey handles key events when the version browser modal is active.
+func (m Model) handleVersionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	if m.VersionsConfirmMode {
+		switch key {
+		case "y", "Y":
+			return m.restoreSelectedVersion()
+		case "n", "N", "esc":
+			m.VersionsConfirmMode = false
+		}
+		return m, nil
+	}
+
+	// Calculate pane height for scroll step (half pane height, min 1).
+	paneHeight := int(float64(m.TermHeight)*0.9) - 4 // subtract borders/footer rows
+	if paneHeight < 2 {
+		paneHeight = 2
+	}
+	scrollStep := paneHeight / 2
+	if scrollStep < 1 {
+		scrollStep = 1
+	}
+
+	switch key {
+	case "up", "k":
+		if m.VersionsCursor > 0 {
+			m.VersionsCursor--
+			m.VersionsDiffScroll = 0
+		}
+	case "down", "j":
+		if m.VersionsCursor < len(m.VersionsList)-1 {
+			m.VersionsCursor++
+			m.VersionsDiffScroll = 0
+		}
+	case "pgup", "ctrl+u":
+		m.VersionsDiffScroll -= scrollStep
+		if m.VersionsDiffScroll < 0 {
+			m.VersionsDiffScroll = 0
+		}
+	case "pgdown", "ctrl+d":
+		m.VersionsDiffScroll += scrollStep
+	case "enter":
+		if len(m.VersionsList) > 0 {
+			m.VersionsConfirmMode = true
+		}
+	case "esc":
+		m.VersionsMode = false
+		m.VersionsConfirmMode = false
+	}
+	return m, nil
+}
+
+// restoreSelectedVersion writes the selected historic version back to disk and
+// reloads the FileModel. Called when the user confirms restoration with 'y'.
+func (m Model) restoreSelectedVersion() (tea.Model, tea.Cmd) {
+	if len(m.VersionsList) == 0 {
+		m.VersionsMode = false
+		m.VersionsConfirmMode = false
+		return m, nil
+	}
+
+	cfg := m.Config()
+	if cfg == nil || cfg.ReadVersionFunc == nil {
+		m.VersionsMode = false
+		m.VersionsConfirmMode = false
+		return m, nil
+	}
+
+	selected := m.VersionsList[m.VersionsCursor]
+	content, err := cfg.ReadVersionFunc(m.FilePath, selected.ID)
+	if err != nil {
+		m.Err = err
+		m.VersionsMode = false
+		m.VersionsConfirmMode = false
+		return m, nil
+	}
+
+	// Restore the captured bytes exactly; parsing and serialization can normalize Markdown.
+	if err := markdown.WriteContentUnchecked(m.FilePath, content); err != nil {
+		m.Err = err
+		m.VersionsMode = false
+		m.VersionsConfirmMode = false
+		return m, nil
+	}
+
+	// Reload from disk.
+	reloaded, err := markdown.ReadFile(m.FilePath)
+	if err != nil {
+		m.Err = err
+	} else {
+		m.FileModel = *reloaded
+		m.applyFileMetadata()
+		m.InvalidateHeadingsCache()
+		m.InvalidateDocumentTree()
+	}
+
+	m.VersionsMode = false
+	m.VersionsConfirmMode = false
+	return m, nil
 }

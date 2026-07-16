@@ -8,6 +8,16 @@ import (
 	"time"
 )
 
+// WriteHook, if non-nil, is called after every successful WriteFileUnchecked.
+// It receives the file path and the serialised content that was written.
+// Set this at startup to enable versioning or other post-write side-effects.
+var WriteHook func(filePath, content string) error
+
+// ReadHook, if non-nil, is called after every successful ReadFile that loads
+// an existing file from disk (not for newly-created placeholder files).
+// It receives the file path and the raw file content that was read.
+var ReadHook func(filePath, content string) error
+
 // Todo represents a single todo item
 type Todo struct {
 	Index       int
@@ -69,6 +79,11 @@ func ReadFile(filePath string) (*FileModel, error) {
 	fm.FilePath = filePath
 	fm.ModTime = fileInfo.ModTime()
 	fm.Metadata = metadata
+
+	if ReadHook != nil {
+		return fm, ReadHook(filePath, string(content))
+	}
+
 	return fm, nil
 }
 
@@ -114,26 +129,44 @@ func WriteFile(filePath string, fm *FileModel) error {
 // Use this when you've already checked for conflicts and handled them
 func WriteFileUnchecked(filePath string, fm *FileModel) error {
 	content := SerializeMarkdown(fm)
+	modTime, err := writeContentUnchecked(filePath, content)
+	if !modTime.IsZero() {
+		fm.ModTime = modTime
+	}
+	return err
+}
 
+// WriteContentUnchecked writes content byte-for-byte without parsing or serializing it.
+// It is intended for restoring a previously captured file snapshot.
+func WriteContentUnchecked(filePath, content string) error {
+	_, err := writeContentUnchecked(filePath, content)
+	return err
+}
+
+func writeContentUnchecked(filePath, content string) (time.Time, error) {
 	// Atomic write: temp file + rename
 	dir := filepath.Dir(filePath)
 	tmpFile := filepath.Join(dir, fmt.Sprintf(".tmp.%d", os.Getpid()))
 
 	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
-		return err
+		return time.Time{}, err
 	}
 
 	if err := os.Rename(tmpFile, filePath); err != nil {
-		return err
+		return time.Time{}, err
 	}
 
-	// Update modification time after successful write
+	var modTime time.Time
 	fileInfo, err := os.Stat(filePath)
 	if err == nil {
-		fm.ModTime = fileInfo.ModTime()
+		modTime = fileInfo.ModTime()
 	}
 
-	return nil
+	if WriteHook != nil {
+		return modTime, WriteHook(filePath, content)
+	}
+
+	return modTime, nil
 }
 
 // ParseMarkdown parses markdown content into a FileModel with AST backend

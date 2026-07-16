@@ -14,11 +14,12 @@ var themesFS embed.FS
 
 // UserConfig holds user configuration
 type UserConfig struct {
-	Theme    ThemeConfig    `toml:"theme"`
-	Colors   ColorsConfig   // Populated from builtin theme, not from config file
-	Display  DisplayConfig  `toml:"display"`
-	Defaults DefaultsConfig `toml:"defaults"`
-	Recent   RecentConfig   `toml:"recent"`
+	Theme      ThemeConfig      `toml:"theme"`
+	Colors     ColorsConfig     // Populated from builtin theme, not from config file
+	Display    DisplayConfig    `toml:"display"`
+	Defaults   DefaultsConfig   `toml:"defaults"`
+	Recent     RecentConfig     `toml:"recent"`
+	Versioning VersioningConfig `toml:"versioning"`
 }
 
 // ThemeConfig holds theme metadata
@@ -70,6 +71,11 @@ type DefaultsConfig struct {
 // RecentConfig holds recent files settings
 type RecentConfig struct {
 	MaxFiles int `toml:"max_files"` // max recent files to track (default: 20)
+}
+
+// VersioningConfig holds version history settings
+type VersioningConfig struct {
+	MaxVersions int `toml:"max_versions"` // max versions per file to retain (0 = unlimited, default: 100)
 }
 
 // loadBuiltinThemes loads themes from embedded TOML files
@@ -226,6 +232,9 @@ func DefaultConfig() *UserConfig {
 		Recent: RecentConfig{
 			MaxFiles: 20, // default max recent files
 		},
+		Versioning: VersioningConfig{
+			MaxVersions: 100, // default max versions per file
+		},
 	}
 }
 
@@ -334,6 +343,18 @@ func LoadConfig() *UserConfig {
 			}
 		} else {
 			config.Recent = defaults.Recent
+		}
+
+		// Check if versioning section exists
+		if versioningRaw, ok := rawConfig["versioning"].(map[string]interface{}); ok {
+			if _, set := versioningRaw["max_versions"]; !set {
+				config.Versioning.MaxVersions = defaults.Versioning.MaxVersions
+			}
+			if config.Versioning.MaxVersions < 0 {
+				config.Versioning.MaxVersions = 0
+			}
+		} else {
+			config.Versioning = defaults.Versioning
 		}
 	}
 

@@ -85,9 +85,15 @@ func sortTodosInSections(todos []markdown.Todo, headings []markdown.Heading, sor
 	}
 }
 
-// InitCommands initializes the command palette with all available commands
-func InitCommands() []Command {
-	return []Command{
+// InitCommands initializes the command palette with all available commands.
+// cfg is optional; if non-nil it is used to conditionally include commands
+// that require injected dependencies (e.g. versioning).
+func InitCommands(cfg ...*ConfigType) []Command {
+	var activeCfg *ConfigType
+	if len(cfg) > 0 {
+		activeCfg = cfg[0]
+	}
+	cmds := []Command{
 		{
 			Name:        "check-all",
 			Description: "Mark all todos as complete",
@@ -434,6 +440,32 @@ func InitCommands() []Command {
 			},
 		},
 	}
+
+	// Conditionally add versioning command when a store is wired.
+	if activeCfg != nil && activeCfg.ListVersionsFunc != nil {
+		cmds = append(cmds, Command{
+			Name:        "versions",
+			Description: "Browse and restore file version history",
+			Handler: func(m *Model) {
+				cfg := m.Config()
+				if cfg == nil || cfg.ListVersionsFunc == nil {
+					return
+				}
+				versions, err := cfg.ListVersionsFunc(m.FilePath)
+				if err != nil {
+					m.Err = err
+					return
+				}
+				m.VersionsList = versions
+				m.VersionsCursor = 0
+				m.VersionsDiffScroll = 0
+				m.VersionsConfirmMode = false
+				m.VersionsMode = true
+			},
+		})
+	}
+
+	return cmds
 }
 
 // HighlightMatches returns text with matched characters highlighted
