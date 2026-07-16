@@ -19,6 +19,7 @@ const (
 	actionlintVersion = "v1.7.12"
 )
 
+// TdxCi exposes the project's portable CI and release operations.
 type TdxCi struct{}
 
 // Ci runs every portable validation used by GitHub CI.
