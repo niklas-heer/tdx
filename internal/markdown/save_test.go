@@ -108,7 +108,9 @@ func TestSaveCrashHelperProcess(t *testing.T) {
 		if err := os.WriteFile(os.Getenv("TDX_SAVE_READY"), []byte(stage), 0o600); err != nil {
 			panic(err)
 		}
-		select {}
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 	if err := WriteFile(os.Getenv("TDX_SAVE_PATH"), fm); err != nil {
 		t.Fatal(err)
