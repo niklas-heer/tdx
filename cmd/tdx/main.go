@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,22 +29,22 @@ func openVersionStore(maxVersions int) error {
 }
 
 // closeVersionStore prunes all tracked files then closes the store.
-func closeVersionStore() {
-	versionStore.PruneAll(versionStore.MaxVersions)
-	_ = versionStore.Close()
+func closeVersionStore() error {
+	pruneErr := versionStore.PruneAll(versionStore.MaxVersions)
+	return errors.Join(pruneErr, versionStore.Close())
 }
 
 // registerVersioningHooks wires the single shared store into the markdown package hooks.
 func registerVersioningHooks() {
-	markdown.WriteHook = func(filePath, content string) (err error) {
-		err = versionStore.SaveVersion(filePath, content)
-		_ = versionStore.Prune(filePath, versionStore.MaxVersions)
-		return err
+	markdown.WriteHook = func(filePath, content string) error {
+		saveErr := versionStore.SaveVersion(filePath, content)
+		pruneErr := versionStore.Prune(filePath, versionStore.MaxVersions)
+		return errors.Join(saveErr, pruneErr)
 	}
-	markdown.ReadHook = func(filePath, content string) (err error) {
-		err = versionStore.SaveVersion(filePath, content)
-		_ = versionStore.Prune(filePath, versionStore.MaxVersions)
-		return err
+	markdown.ReadHook = func(filePath, content string) error {
+		saveErr := versionStore.SaveVersion(filePath, content)
+		pruneErr := versionStore.Prune(filePath, versionStore.MaxVersions)
+		return errors.Join(saveErr, pruneErr)
 	}
 }
 
@@ -208,7 +209,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "tdx: failed to open version store: %v\n", err)
 			os.Exit(1)
 		}
-		defer closeVersionStore()
+		defer func() {
+			if err := closeVersionStore(); err != nil {
+				fmt.Fprintf(os.Stderr, "tdx: close version store: %v\n", err)
+			}
+		}()
 		registerVersioningHooks()
 		wireVersioningTUI()
 	}

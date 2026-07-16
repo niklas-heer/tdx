@@ -6,9 +6,11 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -72,6 +74,7 @@ func DBPath() (string, error) {
 type Store struct {
 	db          *sql.DB
 	dbPath      string
+	cacheMu     sync.RWMutex
 	fileIDCache map[string]int64 // filePath → files.id cache for this session
 	MaxVersions int              // max versions per file (≤0 = unlimited)
 }
@@ -111,6 +114,15 @@ func Open(maxVersions int) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("versioning: open db: %w", err)
 	}
+	// PRAGMAs are connection-local. Keep one connection per Store so every
+	// operation uses the configured durability and contention behavior.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	if _, err := db.Exec("PRAGMA busy_timeout=5000;"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("versioning: set busy timeout: %w", err)
+	}
 
 	// Optimise for high-frequency writes.
 	if _, err := db.Exec("PRAGMA journal_mode=WAL;"); err != nil {
@@ -121,7 +133,6 @@ func Open(maxVersions int) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("versioning: set synchronous: %w", err)
 	}
-
 	if _, err := db.Exec(initSQL); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("versioning: init schema: %w", err)
@@ -138,6 +149,8 @@ func Open(maxVersions int) (*Store, error) {
 // resolveFileID returns the files.id for filePath, inserting a row if necessary.
 // Results are cached for the lifetime of the Store to avoid repeated DB round-trips.
 func (s *Store) resolveFileID(filePath string) (int64, error) {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
 	if id, ok := s.fileIDCache[filePath]; ok {
 		return id, nil
 	}
@@ -217,11 +230,21 @@ func (s *Store) Prune(filePath string, maxVersions int) error {
 }
 
 // PruneAll prunes every file path seen this session using maxVersions.
-// Intended to be called before Close.
-func (s *Store) PruneAll(maxVersions int) {
+// Intended to be called before Close. It reports every path that could not be pruned.
+func (s *Store) PruneAll(maxVersions int) error {
+	s.cacheMu.RLock()
+	paths := make([]string, 0, len(s.fileIDCache))
 	for filePath := range s.fileIDCache {
-		_ = s.Prune(filePath, maxVersions)
+		paths = append(paths, filePath)
 	}
+	s.cacheMu.RUnlock()
+	var pruneErr error
+	for _, filePath := range paths {
+		if err := s.Prune(filePath, maxVersions); err != nil {
+			pruneErr = errors.Join(pruneErr, fmt.Errorf("%s: %w", filePath, err))
+		}
+	}
+	return pruneErr
 }
 
 // ListVersions returns the version history for filePath ordered most-recent-first.
@@ -274,8 +297,27 @@ func (s *Store) ListVersions(filePath string) (versions []VersionInfo, err error
 func (s *Store) Close() error {
 	// TRUNCATE mode writes all WAL frames to the database and truncates the WAL
 	// file to zero bytes, leaving a clean single-file state on exit.
-	_, _ = s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
-	return s.db.Close()
+	var busy, logFrames, checkpointedFrames int
+	checkpointErr := s.db.QueryRow("PRAGMA wal_checkpoint(TRUNCATE)").Scan(
+		&busy,
+		&logFrames,
+		&checkpointedFrames,
+	)
+	if checkpointErr == nil && busy != 0 {
+		checkpointErr = fmt.Errorf(
+			"checkpoint remained busy (%d WAL frames, %d checkpointed)",
+			logFrames,
+			checkpointedFrames,
+		)
+	}
+	closeErr := s.db.Close()
+	if checkpointErr != nil {
+		checkpointErr = fmt.Errorf("versioning: checkpoint WAL: %w", checkpointErr)
+	}
+	if closeErr != nil {
+		closeErr = fmt.Errorf("versioning: close database: %w", closeErr)
+	}
+	return errors.Join(checkpointErr, closeErr)
 }
 
 func sha256sum(str string) string {

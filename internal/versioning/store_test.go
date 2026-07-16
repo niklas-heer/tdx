@@ -2,11 +2,119 @@ package versioning
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
+
+func TestOpenConfiguresBusyTimeout(t *testing.T) {
+	dir := t.TempDir()
+	SetStoreDirForTesting(dir)
+	defer ResetStoreDirForTesting()
+	s := openStore(t)
+
+	var timeout int
+	if err := s.db.QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil {
+		t.Fatal(err)
+	}
+	if timeout != 5000 {
+		t.Fatalf("busy_timeout = %d, want 5000", timeout)
+	}
+}
+
+func TestPruneAllReturnsEveryFailure(t *testing.T) {
+	dir := t.TempDir()
+	SetStoreDirForTesting(dir)
+	defer ResetStoreDirForTesting()
+	s := openStore(t)
+	paths := []string{"/one.md", "/two.md"}
+	for _, path := range paths {
+		if err := s.SaveVersion(path, "content"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.PruneAll(1)
+	if err == nil {
+		t.Fatal("PruneAll() succeeded after database close")
+	}
+	for _, path := range paths {
+		if !strings.Contains(err.Error(), path) {
+			t.Errorf("PruneAll() error %q does not include %q", err, path)
+		}
+	}
+}
+
+func TestCloseReportsBusyCheckpoint(t *testing.T) {
+	dir := t.TempDir()
+	SetStoreDirForTesting(dir)
+	defer ResetStoreDirForTesting()
+	s := openStore(t)
+	if err := s.SaveVersion("/todo.md", "first"); err != nil {
+		t.Fatal(err)
+	}
+
+	reader, err := sql.Open("sqlite", s.dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reader.Close() })
+	tx, err := reader.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	var count int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM file_versions").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveVersion("/todo.md", "second"); err != nil {
+		t.Fatal(err)
+	}
+
+	err = s.Close()
+	if err == nil || !strings.Contains(err.Error(), "checkpoint remained busy") {
+		t.Fatalf("Close() error = %v, want busy checkpoint error", err)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("Close() returned scan error instead of checkpoint status: %v", err)
+	}
+}
+
+func TestSaveVersion_ConcurrentAccessIsRaceFree(t *testing.T) {
+	dir := t.TempDir()
+	SetStoreDirForTesting(dir)
+	defer ResetStoreDirForTesting()
+	s := openStore(t)
+
+	const writers = 24
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs <- s.SaveVersion("/shared/todo.md", fmt.Sprintf("# version %d\n", i))
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("SaveVersion() error: %v", err)
+		}
+	}
+	if got := rowCount(t, s.db); got != writers {
+		t.Fatalf("version rows = %d, want %d", got, writers)
+	}
+}
 
 // --- helpers ---
 

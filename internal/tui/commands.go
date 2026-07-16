@@ -1,8 +1,8 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -350,7 +350,12 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Name:        "save",
 			Description: "Save current state to file",
 			Handler: func(m *Model) {
-				_ = markdown.WriteFile(m.FilePath, &m.FileModel)
+				local := markdown.SerializeMarkdown(&m.FileModel)
+				if err := markdown.WriteFile(m.FilePath, &m.FileModel); err != nil {
+					m.recordSaveError(err, local)
+					return
+				}
+				m.clearConflict()
 			},
 		},
 		{
@@ -397,6 +402,7 @@ func InitCommands(cfg ...*ConfigType) []Command {
 				}
 				m.FileModel = *fm
 				m.History = nil // Clear history
+				m.clearConflict()
 				if m.SelectedIndex >= len(m.FileModel.Todos) {
 					m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
 				}
@@ -406,15 +412,34 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Name:        "force-save",
 			Description: "Force save even if file was modified externally",
 			Handler: func(m *Model) {
-				// Save without checking for external modifications
-				content := markdown.SerializeMarkdown(&m.FileModel)
-				err := markdown.WriteFile(m.FilePath, &m.FileModel)
-				if err != nil {
-					// If still fails, write directly without checks
-					if err := os.WriteFile(m.FilePath, []byte(content), 0644); err != nil {
-						m.Err = err
-					}
+				content := m.ConflictLocalContent
+				if !m.ConflictPending {
+					content = markdown.SerializeMarkdown(&m.FileModel)
 				}
+				saveErr := markdown.WriteContentUnchecked(m.FilePath, content)
+				var postCommit *markdown.PostCommitError
+				if saveErr != nil && !errors.As(saveErr, &postCommit) {
+					m.Err = saveErr
+					return
+				}
+				fm, readErr := markdown.ReadFile(m.FilePath)
+				if fm != nil {
+					m.FileModel = *fm
+					m.clearConflict()
+				}
+				m.Err = errors.Join(saveErr, readErr)
+			},
+		},
+		{
+			Name:        "diff",
+			Description: "Compare retained local changes with external disk content",
+			Handler: func(m *Model) {
+				if !m.ConflictPending {
+					m.Err = fmt.Errorf("no unresolved file conflict")
+					return
+				}
+				m.ConflictDiffMode = true
+				m.ConflictDiffScroll = 0
 			},
 		},
 		{

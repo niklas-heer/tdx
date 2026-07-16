@@ -78,7 +78,7 @@ func RenderInlineCode(text string, isChecked bool, magentaStyle, cyanStyle, code
 	for _, seg := range segments {
 		if seg.isLink {
 			// OSC 8 hyperlink with cyan text
-			result.WriteString(fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", seg.url, cyanStyle(seg.text)))
+			fmt.Fprintf(&result, "\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", seg.url, cyanStyle(seg.text))
 		} else if seg.isCode {
 			result.WriteString(codeStyleFunc(" " + seg.text + " "))
 		} else {

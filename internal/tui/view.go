@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,9 @@ func (m Model) View() string {
 	styles := m.Styles()
 	if m.HelpMode {
 		return RenderHelp(m.Version(), styles.Cyan, styles.Dim)
+	}
+	if m.ConflictDiffMode {
+		return m.renderConflictDiff()
 	}
 
 	// Full-screen version browser bypasses the normal overlay compositor.
@@ -247,7 +251,7 @@ func (m Model) renderMainContent() string {
 	// Show indicator for items above (when scrolling is active)
 	if effectiveMaxVisible > 0 && totalCount > effectiveMaxVisible {
 		if hasMoreAbove {
-			b.WriteString(fmt.Sprintf("      %s\n", styles.Dim(fmt.Sprintf("▲ %d more", startIdx))))
+			fmt.Fprintf(&b, "      %s\n", styles.Dim(fmt.Sprintf("▲ %d more", startIdx)))
 		} else {
 			b.WriteString("\n")
 		}
@@ -282,7 +286,7 @@ func (m Model) renderMainContent() string {
 				if heading.BeforeTodoIndex > lastDisplayedTodoIdx && heading.BeforeTodoIndex <= todoIdx {
 					// Render heading with appropriate formatting
 					headingText := strings.Repeat("#", heading.Level) + " " + heading.Text
-					b.WriteString(fmt.Sprintf("      %s\n", styles.Cyan(headingText)))
+					fmt.Fprintf(&b, "      %s\n", styles.Cyan(headingText))
 				}
 			}
 		}
@@ -421,7 +425,7 @@ func (m Model) renderMainContent() string {
 	// Show indicator for items below (when scrolling is active)
 	if effectiveMaxVisible > 0 && totalCount > effectiveMaxVisible {
 		if hasMoreBelow && !m.InputMode {
-			b.WriteString(fmt.Sprintf("      %s\n", styles.Dim(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow)))))
+			fmt.Fprintf(&b, "      %s\n", styles.Dim(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow))))
 		} else {
 			b.WriteString("\n")
 		}
@@ -504,7 +508,7 @@ func (m Model) renderInputLine(styles *StyleFuncsType, config *ConfigType) strin
 	}
 
 	// No wrapping - simple output
-	b.WriteString(fmt.Sprintf("%s%s%s%s\n", prefix, before, cursor, after))
+	fmt.Fprintf(&b, "%s%s%s%s\n", prefix, before, cursor, after)
 	return b.String()
 }
 
@@ -524,8 +528,8 @@ func (m Model) renderStatusBar() string {
 		b.WriteString(" ")
 
 		// Show helpful hints based on error type
-		if m.Err.Error() == "file changed externally" {
-			b.WriteString(styles.Cyan(":reload") + styles.Dim(" or ") + styles.Cyan(":force-save"))
+		if errors.Is(m.Err, markdown.ErrFileChanged) {
+			b.WriteString(styles.Cyan(":diff") + styles.Dim(", ") + styles.Cyan(":reload") + styles.Dim(" or ") + styles.Cyan(":force-save"))
 		} else {
 			b.WriteString(styles.Dim("any key to dismiss"))
 		}
@@ -1197,6 +1201,68 @@ func renderDiff(diffs []diffmatchpatch.Diff, styles *StyleFuncsType) string {
 		}
 	}
 	return b.String()
+}
+
+func (m Model) renderConflictDiff() string {
+	rawLines := m.conflictDiffLines()
+	m.clampConflictDiffScroll(len(rawLines))
+	height := m.conflictDiffHeight()
+	styles := m.Styles()
+	visible := rawLines[m.ConflictDiffScroll:]
+	if len(visible) > height {
+		visible = visible[:height]
+	}
+	for len(visible) < height {
+		visible = append(visible, "")
+	}
+
+	width := m.TermWidth - 6
+	if width < 34 {
+		width = 34
+	}
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#f7768e")).
+		Render("FILE CONFLICT - LOCAL -> DISK [" + filepath.Base(m.FilePath) + "]")
+	legend := styles.Dim("struck: local only  |  green: authoritative disk")
+	footer := styles.Dim("[PgUp/PgDn] Scroll  |  [Esc] Close  |  then :reload or :force-save")
+	body := title + "\n" + legend + "\n" + strings.Repeat("─", width) + "\n" +
+		strings.Join(visible, "\n") + "\n" + strings.Repeat("─", width) + "\n" + footer
+
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#f7768e")).
+		Width(width).
+		Padding(0, 1).
+		Render(body)
+}
+
+func (m Model) conflictDiffLines() []string {
+	styles := m.Styles()
+	dmp := diffmatchpatch.New()
+	dmp.MatchDistance = 120
+	diffs := dmp.DiffMain(m.ConflictLocalContent, m.ConflictDiskContent, false)
+	dmp.DiffCleanupSemantic(diffs)
+	return strings.Split(renderDiff(diffs, styles), "\n")
+}
+
+func (m Model) conflictDiffHeight() int {
+	height := m.TermHeight - 7
+	if height < 3 {
+		height = 3
+	}
+	return height
+}
+
+func (m *Model) clampConflictDiffScroll(lineCount int) {
+	maxScroll := lineCount - m.conflictDiffHeight()
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.ConflictDiffScroll > maxScroll {
+		m.ConflictDiffScroll = maxScroll
+	}
+	if m.ConflictDiffScroll < 0 {
+		m.ConflictDiffScroll = 0
+	}
 }
 
 // renderVersionsBrowser renders the full-screen version browser modal.

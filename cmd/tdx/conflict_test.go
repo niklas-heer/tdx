@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"testing"
-	"time"
 
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
@@ -35,9 +34,6 @@ Another important paragraph.
 	if len(loadedFM.Todos) != 2 {
 		t.Fatalf("Expected 2 todos, got %d", len(loadedFM.Todos))
 	}
-
-	// Wait to ensure different modification time
-	time.Sleep(1100 * time.Millisecond)
 
 	// Simulate external process modifying the file
 	externalContent := `# Tasks
@@ -108,7 +104,6 @@ func TestConflictDetection_ReloadAfterConflict(t *testing.T) {
 	_ = fm.UpdateTodoItem(0, "Task one", true)
 
 	// External modification
-	time.Sleep(1100 * time.Millisecond)
 	externalContent := `# Tasks
 
 - [ ] Task one
@@ -213,7 +208,6 @@ func TestConflictDetection_MultipleWrites(t *testing.T) {
 	}
 
 	// Second write should also succeed (modTime updated after first write)
-	time.Sleep(1100 * time.Millisecond) // Ensure different modTime
 	_ = fm.UpdateTodoItem(1, "Task two", true)
 	err = markdown.WriteFile(tmpFile, fm)
 	if err != nil {

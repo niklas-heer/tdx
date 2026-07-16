@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -173,7 +174,11 @@ func TestRestoreSelectedVersion_PreservesSnapshotBytes(t *testing.T) {
 		return snapshot, nil
 	}
 
-	m := New(path, markdown.ParseMarkdown("# Current\n\n- [ ] current\n"), false, false, -1, cfg, testStyles(), "test")
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(path, fm, false, false, -1, cfg, testStyles(), "test")
 	m.VersionsMode = true
 	m.VersionsConfirmMode = true
 	m.VersionsList = []VersionInfo{{ID: 1}}
@@ -195,6 +200,46 @@ func TestRestoreSelectedVersion_PreservesSnapshotBytes(t *testing.T) {
 	}
 	if restored.MaxVisibleOverride != 7 {
 		t.Fatalf("MaxVisibleOverride = %d, want 7", restored.MaxVisibleOverride)
+	}
+}
+
+func TestRestoreSelectedVersion_PostCommitFailureReloadsCommittedContent(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("# Current\n\n- [ ] current\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := "# Historic\n\n- [ ] historic\n"
+	cfg := testConfig()
+	cfg.ReadVersionFunc = func(string, int64) (string, error) { return snapshot, nil }
+	m := New(path, fm, false, false, -1, cfg, testStyles(), "test")
+	m.VersionsMode = true
+	m.VersionsConfirmMode = true
+	m.VersionsList = []VersionInfo{{ID: 1}}
+
+	originalHook := markdown.WriteHook
+	hookErr := errors.New("version capture failed")
+	markdown.WriteHook = func(string, string) error { return hookErr }
+	t.Cleanup(func() { markdown.WriteHook = originalHook })
+
+	result, _ := m.restoreSelectedVersion()
+	restored := result.(Model)
+	if !errors.Is(restored.Err, hookErr) {
+		t.Fatalf("restore error = %v, want post-commit hook error", restored.Err)
+	}
+	if got := markdown.SerializeMarkdown(&restored.FileModel); got != snapshot {
+		t.Fatalf("restored model = %q, want committed snapshot", got)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != snapshot {
+		t.Fatalf("disk content = %q, want committed snapshot", got)
 	}
 }
 

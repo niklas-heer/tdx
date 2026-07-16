@@ -28,8 +28,12 @@ func TestWriteHook_CalledAfterSuccessfulWrite(t *testing.T) {
 		t.Fatalf("WriteFileUnchecked() error: %v", err)
 	}
 
-	if gotPath != mdPath {
-		t.Errorf("WriteHook filePath = %q, want %q", gotPath, mdPath)
+	wantPath, err := resolveTarget(mdPath)
+	if err != nil {
+		t.Fatalf("resolveTarget() error: %v", err)
+	}
+	if gotPath != wantPath {
+		t.Errorf("WriteHook filePath = %q, want %q", gotPath, wantPath)
 	}
 	if gotContent == "" {
 		t.Error("WriteHook content was empty")
@@ -103,8 +107,12 @@ func TestReadHook_CalledAfterSuccessfulRead(t *testing.T) {
 		t.Fatalf("ReadFile() error: %v", err)
 	}
 
-	if gotPath != mdPath {
-		t.Errorf("ReadHook filePath = %q, want %q", gotPath, mdPath)
+	wantPath, err := resolveTarget(mdPath)
+	if err != nil {
+		t.Fatalf("resolveTarget() error: %v", err)
+	}
+	if gotPath != wantPath {
+		t.Errorf("ReadHook filePath = %q, want %q", gotPath, wantPath)
 	}
 	if gotContent == "" {
 		t.Error("ReadHook content was empty")
