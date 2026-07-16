@@ -4,7 +4,7 @@ The project is one stable Go release behind, several direct dependencies have co
 
 ## What Changes
 
-- Update the application and Dagger modules to Go 1.26.5 and keep the pinned Dagger build image synchronized.
+- Update the application and Dagger modules to Go 1.26.4 and keep the pinned Dagger build image synchronized.
 - Update compatible direct application dependencies and accept only changes that pass the portable and native-focused test suites.
 - Replace `justfile` with a documented `maskfile.md` while preserving the existing build, development, CI, release, maintenance, and shortcut commands.
 - Update README, release, contributor, and Nix development-environment references from Just to Mask.

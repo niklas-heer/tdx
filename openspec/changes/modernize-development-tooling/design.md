@@ -9,7 +9,7 @@ The application module and isolated Dagger module currently target Go 1.25.4. Lo
 
 ## Decisions
 
-- Use Go 1.26.5 in both modules and the pinned Dagger image because it is the latest stable security release.
+- Use Go 1.26.4 in both modules and the pinned Dagger image because it is the newest release supported by Dagger 0.21.7's Go SDK generator.
 - Treat the Dagger module dependency graph as SDK-managed; only the application dependencies receive general upgrades.
 - Preserve task names where Mask supports them and use `$MASK` for task chaining so commands remain location-independent.
 - Use optional positional strings for development command arguments; common documented invocations remain unchanged.

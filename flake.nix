@@ -33,7 +33,8 @@
               }
             else
               ./.;
-          vendorHash = "sha256-2OorJ59Q+M+UuJTSqXFi7a+4Zv34ap44lnOTxNGrTSU=";
+          vendorHash = "sha256-wmtE/ERqlOUVUO9N2OEicA3KGdkeM0ycWL4vr+Z1ymw=";
+          subPackages = [ "cmd/tdx" ];
           doCheck = false;
           ldflags = [
             "-X main.Version=${version}"
@@ -54,7 +55,7 @@
             go-tools
             golangci-lint
             git
-            just
+            mask
           ];
           shellHook = ''echo "TDX development shell!" echo "Go version: $(go version)" '';
         };

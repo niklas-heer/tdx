@@ -7,10 +7,10 @@ tdx is a fast, single-binary CLI todo manager with vim-style navigation and an i
 ## Build & Test Commands
 
 ```bash
-just build          # Build binary to ./tdx
-just install        # Install to /usr/local/bin
-just test           # Run all tests
-just lint           # Run golangci-lint
+mask build          # Build binary to ./tdx
+mask install        # Install to /usr/local/bin
+mask test           # Run all tests
+mask ci-lint        # Run the pinned linter through Dagger
 go test ./...       # Run tests directly
 go test -v ./cmd/tdx -run "TestName"  # Run specific test
 ```

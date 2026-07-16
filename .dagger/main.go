@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	goImage           = "golang:1.25.4-bookworm@sha256:e17419604b6d1f9bc245694425f0ec9b1b53685c80850900a376fb10cb0f70cb"
-	lintImage         = "golangci/golangci-lint:v2.6.2@sha256:d9469fcf8fdb1cd3790c5d0de2bb95640c4cd00c6670f541c3cb49edb744de49"
+	goImage           = "golang:1.26.4-bookworm@sha256:b305420a68d0f229d91eb3b3ed9e519fcf2cf5461da4bef997bf927e8c0bfd2b"
+	lintImage         = "golangci/golangci-lint:v2.12.2@sha256:5cceeef04e53efe1470638d4b4b4f5ceefd574955ab3941b2d9a68a8c9ad5240"
 	actionlintVersion = "v1.7.12"
 )
 
@@ -101,9 +101,9 @@ func (m *TdxCi) Lint(ctx context.Context, source *dagger.Directory) (string, err
 		From(lintImage).
 		WithDirectory("/src", cleanSource(source)).
 		WithWorkdir("/src").
-		WithMountedCache("/go/pkg/mod", dag.CacheVolume("tdx-go-mod-1.25.4")).
-		WithMountedCache("/root/.cache/go-build", dag.CacheVolume("tdx-go-build-1.25.4")).
-		WithMountedCache("/root/.cache/golangci-lint", dag.CacheVolume("tdx-golangci-lint-2.6.2")).
+		WithMountedCache("/go/pkg/mod", dag.CacheVolume("tdx-go-mod-1.26.4")).
+		WithMountedCache("/root/.cache/go-build", dag.CacheVolume("tdx-go-build-1.26.4")).
+		WithMountedCache("/root/.cache/golangci-lint", dag.CacheVolume("tdx-golangci-lint-2.12.2")).
 		WithExec([]string{"golangci-lint", "run", "--timeout=5m"}).
 		Stdout(ctx)
 }
@@ -203,8 +203,8 @@ func (m *TdxCi) goBase(source *dagger.Directory) *dagger.Container {
 		From(goImage).
 		WithDirectory("/src", cleanSource(source)).
 		WithWorkdir("/src").
-		WithMountedCache("/go/pkg/mod", dag.CacheVolume("tdx-go-mod-1.25.4")).
-		WithMountedCache("/root/.cache/go-build", dag.CacheVolume("tdx-go-build-1.25.4")).
+		WithMountedCache("/go/pkg/mod", dag.CacheVolume("tdx-go-mod-1.26.4")).
+		WithMountedCache("/root/.cache/go-build", dag.CacheVolume("tdx-go-build-1.26.4")).
 		WithExec([]string{"go", "mod", "download"})
 }
 
