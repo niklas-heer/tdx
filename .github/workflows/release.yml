@@ -6,124 +6,63 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            artifact: tdx-linux-amd64
-          - os: ubuntu-latest
-            goos: linux
-            goarch: arm64
-            artifact: tdx-linux-arm64
-          - os: macos-latest
-            goos: darwin
-            goarch: amd64
-            artifact: tdx-darwin-amd64
-          - os: macos-latest
-            goos: darwin
-            goarch: arm64
-            artifact: tdx-darwin-arm64
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
-            artifact: tdx-windows-amd64.exe
-
-    runs-on: ${{ matrix.os }}
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-
-      - name: Build binary
+      - name: Verify tag matches build configuration
         shell: bash
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
         run: |
           VERSION=$(grep '^version' tdx.toml | cut -d'"' -f2)
-          DESCRIPTION=$(grep '^description' tdx.toml | cut -d'"' -f2)
-          go build -ldflags "-X main.Version=$VERSION -X 'main.Description=$DESCRIPTION'" -o ${{ matrix.artifact }} ./cmd/tdx
+          if [ "v${VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match tdx.toml version ${VERSION}" >&2
+            exit 1
+          fi
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Build release artifacts with Dagger
+        uses: dagger/dagger-for-github@v8.4.1
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Prepare release assets
-        run: |
-          mkdir -p release
-          find artifacts -type f -exec mv {} release/ \;
-          cd release && ls -la
+          version: "0.21.7"
+          call: release-artifacts --source=. export --path=release
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install release-note dependencies
         run: pip install requests
 
-      - name: Generate AI-powered release notes
-        id: changelog
+      - name: Generate release notes
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CURRENT_TAG: ${{ github.ref_name }}
-          PREV_TAG: ${{ github.event.before }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           AI_MODEL: anthropic/claude-haiku-4.5
         run: |
-          # Get previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           export PREV_TAG
-
-          # Generate release notes using AI
           python3 .github/scripts/generate_release_notes.py > release_notes.md
-
-          # Display for debugging
-          echo "Generated release notes:"
           cat release_notes.md
 
-          # Set output for GitHub Actions
-          {
-            echo "changelog<<EOF"
-            cat release_notes.md
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          body: ${{ steps.changelog.outputs.changelog }}
-          files: release/*
-          generate_release_notes: false
+      - name: Create GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release_notes.md
 
   update-homebrew:
     name: Update Homebrew Formula
@@ -132,12 +71,12 @@ jobs:
 
     steps:
       - name: Checkout tdx repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: tdx
 
       - name: Checkout homebrew-tap repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: niklas-heer/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -146,9 +85,8 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"  # Remove 'v' prefix if present
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
 
       - name: Update Homebrew formula
@@ -157,7 +95,6 @@ jobs:
           TAP_REPO: ${{ github.workspace }}/homebrew-tap
         run: |
           cd tdx
-          chmod +x scripts/update-homebrew.sh
           ./scripts/update-homebrew.sh "$VERSION"
 
       - name: Commit and push changes
@@ -165,26 +102,20 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           git add Formula/tdx.rb
-
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
             git commit -m "chore: update tdx to v${{ steps.version.outputs.version }}"
             git push
-            echo "✅ Homebrew formula updated and pushed!"
           fi
 
       - name: Create summary
         run: |
-          echo "## 🍺 Homebrew Tap Updated" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Formula updated to version **v${{ steps.version.outputs.version }}**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Repository: [homebrew-tap](https://github.com/niklas-heer/homebrew-tap)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Users can now install with:" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "brew upgrade niklas-heer/tap/tdx" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "## Homebrew Tap Updated" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Formula updated to version **v${{ steps.version.outputs.version }}**." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+          echo "brew upgrade niklas-heer/tap/tdx" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

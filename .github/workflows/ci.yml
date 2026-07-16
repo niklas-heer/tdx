@@ -7,117 +7,83 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  lint:
-    name: Lint
+  portable:
+    name: Portable
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Run portable CI with Dagger
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: "0.21.7"
+          call: ci --source=.
+
+  native:
+    name: Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.25"
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.6.2
-          args: --timeout=5m
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Check formatting
+      - name: Build native binary
+        shell: bash
         run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Go code is not formatted:"
-            gofmt -d .
-            exit 1
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            go build -v -o tdx.exe ./cmd/tdx
+          else
+            go build -v -o tdx ./cmd/tdx
           fi
 
-      - name: Run go vet
-        run: go vet ./...
+      - name: Run native filesystem tests
+        run: go test -v ./internal/markdown ./internal/versioning
 
-      - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out ./...
-
-      - name: Generate coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Test native binary execution
+        shell: bash
         run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          # Color based on percentage
-          if (( $(echo "$COVERAGE >= 80" | bc -l) )); then COLOR="brightgreen"
-          elif (( $(echo "$COVERAGE >= 60" | bc -l) )); then COLOR="green"
-          elif (( $(echo "$COVERAGE >= 40" | bc -l) )); then COLOR="yellow"
-          else COLOR="red"; fi
-          mkdir -p .github/badges
-          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COVERAGE}%\",\"color\":\"$COLOR\"}" > .github/badges/coverage.json
-          cat .github/badges/coverage.json
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            ./tdx.exe --version
+          else
+            ./tdx --version
+          fi
+
+  coverage-badge:
+    name: Coverage badge
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: portable
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Generate coverage badge with Dagger
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: "0.21.7"
+          call: coverage-badge --source=. export --path=.github/badges/coverage.json
 
       - name: Commit coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/badges/coverage.json
           git diff --staged --quiet || git commit -m "chore: update coverage badge [skip ci]"
           git push
-
-  build:
-    name: Build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-
-      - name: Build
-        run: go build -v ./cmd/tdx
-
-      - name: Run platform filesystem tests
-        run: go test -v ./internal/markdown ./internal/versioning
-
-      - name: Test binary execution
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            ./tdx.exe --version || ./tdx.exe -v
-          else
-            ./tdx --version || ./tdx -v
-          fi

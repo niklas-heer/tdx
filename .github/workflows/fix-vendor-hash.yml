@@ -17,13 +17,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install nix
-        uses: DeterminateSystems/nix-installer-action@v11
+        uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Set up nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v6
+        uses: DeterminateSystems/magic-nix-cache-action@v14
 
       - name: Try to build and extract hash
         id: build
@@ -63,7 +63,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.build.outputs.needs_update == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "chore(nix): update vendorHash to ${{ steps.build.outputs.hash }}"
           title: "chore(nix): update vendorHash"
