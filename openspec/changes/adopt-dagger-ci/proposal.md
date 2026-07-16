@@ -16,7 +16,7 @@ Moving portable checks and builds into a Dagger pipeline written in Go gives dev
 ## Impact
 
 - Affected specs: new `ci-pipeline` capability
-- Affected code: Dagger module, `Justfile`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.github/workflows/fix-vendor-hash.yml`
+- Affected code: Dagger module, `justfile`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.github/workflows/fix-vendor-hash.yml`
 - New development dependency: Dagger CLI and a Docker-compatible container runtime
 - Release behavior: artifact contents and names remain unchanged; publication still occurs on `v*` tags and still updates the Homebrew tap
 - CI behavior: portable checks become locally reproducible while native platform validation remains on GitHub-hosted runners

@@ -19,6 +19,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify tag matches build configuration
         shell: bash
@@ -41,7 +42,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install release-note dependencies
-        run: pip install requests
+        run: pip install requests==2.34.2
 
       - name: Generate release notes
         env:

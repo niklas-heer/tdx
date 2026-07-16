@@ -26,5 +26,5 @@
 - [x] 4.1 Run Dagger module unit tests and the full portable CI pipeline locally.
 - [x] 4.2 Export release artifacts locally and verify all five names and embedded version metadata where executable.
 - [x] 4.3 Run native Go tests on the host and validate all workflow files with actionlint.
-- [ ] 4.4 Confirm the pull request passes Dagger, macOS, Windows, and CodeRabbit review.
+- [x] 4.4 Confirm the pull request passes Dagger, macOS, Windows, and CodeRabbit review.
 - [x] 4.5 Confirm no maintained workflow uses a Node.js 20 first-party action generation.
