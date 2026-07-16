@@ -550,6 +550,7 @@ Navigation (visible todo):    8.0ns/op    0 allocs
 
 ```
 tdx/
+├── .dagger/             # Portable CI and release pipeline (Go)
 ├── cmd/tdx/              # Main application
 │   ├── main.go          # Entry point, CLI routing
 │   ├── config.go        # Build-time configuration
@@ -585,6 +586,7 @@ tdx/
 
 - Go 1.25+
 - [just](https://github.com/casey/just) (command runner)
+- [Dagger 0.21.7](https://docs.dagger.io/install/) and a Docker-compatible container runtime for the portable CI pipeline
 
 ### Building
 
@@ -603,6 +605,7 @@ just install
 
 ```bash
 just build      # Build binary
+just build-all  # Build all release targets with Dagger
 just install    # Install to PATH
 just tui        # Run TUI
 just list       # List todos
@@ -610,8 +613,14 @@ just add "X"    # Add todo
 just toggle 1   # Toggle todo
 just check      # Run go vet
 just fmt        # Format code
+just ci         # Run the same portable checks used by GitHub CI
+just ci-lint    # Run the pinned linter through Dagger
+just ci-test    # Run race-enabled tests through Dagger
+just ci-workflows # Validate GitHub workflow syntax locally
 just clean      # Clean artifacts
 ```
+
+The Dagger pipeline is pinned in `dagger.json` and implements CI in Go. GitHub still runs native macOS and Windows filesystem tests because those platform semantics cannot be reproduced by Linux containers.
 
 ## Theme Customization
 

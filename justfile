@@ -21,23 +21,7 @@ build:
     echo "✓ Built tdx v$VERSION"
 
 # Build for all platforms
-build-all:
-    #!/bin/bash
-    VERSION=$(grep '^version' tdx.toml | cut -d'"' -f2)
-    DESCRIPTION=$(grep '^description' tdx.toml | cut -d'"' -f2)
-    LDFLAGS="-X main.Version=$VERSION -X 'main.Description=$DESCRIPTION'"
-
-    mkdir -p dist
-
-    echo "Building for all platforms..."
-    GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/tdx-darwin-arm64 ./cmd/tdx
-    GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-darwin-amd64 ./cmd/tdx
-    GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-linux-amd64 ./cmd/tdx
-    GOOS=linux GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/tdx-linux-arm64 ./cmd/tdx
-    GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/tdx-windows-amd64.exe ./cmd/tdx
-
-    echo "✓ Built binaries in dist/"
-    ls -lh dist/
+build-all: release-artifacts
 
 # Install binary to /usr/local/bin (requires sudo)
 install: build
@@ -112,6 +96,24 @@ check:
 # Run tests
 test:
     go test ./...
+
+# Run the complete portable CI pipeline locally
+ci:
+    @dagger call ci --source=.
+
+# Run focused portable CI checks
+ci-lint:
+    @dagger call lint --source=.
+
+ci-test:
+    @dagger call test --source=.
+
+ci-workflows:
+    @dagger call actionlint --source=.
+
+# Export the five release binaries to dist/
+release-artifacts:
+    @dagger call release-artifacts --source=. export --path=dist --wipe
 
 # Format code
 fmt:
