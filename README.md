@@ -22,7 +22,8 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 - 🎯 **Command Palette** - Helix-style `:` commands with fuzzy search
 - 📋 **Read-Only Mode** - Prevent auto-save, check/uncheck all, filter done
 - 🔧 **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
-- 🔄 **Smart Conflict Detection** - Auto-merge external changes, reactive file watching
+- 🔄 **Smart Conflict Handling** - Atomic saves, external-change detection, visual conflict diffs
+- 🕘 **Version History** - Automatic snapshots with visual diffs and safe restore
 - 📑 **Per-File Configuration** - YAML frontmatter for file-specific settings
 - 📂 **Recent Files** - Jump to recently opened files with cursor position restoration
 - 🌍 **Cross-platform** - macOS, Linux, Windows
@@ -130,6 +131,7 @@ Press `:` to open the command palette with fuzzy search. Available commands:
 | `save` | Save current state to file |
 | `force-save` | Force save even if file was modified externally |
 | `reload` | Reload file from disk (discards unsaved changes) |
+| `versions` | Browse, compare, and restore file version history |
 | `wrap` | Toggle word wrap for long lines |
 | `line-numbers` | Toggle relative line numbers |
 | `set-max-visible` | Set max visible items for this session |
@@ -326,6 +328,22 @@ Recent files are stored in `~/.config/tdx/recent.json` and include:
 - Last cursor position
 - Content hash (for change detection)
 
+### Version History
+
+tdx automatically stores content-addressed snapshots when a file is opened or successfully changed. Open the command palette and run `:versions` to compare the current file with earlier versions and restore one safely.
+
+- Navigate versions with `↑`/`↓` or `j`/`k`
+- Scroll the diff with `PgUp`/`PgDn`
+- Press `Enter`, then `y`, to confirm a restore
+- Press `Esc` to close without changing the file
+
+By default, tdx retains the latest 100 versions per file. Configure the limit in `~/.config/tdx/config.toml`; set it to `0` for unlimited history:
+
+```toml
+[versioning]
+max_versions = 100
+```
+
 ## File Format
 
 Todos are stored in `todo.md` using standard Markdown:
@@ -336,9 +354,10 @@ Todos are stored in `todo.md` using standard Markdown:
 - [x] Completed task
 - [ ] Incomplete task
 - [ ] Another task
-
-Other markdown content is preserved.
 ```
+
+Other Markdown content is preserved, including bare URLs, email addresses,
+links, inline HTML, emphasis, and code.
 
 ### Configuration
 
@@ -368,6 +387,9 @@ filter_done = false
 
 [recent]
 max_files = 20
+
+[versioning]
+max_versions = 100  # 0 = unlimited
 ```
 
 You only need to include the settings you want to change from the defaults.
@@ -386,6 +408,7 @@ You only need to include the settings you want to change from the defaults.
 | `[defaults]` | `read_only` | boolean | false | Prevent all edits (view-only mode) |
 | `[defaults]` | `filter_done` | boolean | false | Hide completed tasks by default |
 | `[recent]` | `max_files` | number | 20 | Maximum recent files to track |
+| `[versioning]` | `max_versions` | number | 100 | Versions retained per file (0 = unlimited) |
 
 #### Per-File Configuration
 
@@ -474,7 +497,8 @@ Read File → Goldmark Parser → AST (in-memory tree)
 **Implementation Details:**
 
 1. **Parser** (`internal/markdown/ast.go:29`)
-   - Uses **Goldmark** with GitHub Flavored Markdown (GFM) extension
+   - Uses **Goldmark** with tables, strikethrough, and task-list extensions
+   - Keeps presentation-only linkification disabled so bare URLs remain exact source text
    - Parses markdown into an Abstract Syntax Tree
    - Each todo becomes a `TaskCheckBox` node within a `ListItem`
    - Preserves source bytes with segment pointers for text nodes
@@ -483,7 +507,7 @@ Read File → Goldmark Parser → AST (in-memory tree)
    - `ExtractTodos()` - Walk AST and collect all task list items
    - `ExtractHeadings()` - Find headings and their positions relative to todos
    - `ToggleTodo()` - Flip checkbox state in the AST
-   - `UpdateTodoText()` - Append new text to source, update segment pointers
+   - `UpdateTodoText()` - Replace editable inline content while preserving list structure
    - `DeleteTodo()` - Remove list item node from parent
    - `AddTodo()` - Create new list item with checkbox and text nodes
    - `SwapTodos()` - Reorder list items (handles adjacent and cross-section swaps)
@@ -499,7 +523,7 @@ Read File → Goldmark Parser → AST (in-memory tree)
 
 - ✅ **Non-destructive** - Your markdown formatting, comments, and structure stay intact
 - ✅ **Complex markdown** - Handles nested lists, code blocks, links, emphasis seamlessly
-- ✅ **Fast operations** - No regex scanning, no full-file rewrites
+- ✅ **Durable writes** - Atomic replace with flushes and conflict detection
 - ✅ **Predictable** - AST guarantees correct parsing and serialization
 - ✅ **Tag support** - HashtagExtraction built into AST traversal
 - ✅ **Heading-aware** - Knows which todos belong under which headings

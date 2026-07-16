@@ -486,8 +486,8 @@
                     <div class="feature-icon">📝</div>
                     <h3>Markdown-native</h3>
                     <p>
-                        Todos live in todo.md. Version control friendly, human
-                        readable.
+                        Todos live in todo.md. Non-destructive saves preserve
+                        surrounding Markdown, including links and inline HTML.
                     </p>
                 </div>
                 <div class="feature">
@@ -530,8 +530,16 @@
                     <div class="feature-icon">🔄</div>
                     <h3>Smart Sync</h3>
                     <p>
-                        Auto-merge external changes with reactive file watching.
-                        Edit in multiple places safely.
+                        Atomic saves prevent partial writes. External edits
+                        reload automatically; true conflicts open a visual diff.
+                    </p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🕘</div>
+                    <h3>Version History</h3>
+                    <p>
+                        Automatic snapshots with visual diffs and safe restore
+                        from the TUI using <code>:versions</code>.
                     </p>
                 </div>
                 <div class="feature">
@@ -808,6 +816,14 @@
                     <div class="shortcut">
                         <kbd>reload</kbd>
                         <span>Reload from disk</span>
+                    </div>
+                    <div class="shortcut">
+                        <kbd>force-save</kbd>
+                        <span>Overwrite external changes</span>
+                    </div>
+                    <div class="shortcut">
+                        <kbd>versions</kbd>
+                        <span>Browse version history</span>
                     </div>
                 </div>
             </section>
