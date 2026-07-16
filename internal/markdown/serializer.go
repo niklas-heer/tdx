@@ -16,7 +16,25 @@ func SerializeAST(doc *ASTDocument) string {
 	return buf.String()
 }
 
+func writeInlineNodeText(buf *bytes.Buffer, doc *ASTDocument, node ast.Node) bool {
+	switch n := node.(type) {
+	case *ast.AutoLink:
+		buf.WriteByte('<')
+		buf.Write(n.Label(doc.Source))
+		buf.WriteByte('>')
+		return true
+	case *ast.RawHTML:
+		buf.Write(n.Segments.Value(doc.Source))
+		return true
+	default:
+		return false
+	}
+}
+
 func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int) {
+	if writeInlineNodeText(buf, doc, node) {
+		return
+	}
 	switch n := node.(type) {
 	case *ast.Document:
 		// Serialize all children
