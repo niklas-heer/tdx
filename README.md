@@ -54,13 +54,13 @@ Download the latest binary for your platform from [Releases](https://github.com/
 
 ### From Source
 
-Requires Go 1.25+:
+Requires Go 1.26.4+ and [Mask](https://github.com/jacobdeichert/mask):
 
 ```bash
 git clone https://github.com/niklas-heer/tdx.git
 cd tdx
-just build
-just install
+mask build
+mask install
 ```
 
 ### Nix
@@ -551,6 +551,7 @@ Navigation (visible todo):    8.0ns/op    0 allocs
 ```
 tdx/
 ├── .dagger/             # Portable CI and release pipeline (Go)
+├── maskfile.md          # Documented development tasks
 ├── cmd/tdx/              # Main application
 │   ├── main.go          # Entry point, CLI routing
 │   ├── config.go        # Build-time configuration
@@ -584,40 +585,40 @@ tdx/
 
 ### Prerequisites
 
-- Go 1.25+
-- [just](https://github.com/casey/just) (command runner)
+- Go 1.26.4+
+- [Mask](https://github.com/jacobdeichert/mask) (command runner)
 - [Dagger 0.21.7](https://docs.dagger.io/install/) and a Docker-compatible container runtime for the portable CI pipeline
 
 ### Building
 
 ```bash
 # Build binary
-just build
+mask build
 
 # Build for all platforms
-just build-all
+mask build-all
 
 # Install to /usr/local/bin
-just install
+mask install
 ```
 
 ### Commands
 
 ```bash
-just build      # Build binary
-just build-all  # Build all release targets with Dagger
-just install    # Install to PATH
-just tui        # Run TUI
-just list       # List todos
-just add "X"    # Add todo
-just toggle 1   # Toggle todo
-just check      # Run go vet
-just fmt        # Format code
-just ci         # Run the same portable checks used by GitHub CI
-just ci-lint    # Run the pinned linter through Dagger
-just ci-test    # Run race-enabled tests through Dagger
-just ci-workflows # Validate GitHub workflow syntax locally
-just clean      # Clean artifacts
+mask build        # Build binary
+mask build-all    # Build all release targets with Dagger
+mask install      # Install to PATH
+mask tui          # Run TUI
+mask list         # List todos
+mask add "X"      # Add todo
+mask toggle 1     # Toggle todo
+mask check        # Run go vet
+mask fmt          # Format code
+mask ci           # Run the same portable checks used by GitHub CI
+mask ci-lint      # Run the pinned linter through Dagger
+mask ci-test      # Run race-enabled tests through Dagger
+mask ci-workflows # Validate GitHub workflow syntax locally
+mask clean        # Clean artifacts
 ```
 
 The Dagger pipeline is pinned in `dagger.json` and implements CI in Go. GitHub still runs native macOS and Windows filesystem tests because those platform semantics cannot be reproduced by Linux containers.

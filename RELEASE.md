@@ -5,7 +5,7 @@
 ### 1. Run the release script
 
 ```bash
-just release
+mask release
 ```
 
 This interactive script will:
@@ -86,7 +86,7 @@ The release workflow builds these binaries:
 To build locally for all platforms:
 
 ```bash
-just build-all
+mask build-all
 ```
 
 Binaries will be in the `dist/` directory.
