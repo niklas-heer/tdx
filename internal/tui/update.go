@@ -1450,12 +1450,32 @@ func byteToKeyMsg(b byte) tea.KeyMsg {
 	}
 }
 
-// ProcessPipedInput handles input byte-by-byte for testing/scripting
-// It converts bytes to tea.KeyMsg and delegates to the unified handlers
+// ProcessPipedInput decodes UTF-8 and terminal editing keys for testing/scripting.
 func (m *Model) ProcessPipedInput(input []byte) {
 	for i := 0; i < len(input); i++ {
 		b := input[i]
 		msg := byteToKeyMsg(b)
+		if b >= utf8.RuneSelf {
+			r, size := utf8.DecodeRune(input[i:])
+			if r == utf8.RuneError && size == 1 {
+				continue
+			}
+			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+			i += size - 1
+		} else if b == 27 {
+			for sequence, keyType := range map[string]tea.KeyType{
+				"\x1b[D": tea.KeyLeft, "\x1b[C": tea.KeyRight,
+				"\x1b[A": tea.KeyUp, "\x1b[B": tea.KeyDown,
+				"\x1b[H": tea.KeyHome, "\x1b[F": tea.KeyEnd,
+				"\x1b[3~": tea.KeyDelete,
+			} {
+				if strings.HasPrefix(string(input[i:]), sequence) {
+					msg = tea.KeyMsg{Type: keyType}
+					i += len(sequence) - 1
+					break
+				}
+			}
+		}
 
 		// Skip empty messages (non-printable bytes)
 		if msg.Type == 0 && len(msg.Runes) == 0 {
@@ -1465,7 +1485,7 @@ func (m *Model) ProcessPipedInput(input []byte) {
 		// Check for quit in normal mode (q or esc without other modes active)
 		if !m.InputMode && !m.EditMode && !m.SearchMode && !m.CommandMode &&
 			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode {
-			if b == 'q' || b == 27 {
+			if msg.String() == "q" || msg.Type == tea.KeyEsc {
 				return
 			}
 		}
