@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/config"
+	"github.com/niklas-heer/tdx/internal/editor"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -36,7 +37,13 @@ type VersionInfo struct {
 
 // ConfigType holds display configuration
 type ConfigType struct {
-	Display struct {
+	Recent           config.RecentStore
+	Store            markdown.Store
+	AvailableThemes  []string
+	CurrentThemeName string
+	ThemeApplyFunc   func(string) *StyleFuncsType
+	ThemeSaveFunc    func(string) error
+	Display          struct {
 		CheckSymbol  string
 		SelectMarker string
 		MaxVisible   int
@@ -54,18 +61,12 @@ type ConfigType struct {
 	ReadVersionFunc  func(filePath string, id int64) (string, error)
 }
 
-// Global variables for backward compatibility (deprecated - use Model methods instead)
-var (
-	Config     *ConfigType
-	StyleFuncs *StyleFuncsType
-	Version    string
-
-	// Theme picker globals (set by main.go)
-	AvailableThemes  []string
-	CurrentThemeName string
-	ThemeApplyFunc   func(themeName string) *StyleFuncsType
-	ThemeSaveFunc    func(themeName string) error
-)
+// Runtime owns the dependencies used to open a TUI session.
+type Runtime struct {
+	Config  *ConfigType
+	Styles  *StyleFuncsType
+	Version string
+}
 
 // Model holds the TUI application state
 type Model struct {
@@ -93,8 +94,7 @@ type Model struct {
 	InputBuffer         string
 	CursorPos           int
 	NumberBuffer        string
-	History             *markdown.FileModel
-	UndoStack           []*markdown.FileModel
+	history             editor.History
 
 	CopyFeedback bool
 	Err          error
@@ -188,6 +188,17 @@ type CommandDebounceMsg struct{}
 
 // New creates a new TUI model with injected dependencies
 func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bool, maxVisible int, config *ConfigType, styles *StyleFuncsType, version string) Model {
+	if config == nil {
+		config = defaultConfig()
+	}
+	configCopy := *config
+	configCopy.AvailableThemes = append([]string(nil), config.AvailableThemes...)
+	config = &configCopy
+	if styles == nil {
+		styles = defaultStyles()
+	}
+	stylesCopy := *styles
+	styles = &stylesCopy
 	// Extract all available tags and priorities from todos
 	availableTags := markdown.GetAllTags(fm.Todos)
 	availablePriorities := markdown.GetAllPriorities(fm.Todos)
@@ -211,13 +222,15 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 		config:              config,
 		styles:              styles,
 		appVersion:          version,
-		// Theme picker state from globals
-		AvailableThemes:  AvailableThemes,
-		CurrentThemeName: CurrentThemeName,
-		ThemeApplyFunc:   ThemeApplyFunc,
-		ThemeSaveFunc:    ThemeSaveFunc,
+		// Theme picker state from instance configuration
+		AvailableThemes:  append([]string(nil), config.AvailableThemes...),
+		CurrentThemeName: config.CurrentThemeName,
+		ThemeApplyFunc:   config.ThemeApplyFunc,
+		ThemeSaveFunc:    config.ThemeSaveFunc,
 	}
 
+	m.FilterDone = config.Defaults.FilterDone
+	m.WordWrap = config.Defaults.WordWrap
 	m.applyFileMetadata()
 
 	// Position cursor on first visible item if filters are active
@@ -267,7 +280,7 @@ func (m *Model) Config() *ConfigType {
 	if m.config != nil {
 		return m.config
 	}
-	return Config // Fall back to global for backward compatibility
+	return defaultConfig()
 }
 
 // Styles returns the model's style functions (for backward compatibility during transition)
@@ -275,7 +288,7 @@ func (m *Model) Styles() *StyleFuncsType {
 	if m.styles != nil {
 		return m.styles
 	}
-	return StyleFuncs // Fall back to global for backward compatibility
+	return defaultStyles()
 }
 
 // Version returns the app version string
@@ -283,7 +296,7 @@ func (m *Model) Version() string {
 	if m.appVersion != "" {
 		return m.appVersion
 	}
-	return Version // Fall back to global for backward compatibility
+	return "dev"
 }
 
 // Init initializes the TUI
@@ -362,4 +375,18 @@ func commandDebounceCmd() tea.Cmd {
 	return tea.Tick(50*time.Millisecond, func(t time.Time) tea.Msg {
 		return CommandDebounceMsg{}
 	})
+}
+
+func defaultConfig() *ConfigType {
+	cfg := &ConfigType{}
+	cfg.Display.CheckSymbol = "x"
+	cfg.Display.SelectMarker = "➜"
+	cfg.Display.MaxVisible = 10
+	cfg.Defaults.WordWrap = true
+	return cfg
+}
+
+func defaultStyles() *StyleFuncsType {
+	plain := func(s string) string { return s }
+	return &StyleFuncsType{Magenta: plain, Cyan: plain, Dim: plain, Green: plain, Yellow: plain, Code: plain, Tag: plain, PriorityHigh: plain, PriorityMedium: plain, PriorityLow: plain, DueUrgent: plain, DueSoon: plain, DueFuture: plain}
 }

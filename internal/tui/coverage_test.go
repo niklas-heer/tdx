@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/niklas-heer/tdx/internal/editor"
 	"strings"
 	"testing"
 
@@ -319,12 +320,12 @@ func TestGetTodoSections_NoHeadings(t *testing.T) {
 	}
 	headings := []markdown.Heading{}
 
-	sections := getTodoSections(todos, headings)
+	sections := editor.Sections(todos, headings)
 	if len(sections) != 1 {
 		t.Fatalf("Expected 1 section, got %d", len(sections))
 	}
-	if sections[0].startIndex != 0 || sections[0].endIndex != 3 {
-		t.Errorf("Section = {%d, %d}, want {0, 3}", sections[0].startIndex, sections[0].endIndex)
+	if sections[0].Start != 0 || sections[0].End != 3 {
+		t.Errorf("Section = {%d, %d}, want {0, 3}", sections[0].Start, sections[0].End)
 	}
 }
 
@@ -340,17 +341,17 @@ func TestGetTodoSections_WithHeadings(t *testing.T) {
 		{Text: "Section B", BeforeTodoIndex: 2},
 	}
 
-	sections := getTodoSections(todos, headings)
+	sections := editor.Sections(todos, headings)
 	if len(sections) != 2 {
 		t.Fatalf("Expected 2 sections, got %d", len(sections))
 	}
 	// Section A: todos 0-1
-	if sections[0].startIndex != 0 || sections[0].endIndex != 2 {
-		t.Errorf("Section 0 = {%d, %d}, want {0, 2}", sections[0].startIndex, sections[0].endIndex)
+	if sections[0].Start != 0 || sections[0].End != 2 {
+		t.Errorf("Section 0 = {%d, %d}, want {0, 2}", sections[0].Start, sections[0].End)
 	}
 	// Section B: todos 2-3
-	if sections[1].startIndex != 2 || sections[1].endIndex != 4 {
-		t.Errorf("Section 1 = {%d, %d}, want {2, 4}", sections[1].startIndex, sections[1].endIndex)
+	if sections[1].Start != 2 || sections[1].End != 4 {
+		t.Errorf("Section 1 = {%d, %d}, want {2, 4}", sections[1].Start, sections[1].End)
 	}
 }
 
@@ -358,7 +359,7 @@ func TestGetTodoSections_EmptyTodos(t *testing.T) {
 	todos := []markdown.Todo{}
 	headings := []markdown.Heading{{Text: "Heading", BeforeTodoIndex: 0}}
 
-	sections := getTodoSections(todos, headings)
+	sections := editor.Sections(todos, headings)
 	if sections != nil {
 		t.Errorf("Expected nil, got %v", sections)
 	}
@@ -377,7 +378,7 @@ func TestSortTodosInSections(t *testing.T) {
 	}
 
 	// Sort by priority within sections
-	sortTodosInSections(todos, headings, func(slice []markdown.Todo) {
+	editor.SortTodosInSections(todos, headings, func(slice []markdown.Todo) {
 		// Simple bubble sort by priority
 		for i := 0; i < len(slice); i++ {
 			for j := i + 1; j < len(slice); j++ {

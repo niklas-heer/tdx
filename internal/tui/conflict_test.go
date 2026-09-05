@@ -119,10 +119,10 @@ func TestExternalReloadRetainsReadHookErrorAndDiskModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	originalHook := markdown.ReadHook
+	originalHook := m.Config().Store.OnRead
 	hookErr := errors.New("version capture failed")
-	markdown.ReadHook = func(string, string) error { return hookErr }
-	t.Cleanup(func() { markdown.ReadHook = originalHook })
+	m.Config().Store.OnRead = func(string, string) error { return hookErr }
+	t.Cleanup(func() { m.Config().Store.OnRead = originalHook })
 
 	cmd := m.checkAndReloadFile()
 	msg := cmd()

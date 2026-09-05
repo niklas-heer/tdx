@@ -222,10 +222,10 @@ func TestRestoreSelectedVersion_PostCommitFailureReloadsCommittedContent(t *test
 	m.VersionsConfirmMode = true
 	m.VersionsList = []VersionInfo{{ID: 1}}
 
-	originalHook := markdown.WriteHook
+	originalHook := m.Config().Store.OnWrite
 	hookErr := errors.New("version capture failed")
-	markdown.WriteHook = func(string, string) error { return hookErr }
-	t.Cleanup(func() { markdown.WriteHook = originalHook })
+	m.Config().Store.OnWrite = func(string, string) error { return hookErr }
+	t.Cleanup(func() { m.Config().Store.OnWrite = originalHook })
 
 	result, _ := m.restoreSelectedVersion()
 	restored := result.(Model)

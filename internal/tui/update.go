@@ -13,14 +13,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/config"
+	"github.com/niklas-heer/tdx/internal/editor"
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/niklas-heer/tdx/internal/util"
-)
-
-// Config and styles injected from main - using any to avoid syntax issues
-var (
-	AppConfig any
-	Styles    any
 )
 
 // FileChangedMsg is sent when the file changes on disk
@@ -220,8 +215,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "space", "enter":
 		if len(m.FileModel.Todos) > 0 {
 			m.saveHistory()
-			todo := m.FileModel.Todos[m.SelectedIndex]
-			_ = m.FileModel.UpdateTodoItem(m.SelectedIndex, todo.Text, !todo.Checked)
+			m.Err = m.applyAction(editor.Action{Kind: editor.Toggle, Index: m.SelectedIndex})
 			m.writeIfPersist()
 			// Adjust selection if item is now hidden by any filter
 			if !m.isTodoVisible(m.SelectedIndex) {
@@ -277,10 +271,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "u":
-		if m.History != nil {
-			m.FileModel.RestoreContent(m.History)
+		if m.history.Undo(&m.FileModel) {
 			m.clearSections()
-			m.popHistory()
 			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 			m.writeIfPersist()
@@ -301,7 +293,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "r":
 		// Load and display recent files
-		if recentFiles, err := config.LoadRecentFiles(); err == nil {
+		if recentFiles, err := m.Config().Recent.Load(); err == nil {
 			recentFiles.SortByScore()
 			m.RecentFiles = recentFiles.Files
 			m.RecentFilesCursor = 0
@@ -386,7 +378,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Indent: make current todo a child of its previous sibling
 		if len(m.FileModel.Todos) > 0 && !m.ReadOnly {
 			m.saveHistory()
-			if err := m.FileModel.IndentTodoItem(m.SelectedIndex); err == nil {
+			if err := m.applyAction(editor.Action{Kind: editor.Indent, Index: m.SelectedIndex}); err == nil {
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 			}
@@ -397,7 +389,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Outdent: move current todo up one level in hierarchy
 		if len(m.FileModel.Todos) > 0 && !m.ReadOnly {
 			m.saveHistory()
-			if err := m.FileModel.OutdentTodoItem(m.SelectedIndex); err == nil {
+			if err := m.applyAction(editor.Action{Kind: editor.Outdent, Index: m.SelectedIndex}); err == nil {
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 			}
@@ -446,8 +438,7 @@ func (m Model) handleInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.InputMode = false
 		} else if m.EditMode {
 			if m.InputBuffer != "" {
-				todo := m.FileModel.Todos[m.SelectedIndex]
-				_ = m.FileModel.UpdateTodoItem(m.SelectedIndex, m.InputBuffer, todo.Checked)
+				m.Err = m.applyAction(editor.Action{Kind: editor.Edit, Index: m.SelectedIndex, Text: m.InputBuffer})
 				m.InvalidateDocumentTree() // Text change affects document tree
 				m.RefreshAvailableTags()   // Edit may add or remove tags
 				m.writeIfPersist()
@@ -458,9 +449,7 @@ func (m Model) handleInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.InputMode = false
 		m.EditMode = false
-		if m.History != nil {
-			m.FileModel.RestoreContent(m.History)
-			m.popHistory()
+		if m.history.Undo(&m.FileModel) {
 			m.InvalidateHeadingsCache()
 		}
 
@@ -570,7 +559,7 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			fromIndex, targetIndex, insertAfter := tree.MoveDown()
 			if fromIndex != -1 && targetIndex != -1 {
 				// Move the todo via AST to achieve the visual position
-				if err := m.FileModel.MoveTodoItemToPosition(fromIndex, targetIndex, insertAfter); err == nil {
+				if err := m.applyAction(editor.Action{Kind: editor.MoveToPosition, Index: fromIndex, Target: targetIndex, InsertAfter: insertAfter}); err == nil {
 					// Rebuild tree and headings from updated AST
 					m.InvalidateHeadingsCache() // Heading positions may have changed
 					m.InvalidateDocumentTree()
@@ -587,7 +576,7 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			// No filters: simple insertion move
 			if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-				if err := m.FileModel.MoveTodoItem(m.SelectedIndex, m.SelectedIndex+1); err == nil {
+				if err := m.applyAction(editor.Action{Kind: editor.Move, Index: m.SelectedIndex, Target: m.SelectedIndex + 1}); err == nil {
 					m.SelectedIndex++
 				}
 			}
@@ -608,7 +597,7 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			fromIndex, targetIndex, insertAfter := tree.MoveUp()
 			if fromIndex != -1 && targetIndex != -1 {
 				// Move the todo via AST to achieve the visual position
-				if err := m.FileModel.MoveTodoItemToPosition(fromIndex, targetIndex, insertAfter); err == nil {
+				if err := m.applyAction(editor.Action{Kind: editor.MoveToPosition, Index: fromIndex, Target: targetIndex, InsertAfter: insertAfter}); err == nil {
 					// Rebuild tree and headings from updated AST
 					m.InvalidateHeadingsCache() // Heading positions may have changed
 					m.InvalidateDocumentTree()
@@ -625,7 +614,7 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		} else {
 			// No filters: simple insertion move
 			if m.SelectedIndex > 0 {
-				if err := m.FileModel.MoveTodoItem(m.SelectedIndex, m.SelectedIndex-1); err == nil {
+				if err := m.applyAction(editor.Action{Kind: editor.Move, Index: m.SelectedIndex, Target: m.SelectedIndex - 1}); err == nil {
 					m.SelectedIndex--
 				}
 			}
@@ -636,9 +625,7 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.MoveMode = false
 
 	case "esc":
-		if m.History != nil {
-			m.FileModel.RestoreContent(m.History)
-			m.popHistory()
+		if m.history.Undo(&m.FileModel) {
 			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 			m.InvalidateHeadingsCache()
@@ -658,6 +645,15 @@ func (m Model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, searchDebounceCmd()
 	}
 	key := msg.String()
+
+	// Selection must use the current query even when its debounce timer is pending.
+	if m.searchPending {
+		switch key {
+		case "enter", "down", "up", "ctrl+n", "ctrl+j", "ctrl+p", "ctrl+k":
+			m.updateSearchResults()
+			m.searchPending = false
+		}
+	}
 
 	switch key {
 	case "enter":
@@ -931,6 +927,15 @@ func (m Model) handleCommandKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	key := msg.String()
 
+	// Selection must use the current query even when its debounce timer is pending.
+	if m.searchPending {
+		switch key {
+		case "enter", "tab", "down", "up", "ctrl+n", "ctrl+j", "ctrl+p", "ctrl+k":
+			m.updateFilteredCommands()
+			m.searchPending = false
+		}
+	}
+
 	switch key {
 	case "enter":
 		// Execute current command
@@ -999,41 +1004,26 @@ func (m Model) handleCommandKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // Helper functions
 
-func (m *Model) popHistory() {
-	m.History = nil
-	if n := len(m.UndoStack); n > 0 {
-		m.History = m.UndoStack[n-1]
-		m.UndoStack = m.UndoStack[:n-1]
-	}
-}
+func (m *Model) saveHistory() { m.history.Push(&m.FileModel) }
 
-func (m *Model) saveHistory() {
-	if m.History != nil {
-		m.UndoStack = append(m.UndoStack, m.History)
-	}
-	if len(m.UndoStack) > 99 {
-		m.UndoStack = m.UndoStack[len(m.UndoStack)-99:]
-	}
-	m.History = m.FileModel.Clone()
+func (m *Model) applyAction(action editor.Action) error {
+	_, err := editor.Apply(&m.FileModel, action)
+	return err
 }
 
 func (m *Model) addNewTodo() {
+	action := editor.Action{Kind: editor.Add, Text: m.InputBuffer}
 	if m.SectionFocus > 0 && (!m.InsertAfterCursor || !m.isTodoVisible(m.SelectedIndex)) {
-		index, err := m.FileModel.AddTodoInSection(m.SectionFocus-1, m.InputBuffer)
-		if err != nil {
-			m.Err = err
-			return
-		}
-		m.SelectedIndex = index
+		action.Kind, action.Index = editor.AddInSection, m.SectionFocus-1
 	} else if m.InsertAfterCursor && len(m.FileModel.Todos) > 0 {
-		// Insert after current cursor position
-		newIndex := m.FileModel.InsertTodoItemAfter(m.SelectedIndex, m.InputBuffer, false)
-		m.SelectedIndex = newIndex
-	} else {
-		// Append to end of file (also used when list is empty)
-		m.FileModel.AddTodoItem(m.InputBuffer, false)
-		m.SelectedIndex = len(m.FileModel.Todos) - 1
+		action.Kind, action.Index = editor.Insert, m.SelectedIndex
 	}
+	index, err := editor.Apply(&m.FileModel, action)
+	if err != nil {
+		m.Err = err
+		return
+	}
+	m.SelectedIndex = index
 	m.InvalidateHeadingsCache() // New todo may affect heading positions
 	m.InvalidateDocumentTree()  // New todo affects document tree
 	m.RefreshAvailableTags()    // New todo may introduce new tags
@@ -1207,7 +1197,10 @@ func (m *Model) deleteCurrent() {
 	}
 
 	// Perform the deletion
-	_ = m.FileModel.DeleteTodoItem(deletedIdx)
+	if err := m.applyAction(editor.Action{Kind: editor.Delete, Index: deletedIdx}); err != nil {
+		m.Err = err
+		return
+	}
 	m.InvalidateHeadingsCache()
 	m.InvalidateDocumentTree()
 	m.RefreshAvailableTags() // Delete may remove tags
@@ -1321,7 +1314,7 @@ func (m *Model) updateFilteredCommands() {
 func (m *Model) writeIfPersist() {
 	if !m.ReadOnly {
 		local := markdown.SerializeMarkdown(&m.FileModel)
-		if err := markdown.WriteFile(m.FilePath, &m.FileModel); err != nil {
+		if err := m.Config().Store.WriteFile(m.FilePath, &m.FileModel); err != nil {
 			m.recordSaveError(err, local)
 			return
 		}
@@ -1342,13 +1335,12 @@ func (m Model) checkAndReloadFile() tea.Cmd {
 	}
 
 	// With no pending local candidate, external disk content is authoritative.
-	diskFM, err := markdown.ReadFile(m.FilePath)
+	diskFM, err := m.Config().Store.ReadFile(m.FilePath)
 	if diskFM == nil {
 		return watchFileChanges()
 	}
 	m.FileModel = *diskFM
-	m.History = nil
-	m.UndoStack = nil
+	m.history.Clear()
 	m.Err = err
 	return func() tea.Msg { return reloadedMsg{model: m} }
 }
@@ -1631,10 +1623,10 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 			selectedFile := filteredFiles[m.RecentFilesCursor]
 
 			// Save current file's cursor position before switching
-			_ = config.SaveRecentFile(m.FilePath, m.SelectedIndex)
+			_ = m.Config().Recent.SaveFile(m.FilePath, m.SelectedIndex)
 
 			// Load the new file
-			fm, err := markdown.ReadFile(selectedFile.Path)
+			fm, err := m.Config().Store.ReadFile(selectedFile.Path)
 			if err != nil {
 				m.Err = err
 				m.RecentFilesMode = false
@@ -1645,13 +1637,12 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 			m.FilePath = selectedFile.Path
 			m.FileModel = *fm
 			m.clearSections()
-			m.History = nil // Clear undo history
-			m.UndoStack = nil
+			m.history.Clear()
 			m.RecentFilesMode = false
 			m.RecentFilesSearch = ""
 
 			// Try to restore cursor position from recent files
-			if recentFiles, err := config.LoadRecentFiles(); err == nil {
+			if recentFiles, err := m.Config().Recent.Load(); err == nil {
 				if savedPos := recentFiles.GetCursorPosition(selectedFile.Path); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
 					m.SelectedIndex = savedPos
 				} else {
@@ -1695,8 +1686,11 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 }
 
 // RunPiped runs the TUI with piped input for testing
-func RunPiped(filePath string, input []byte, readOnly bool) string {
-	fm, _ := markdown.ReadFile(filePath)
+func (runtime Runtime) RunPiped(filePath string, input []byte, readOnly bool) string {
+	fm, err := runtime.store().ReadFile(filePath)
+	if err != nil {
+		return fmt.Sprintf("Error: %v\n", err)
+	}
 
 	// Apply frontmatter settings for showHeadings and maxVisible
 	showHeadings := false
@@ -1713,13 +1707,13 @@ func RunPiped(filePath string, input []byte, readOnly bool) string {
 		}
 	}
 
-	m := New(filePath, fm, readOnly, showHeadings, maxVisible, Config, StyleFuncs, Version)
+	m := New(filePath, fm, readOnly, showHeadings, maxVisible, runtime.Config, runtime.Styles, runtime.Version)
 
 	// Note: FilterDone and WordWrap are now applied in New() from metadata
 	// This ensures cursor positioning happens after filters are applied
 
 	// Try to restore cursor position from recent files (if file content hasn't changed)
-	if recentFiles, err := config.LoadRecentFiles(); err == nil {
+	if recentFiles, err := m.Config().Recent.Load(); err == nil {
 		if savedPos := recentFiles.GetCursorPosition(filePath); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
 			m.SelectedIndex = savedPos
 			// Invalidate tree to ensure correct positioning
@@ -1731,20 +1725,20 @@ func RunPiped(filePath string, input []byte, readOnly bool) string {
 	output := m.View().Content
 
 	// Save cursor position to recent files when exiting
-	_ = config.SaveRecentFile(filePath, m.SelectedIndex)
+	_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
 
 	return ansi.Strip(output)
 }
 
 // Run starts the TUI with Bubbletea
-func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
-	fm, err := markdown.ReadFile(filePath)
+func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
+	fm, err := runtime.store().ReadFile(filePath)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
 
-	// Config defaults are now set via tui.Config from main.go (loaded from config.toml)
+	// Config defaults arrive through the runtime from main.go (loaded from config.toml)
 	// Priority: CLI flags > frontmatter > config.toml defaults
 
 	// Apply frontmatter settings (higher priority than config.toml)
@@ -1760,26 +1754,10 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		}
 	}
 
-	m := New(filePath, fm, readOnly, showHeadings, maxVisible, Config, StyleFuncs, Version)
-
-	// Apply defaults from config.toml (set via tui.Config from main.go)
-	if Config != nil {
-		m.FilterDone = Config.Defaults.FilterDone
-		m.WordWrap = Config.Defaults.WordWrap
-	}
-
-	// Frontmatter overrides config.toml defaults
-	if fm.Metadata != nil {
-		if fm.Metadata.FilterDone != nil {
-			m.FilterDone = *fm.Metadata.FilterDone
-		}
-		if fm.Metadata.WordWrap != nil {
-			m.WordWrap = *fm.Metadata.WordWrap
-		}
-	}
+	m := New(filePath, fm, readOnly, showHeadings, maxVisible, runtime.Config, runtime.Styles, runtime.Version)
 
 	// Try to restore cursor position from recent files (if file content hasn't changed)
-	if recentFiles, err := config.LoadRecentFiles(); err == nil {
+	if recentFiles, err := m.Config().Recent.Load(); err == nil {
 		if savedPos := recentFiles.GetCursorPosition(filePath); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
 			m.SelectedIndex = savedPos
 			// Invalidate tree to ensure correct positioning
@@ -1795,7 +1773,7 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		m.ProcessPipedInput(input)
 		fmt.Print(ansi.Strip(m.View().Content))
 		// Save cursor position to recent files
-		_ = config.SaveRecentFile(filePath, m.SelectedIndex)
+		_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
 		return
 	}
 
@@ -1810,7 +1788,7 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 	// Save cursor position to recent files when exiting
 	if m, ok := finalModel.(Model); ok {
 		// Save with current cursor position
-		_ = config.SaveRecentFile(filePath, m.SelectedIndex)
+		_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
 	}
 }
 
@@ -1893,7 +1871,7 @@ func (m Model) restoreSelectedVersion() (tea.Model, tea.Cmd) {
 	}
 
 	// Restore exact bytes only if the active revision is still current.
-	saveErr := markdown.WriteContent(m.FilePath, content, &m.FileModel)
+	saveErr := m.Config().Store.WriteContent(m.FilePath, content, &m.FileModel)
 	var postCommit *markdown.PostCommitError
 	if saveErr != nil && !errors.As(saveErr, &postCommit) {
 		m.recordSaveError(saveErr, content)
@@ -1903,7 +1881,7 @@ func (m Model) restoreSelectedVersion() (tea.Model, tea.Cmd) {
 	}
 
 	// Reload from disk.
-	reloaded, readErr := markdown.ReadFile(m.FilePath)
+	reloaded, readErr := m.Config().Store.ReadFile(m.FilePath)
 	if reloaded != nil {
 		m.FileModel = *reloaded
 		m.applyFileMetadata()
@@ -1915,4 +1893,11 @@ func (m Model) restoreSelectedVersion() (tea.Model, tea.Cmd) {
 	m.VersionsMode = false
 	m.VersionsConfirmMode = false
 	return m, nil
+}
+
+func (runtime Runtime) store() markdown.Store {
+	if runtime.Config != nil {
+		return runtime.Config.Store
+	}
+	return markdown.Store{}
 }
