@@ -68,7 +68,7 @@ func wireVersioningTUI() {
 
 func commandUsesVersioning(command string, args []string) bool {
 	switch command {
-	case "", "list", "add", "toggle", "edit", "delete", "last":
+	case "", "add", "toggle", "edit", "delete", "last":
 		return true
 	case "recent":
 		return len(args) > 0 && args[0] != "clear"
@@ -78,6 +78,10 @@ func commandUsesVersioning(command string, args []string) bool {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() (exitCode int) {
 	// Load user config
 	appConfig := LoadConfig()
 
@@ -147,58 +151,22 @@ func main() {
 	}
 	tui.ThemeSaveFunc = SaveTheme
 
-	args := os.Args[1:]
-
-	// Determine file path, flags, and command
-	// Use config default file path (can be relative like "todo.md" or absolute like "~/todos.md")
-	filePath := appConfig.Defaults.File
-	var command string
-	var cmdArgs []string
-
-	// Use config defaults - CLI flags override these
-	readOnly := appConfig.Defaults.ReadOnly
-	showHeadings := appConfig.Defaults.ShowHeadings
-	maxVisible := -1 // -1 means use config default (set in TUI)
-
-	// Process arguments
-	var remainingArgs []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "--read-only", "-r":
-			readOnly = true
-		case "--show-headings":
-			showHeadings = true
-		case "--max-visible", "-m":
-			// Get the next argument as the number
-			if i+1 < len(args) {
-				i++
-				if num, err := strconv.Atoi(args[i]); err == nil && num >= 0 {
-					maxVisible = num
-				} else {
-					_, _ = lipgloss.Fprintf(os.Stdout, "Error: --max-visible requires a non-negative integer\n")
-					os.Exit(1)
-				}
-			} else {
-				_, _ = lipgloss.Fprintf(os.Stdout, "Error: --max-visible requires a number argument\n")
-				os.Exit(1)
-			}
-		default:
-			remainingArgs = append(remainingArgs, arg)
-		}
+	opts, err := parseArgs(os.Args[1:], appConfig.Defaults)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+		return 1
 	}
-	args = remainingArgs
-
-	if len(args) > 0 {
-		// Check if first arg is a .md file
-		if strings.HasSuffix(args[0], ".md") {
-			filePath = args[0]
-			args = args[1:]
+	filePath, command, cmdArgs := opts.File, opts.Command, opts.Args
+	readOnly, showHeadings, maxVisible := opts.ReadOnly, opts.ShowHeadings, opts.MaxVisible
+	switch command {
+	case "list", "add", "toggle", "edit", "delete":
+		if err := cmd.ValidateCommand(command, cmdArgs); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
 		}
-
-		if len(args) > 0 {
-			command = args[0]
-			cmdArgs = args[1:]
+		if readOnly && command != "list" {
+			fmt.Fprintln(os.Stderr, "tdx: read-only mode: task editing is disabled")
+			return 1
 		}
 	}
 
@@ -208,11 +176,12 @@ func main() {
 	if commandUsesVersioning(command, cmdArgs) {
 		if err := openVersionStore(appConfig.Versioning.MaxVersions); err != nil {
 			fmt.Fprintf(os.Stderr, "tdx: failed to open version store: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 		defer func() {
 			if err := closeVersionStore(); err != nil {
 				fmt.Fprintf(os.Stderr, "tdx: close version store: %v\n", err)
+				exitCode = 1
 			}
 		}()
 		registerVersioningHooks()
@@ -238,8 +207,16 @@ func main() {
 		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.ReadOnly: %v\n", appConfig.Defaults.ReadOnly)
 		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.FilterDone: %v\n", appConfig.Defaults.FilterDone)
 		_, _ = lipgloss.Fprintf(os.Stdout, "Recent.MaxFiles: %d\n", appConfig.Recent.MaxFiles)
-	case "list", "add", "toggle", "edit", "delete":
-		cmd.HandleCommand(command, cmdArgs, filePath)
+	case "list":
+		if err := cmd.WriteList(os.Stdout, filePath, opts.List); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
+	case "add", "toggle", "edit", "delete":
+		if err := cmd.HandleCommand(command, cmdArgs, filePath); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
 	case "last":
 		handleLastCommand(readOnly, showHeadings, maxVisible)
 	case "recent":
@@ -248,10 +225,10 @@ func main() {
 		// Launch TUI
 		tui.Run(filePath, readOnly, showHeadings, maxVisible)
 	default:
-		_, _ = lipgloss.Fprintf(os.Stdout, "Unknown command: %s\n", command)
-		printHelp()
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "tdx: unknown command: %s (see tdx help)\n", command)
+		return 1
 	}
+	return 0
 }
 
 func printHelp() {
@@ -259,15 +236,23 @@ func printHelp() {
 
 Usage:
   tdx [file.md] [command] [args]
+  tdx --file <path> [command] [args]
 
 Options:
+  -f, --file <path>       Select any file path (including paths without .md)
   -r, --read-only         Don't save changes to disk (read-only mode)
-      --show-headings     Display markdown headings between tasks
+      --show-headings    Display markdown headings between tasks
   -m, --max-visible <N>   Set max visible items (0 = unlimited)
+      --                 Treat remaining arguments as literal text
+
+List options:
+      --json             Emit a JSON array for scripts and editor integrations
+      --status <value>   Filter by all (default), open, or done
+      --tag <tag>        Filter by exact tag; repeat to require every tag
 
 Commands:
   (none)              Launch interactive TUI
-  list                List all todos
+  list                List todos (supports --json, --status, --tag)
   add "text"          Add a new todo
   toggle <index>      Toggle todo completion
   edit <index> "text" Edit todo text
@@ -288,8 +273,17 @@ TUI Controls:
   m                   Move todo
   u                   Undo
   :                   Command palette
+  s / S               Browse sections / show all sections
   ?                   Toggle help
-  Esc                 Quit`, Description)
+  Esc                 Quit
+
+Examples:
+  tdx --file tasks.md list --json --status open --tag backend
+  tdx add -- --read-only
+  tdx --read-only tasks.md list
+
+JSON indexes are one-based positions in the full file, not stable IDs.
+Errors go to stderr and return a nonzero exit code.`, Description)
 	_, _ = lipgloss.Fprintln(os.Stdout, help)
 }
 

@@ -25,7 +25,7 @@ ARTIFACT="tdx-${OS}-${ARCH}"
 [[ "$OS" != "windows" ]] || ARTIFACT+=".exe"
 release_path="latest/download"
 if [[ -n "${TDX_VERSION:-}" ]]; then
-    [[ "$TDX_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'TDX_VERSION must be a release version such as 1.0.0.' >&2; exit 1; }
+    [[ "$TDX_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'TDX_VERSION must be a release version such as 0.13.1.' >&2; exit 1; }
     release_path="download/v${TDX_VERSION#v}"
 fi
 tmp_dir=$(mktemp -d)

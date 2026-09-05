@@ -15,6 +15,28 @@ import (
 var testBinary string
 
 func TestMain(m *testing.M) {
+	os.Exit(testMain(m))
+}
+
+func testMain(m *testing.M) int {
+	// Isolate config directory for tests to avoid race conditions with other packages
+	configDir, err := os.MkdirTemp("", "tdx-test-config")
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = os.RemoveAll(configDir) }()
+	config.SetConfigDirForTesting(configDir)
+
+	if err := os.MkdirAll(filepath.Join(configDir, "tdx"), 0o700); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "tdx", "config.toml"), nil, 0o600); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("XDG_CONFIG_HOME", configDir); err != nil {
+		panic(err)
+	}
+
 	// Initialize config for unit tests
 	appConfig := LoadConfig()
 	styles := NewStyles(appConfig)
@@ -88,21 +110,13 @@ func TestMain(m *testing.M) {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	// Isolate config directory for tests to avoid race conditions with other packages
-	configDir, err := os.MkdirTemp("", "tdx-test-config")
-	if err != nil {
-		panic(err)
-	}
-	defer func() { _ = os.RemoveAll(configDir) }()
-	config.SetConfigDirForTesting(configDir)
-
 	testBinary = filepath.Join(tmpDir, "tdx")
 	buildCmd := exec.Command("go", "build", "-o", testBinary, ".")
-	if err := buildCmd.Run(); err != nil {
-		panic(err)
+	if output, err := buildCmd.CombinedOutput(); err != nil {
+		panic(string(output) + err.Error())
 	}
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // Helper to run CLI command
@@ -138,7 +152,7 @@ func TestCommandUsesVersioning(t *testing.T) {
 		want    bool
 	}{
 		{name: "TUI", want: true},
-		{name: "file command", command: "list", want: true},
+		{name: "list is read-only", command: "list", want: false},
 		{name: "last file", command: "last", want: true},
 		{name: "recent selection", command: "recent", args: []string{"1"}, want: true},
 		{name: "version", command: "--version", want: false},

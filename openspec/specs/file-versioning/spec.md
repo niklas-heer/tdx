@@ -2,10 +2,12 @@
 
 ## Purpose
 Provide automatic, compressed snapshots of markdown files so users can recover earlier content.
+
 ## Requirements
+
 ### Requirement: SQLite-backed version store
 
-The system SHALL maintain a continuous version history for all markdown files opened or modified by
+The system SHALL maintain a continuous version history for all markdown files opened interactively or modified by
 tdx in a **single shared** SQLite database located in the tdx config directory (`GetConfigDir()`).
 
 - The database SHALL be a single file named `versions.sqlite` stored in `GetConfigDir()`.
@@ -51,7 +53,7 @@ tdx in a **single shared** SQLite database located in the tdx config directory (
 - The `Store` SHALL cache the `filePath → file_id` mapping in a `map[string]int64` to avoid
   repeated DB lookups within the same process session.
 - `versioning.DBPath() (string, error)` SHALL return `filepath.Join(getStoreDir(), "versions.sqlite")`.
-- For commands that access a markdown file, `cmd/tdx/main.go` SHALL maintain a **single**
+- For interactive and file-mutating commands, `cmd/tdx/main.go` SHALL maintain a **single**
   `*versioning.Store` (not a per-file map), opened once before file access with
   `defer store.Close()`.
 
@@ -87,6 +89,12 @@ tdx in a **single shared** SQLite database located in the tdx config directory (
 - **AND** the command SHALL work when the config directory is not writable
 
 ---
+
+#### Scenario: Script lists without history
+
+- **WHEN** a script invokes `tdx list`, including JSON and filtered queries
+- **THEN** the application SHALL not open the version store or register versioning hooks
+- **AND** the query SHALL work without a writable configuration directory
 
 ### Requirement: Automatic version capture on file write
 

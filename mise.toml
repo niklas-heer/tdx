@@ -34,11 +34,11 @@ run = './tdx "$@"'
 
 [tasks.test]
 description = "Run all application tests"
-run = "go test ./..."
+run = "bash scripts/test.sh"
 
 [tasks."test:race"]
 description = "Run tests with the race detector"
-run = "go test -race ./..."
+run = "bash scripts/test.sh --race"
 
 [tasks.fmt]
 description = "Format Go source"
@@ -146,3 +146,18 @@ run = './tdx delete "$@"'
 [tasks."show-file"]
 description = "Display todo.md"
 run = "cat todo.md"
+
+[tasks.demo]
+description = "Try tdx with disposable project, config, and history data"
+depends = ["build"]
+run = 'bash scripts/demo.sh "$@"'
+
+[tasks.coverage]
+description = "Run tests and generate coverage reports in dist/coverage"
+run = """
+mkdir -p dist/coverage
+go test -coverprofile=dist/coverage/coverage.out ./...
+go tool cover -func=dist/coverage/coverage.out
+go tool cover -html=dist/coverage/coverage.out -o dist/coverage/index.html
+printf 'Open dist/coverage/index.html in your browser.\n'
+"""

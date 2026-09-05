@@ -93,8 +93,8 @@ The Dagger pipeline SHALL calculate repository test coverage and produce the exi
 - **THEN** GitHub Actions SHALL commit and push the updated badge
 - **AND** the badge commit SHALL not trigger an endless workflow loop
 
-### Requirement: Current major release validation
-The pipeline SHALL validate tdx 1.0.0 using synchronized current Go and tooling versions, including all supported release targets.
+### Requirement: Configured release validation
+The pipeline SHALL validate the version configured in tdx.toml using synchronized Go and tooling versions, including all supported release targets. The project SHALL remain on the 0.x release line until an explicit decision to stabilize 1.0.
 #### Scenario: Build a release candidate
 - **WHEN** release artifacts are built
 - **THEN** all target binaries SHALL embed the version from tdx.toml
