@@ -204,3 +204,34 @@ go test ./internal/markdown -run '^$' -bench BenchmarkLoadedCheckbox -benchmem -
 description = "Verify reviewed release notes offline"
 tools.python = "3.14.7"
 run = "bash scripts/test_release_notes.sh"
+
+[tasks.rust-rewrite]
+description = "Run the experimental Rust CLI/TUI (isolated from production Go)"
+tools.rust = "1.98.1"
+run = 'CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo run --release --locked --manifest-path experiments/rust-rewrite/Cargo.toml -- "$@"'
+
+[tasks."rust-rewrite:check"]
+description = "Check Rust prototype formatting, lint and unit/save regressions"
+tools.rust = "1.98.1"
+run = """
+cargo fmt --manifest-path experiments/rust-rewrite/Cargo.toml --check
+CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo clippy --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-targets -- -D warnings
+CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo test --locked --manifest-path experiments/rust-rewrite/Cargo.toml
+"""
+
+[tasks."rust-rewrite:contracts"]
+description = "Compare Go/Rust CLI fixtures, identical usage traces and basic real-terminal contracts"
+tools.rust = "1.98.1"
+tools.python = "3.14.7"
+run = """
+go build -trimpath -ldflags='-s -w' -o dist/rust-rewrite/tdx-go ./cmd/tdx
+go build -o dist/rust-rewrite/tdx-usage ./cmd/tdx-usage
+CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo build --release --locked --manifest-path experiments/rust-rewrite/Cargo.toml
+python3 experiments/rust-rewrite/contracts.py
+"""
+
+[tasks."rust-rewrite:eval"]
+description = "Measure correctness-gated Rust CLI/TUI rewrite comparison, including fresh builds"
+tools.rust = "1.98.1"
+tools.python = "3.14.7"
+run = 'python3 experiments/rust-rewrite/evaluate.py "$@"'

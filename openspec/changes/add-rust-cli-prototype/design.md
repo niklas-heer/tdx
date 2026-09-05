@@ -1,0 +1,19 @@
+## Context
+The existing parser-only experiment and optimized Go editor already establish that parsing speed alone is insufficient justification for a rewrite. The user approved a runnable CLI prototype and explicitly requested a basic interactive TUI as well.
+
+## Decisions
+- Keep a standalone Cargo package under experiments/rust-rewrite. Production Go, releases and portable CI remain unchanged; explicit mise tasks build, check and evaluate the candidate.
+- Crossterm uses its poll-based `use-dev-tty` backend after the default Mio backend intermittently stalled a key arriving together with resize on this macOS host. Retain repeated immediate resize/toggle/undo PTY regression coverage.
+- Use locked pulldown-cmark, Serde, Ratatui and Crossterm dependencies. Document parsing, editor state, persistence and terminal event handling are separate modules. CLI and TUI use the same Editor.
+- Retain original Markdown and parser offsets. Toggle changes one byte; structural mutations reparse and check task text/state/depth before saving. Reject multiline task queries and structural edits to items with children or additional blocks. This is a conservative subset, not a complete Markdown serializer.
+- Parse frontmatter to honor read-only state without rewriting unknown fields. Extract tags, minimum positive priority and earliest valid due date. Basic inline query behavior follows the tested Go convention; arbitrary inline normalization is not certified.
+- Store the loaded canonical target and optional exact content as the revision. Resolve symlinks, preserve Unix file mode, prepare/sync a same-directory temporary file, acquire the same SHA-256 canonical-path advisory lock as Go, revalidate content and target, atomically replace, and sync the parent directory. Distinguish errors before and after replacement. Refuse writes on unimplemented platforms. Non-cooperating changes after final validation remain outside the guarantee, as in Go.
+- TUI edits save synchronously and retain at most 100 source snapshots. Cancellation does not consume undo. Conflicts keep the local candidate and authoritative disk bytes; explicit reload discards local changes after confirmation. Quitting with unsaved changes requires a second quit. No force-save, watcher, SQLite history, themes, search, moves or full section UI.
+- Use the existing independent CLI trace oracle without changing it. Additional executable fixtures compare queries, exact toggle bytes, invalid input and shared lock rejection. Actual PTYs verify a basic equivalent action set with each interface's keys and check terminal restoration. Do not claim the existing advanced Go PTY history suite passes on Rust.
+- Gate timings on contracts. Alternate implementation order on repeated identical files and retain samples, toolchains, source fingerprint and binary hashes. Read queries have equivalent tested outputs; full writes and TUI saves differ because Go includes history. Terminal timing observes file replacement, not finished rendering or fsync completion.
+
+## Tradeoffs and follow-up gates
+The prototype reparses on mutations and builds list rows on each redraw; neither is a production optimization claim. Source snapshots are simple but memory grows with document size and retained history. A rewrite decision still needs structural Markdown parity, undo/moves/search/sections, robust Unicode cursor editing, history/recovery, configuration, real event-loop/watch behavior, cross-platform fault/race tests and packaging. Measurements on one local host do not establish cross-platform latency or crash durability.
+
+## Rollback
+The experiment has no production integration. Removing its Cargo package, explicit mise tasks and added evaluation documentation restores the previous developer surface without changing Go behavior or user files.
