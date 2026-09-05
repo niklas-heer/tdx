@@ -56,3 +56,15 @@ func (h *History) Cancel(doc *markdown.FileModel) bool {
 	h.pending = nil
 	return true
 }
+
+// CommitIfChanged discards no-op gestures without consuming bounded undo space.
+func (h *History) CommitIfChanged(doc *markdown.FileModel) {
+	if h.pending == nil {
+		return
+	}
+	if markdown.SerializeMarkdown(h.pending) == markdown.SerializeMarkdown(doc) {
+		h.pending = nil
+		return
+	}
+	h.Commit()
+}

@@ -38,13 +38,17 @@ type VersionInfo struct {
 
 // ConfigType holds display configuration
 type ConfigType struct {
-	Recent           config.RecentStore
-	Store            markdown.Store
-	AvailableThemes  []string
-	CurrentThemeName string
-	ThemeApplyFunc   func(string) *StyleFuncsType
-	ThemeSaveFunc    func(string) error
-	Display          struct {
+	ReadOnlyFlag      bool
+	ShowHeadingsFlag  bool
+	MaxVisibleFlag    int
+	HasMaxVisibleFlag bool
+	Recent            config.RecentStore
+	Store             markdown.Store
+	AvailableThemes   []string
+	CurrentThemeName  string
+	ThemeApplyFunc    func(string) *StyleFuncsType
+	ThemeSaveFunc     func(string) error
+	Display           struct {
 		CheckSymbol  string
 		SelectMarker string
 		MaxVisible   int
@@ -255,6 +259,18 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 }
 
 func (m *Model) applyFileMetadata() {
+	defer func() {
+		if m.Config().ReadOnlyFlag {
+			m.ReadOnly = true
+		}
+		if m.Config().ShowHeadingsFlag {
+			m.ShowHeadings = true
+		}
+		if m.Config().HasMaxVisibleFlag {
+			m.MaxVisibleOverride = m.Config().MaxVisibleFlag
+		}
+	}()
+
 	metadata := m.FileModel.Metadata
 	if metadata == nil {
 		return
@@ -393,4 +409,15 @@ func defaultConfig() *ConfigType {
 func defaultStyles() *StyleFuncsType {
 	plain := func(s string) string { return s }
 	return &StyleFuncsType{Magenta: plain, Cyan: plain, Dim: plain, Green: plain, Yellow: plain, Code: plain, Tag: plain, PriorityHigh: plain, PriorityMedium: plain, PriorityLow: plain, DueUrgent: plain, DueSoon: plain, DueFuture: plain}
+}
+
+// Reloading or switching files reapplies defaults, metadata, then explicit flags.
+func (m *Model) resetFileSettings() {
+	m.ReadOnly = m.Config().Defaults.ReadOnly
+	m.ShowHeadings = m.Config().Defaults.ShowHeadings
+	m.MaxVisibleOverride = -1
+	m.FilterDone = m.Config().Defaults.FilterDone
+	m.WordWrap = m.Config().Defaults.WordWrap
+	m.applyFileMetadata()
+	m.clearSections()
 }

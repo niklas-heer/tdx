@@ -35,7 +35,6 @@ func ParseMetadata(content string) (*Metadata, string, error) {
 
 	var metadata Metadata
 	decoder := yaml.NewDecoder(bytes.NewBufferString(yamlContent))
-	decoder.KnownFields(true) // Reject unknown fields to catch typos
 
 	if err := decoder.Decode(&metadata); err != nil {
 		// Return empty metadata but still strip frontmatter to avoid parse issues

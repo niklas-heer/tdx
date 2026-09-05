@@ -126,32 +126,32 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 		buf.WriteString(marker)
 		buf.WriteString(" ")
 
-		// First pass: serialize non-list children (text content)
-		hasNestedList := false
+		// Serialize blocks in document order. Flattening paragraphs before lists
+		// changes which task owns the text and discards the original structure.
+		first := true
+		padding := indent + strings.Repeat(" ", len(marker)+1)
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			if _, isList := child.(*ast.List); isList {
-				hasNestedList = true
-			} else {
-				serializeNode(doc, child, buf, depth)
+			var block bytes.Buffer
+			serializeNode(doc, child, &block, 0)
+			content := strings.TrimRight(block.String(), "\n")
+			if first {
+				buf.WriteString(content)
+				buf.WriteByte('\n')
+				first = false
+				continue
+			}
+			_, nested := child.(*ast.List)
+			if !nested || (child.PreviousSibling() != nil && child.PreviousSibling().Kind() == ast.KindList) {
+				buf.WriteByte('\n')
+			}
+			for _, line := range strings.Split(content, "\n") {
+				buf.WriteString(padding)
+				buf.WriteString(line)
+				buf.WriteByte('\n')
 			}
 		}
-		buf.WriteString("\n")
-
-		// Second pass: serialize nested lists (after the newline)
-		if hasNestedList {
-			for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-				if _, isList := child.(*ast.List); isList {
-					var nested bytes.Buffer
-					serializeNode(doc, child, &nested, 0)
-					padding := indent + strings.Repeat(" ", len(marker)+1)
-					for _, line := range strings.SplitAfter(nested.String(), "\n") {
-						if line != "" {
-							buf.WriteString(padding)
-							buf.WriteString(line)
-						}
-					}
-				}
-			}
+		if first {
+			buf.WriteByte('\n')
 		}
 
 	case *extast.TaskCheckBox:

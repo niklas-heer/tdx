@@ -9,13 +9,15 @@ import (
 )
 
 type cliOptions struct {
-	File         string
-	Command      string
-	Args         []string
-	ReadOnly     bool
-	ShowHeadings bool
-	MaxVisible   int
-	List         cmd.ListOptions
+	File             string
+	Command          string
+	Args             []string
+	ReadOnlyFlag     bool
+	ShowHeadingsFlag bool
+	ReadOnly         bool
+	ShowHeadings     bool
+	MaxVisible       int
+	List             cmd.ListOptions
 }
 
 // parseArgs keeps option parsing separate from configuration, storage, and UI setup.
@@ -79,8 +81,10 @@ func parseArgs(args []string, defaults DefaultsConfig) (cliOptions, error) {
 				switch name {
 				case "--read-only", "-r":
 					opts.ReadOnly = true
+					opts.ReadOnlyFlag = true
 				case "--show-headings":
 					opts.ShowHeadings = true
+					opts.ShowHeadingsFlag = true
 				case "--json":
 					opts.List.JSON, listFlags = true, true
 				}

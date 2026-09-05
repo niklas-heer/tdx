@@ -3,7 +3,6 @@ package editor
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
@@ -104,26 +103,16 @@ func Apply(doc *markdown.FileModel, action Action) (int, error) {
 		}
 		return index, nil
 	case SortDone, SortDue, SortPriority:
-		SortTodosInSections(doc.Todos, doc.GetHeadings(), func(todos []markdown.Todo) {
-			sort.SliceStable(todos, func(i, j int) bool {
-				a, b := todos[i], todos[j]
-				switch action.Kind {
-				case SortDone:
-					return !a.Checked && b.Checked
-				case SortDue:
-					if a.DueDate == nil {
-						return false
-					}
-					return b.DueDate == nil || a.DueDate.Before(*b.DueDate)
-				default:
-					if a.Priority == 0 {
-						return false
-					}
-					return b.Priority == 0 || a.Priority < b.Priority
-				}
-			})
+		doc.SortTodoSubtrees(func(a, b markdown.Todo) bool {
+			switch action.Kind {
+			case SortDone:
+				return !a.Checked && b.Checked
+			case SortDue:
+				return a.DueDate != nil && (b.DueDate == nil || a.DueDate.Before(*b.DueDate))
+			default:
+				return a.Priority != 0 && (b.Priority == 0 || a.Priority < b.Priority)
+			}
 		})
-		markdown.RebuildFileStructure(doc)
 		return index, nil
 	default:
 		return -1, fmt.Errorf("unknown editor action: %q", action.Kind)

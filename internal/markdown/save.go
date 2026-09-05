@@ -287,3 +287,16 @@ func (store Store) writeContent(filePath, content string, expected *fileRevision
 	}
 	return nil
 }
+
+// HasUnsavedContent compares the editable document with its loaded disk revision.
+// It is used to avoid losing read-only checklist edits during watcher reloads.
+func (fm *FileModel) HasUnsavedContent() bool {
+	if !fm.revisionKnown {
+		return false
+	}
+	content := SerializeMarkdown(fm)
+	if !fm.revision.exists {
+		return content != "# Todos\n\n"
+	}
+	return sha256.Sum256([]byte(content)) != fm.revision.hash
+}

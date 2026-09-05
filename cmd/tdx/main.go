@@ -157,13 +157,15 @@ func run() (exitCode int) {
 	}
 	filePath, command, cmdArgs := opts.File, opts.Command, opts.Args
 	readOnly, showHeadings, maxVisible := opts.ReadOnly, opts.ShowHeadings, opts.MaxVisible
+	tuiCfg.ReadOnlyFlag, tuiCfg.ShowHeadingsFlag, tuiCfg.MaxVisibleFlag = opts.ReadOnlyFlag, opts.ShowHeadingsFlag, opts.MaxVisible
+	tuiCfg.HasMaxVisibleFlag = opts.MaxVisible >= 0
 	switch command {
 	case "list", "add", "toggle", "edit", "delete":
 		if err := cmd.ValidateCommand(command, cmdArgs); err != nil {
 			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
 			return 1
 		}
-		if readOnly && command != "list" {
+		if opts.ReadOnlyFlag && command != "list" {
 			fmt.Fprintln(os.Stderr, "tdx: read-only mode: task editing is disabled")
 			return 1
 		}
@@ -171,6 +173,21 @@ func run() (exitCode int) {
 
 	// Resolve file path (expand ~ and make absolute)
 	filePath = resolveFilePath(filePath)
+	if command == "add" || command == "toggle" || command == "edit" || command == "delete" {
+		fm, err := (markdown.Store{}).ReadFile(filePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
+		effectiveReadOnly := readOnly
+		if fm.Metadata != nil && fm.Metadata.ReadOnly != nil {
+			effectiveReadOnly = *fm.Metadata.ReadOnly
+		}
+		if opts.ReadOnlyFlag || effectiveReadOnly {
+			fmt.Fprintln(os.Stderr, "tdx: read-only mode: task editing is disabled")
+			return 1
+		}
+	}
 
 	if commandUsesVersioning(command, cmdArgs) {
 		versions, err := versioning.Open(appConfig.Versioning.MaxVersions)

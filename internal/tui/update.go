@@ -378,10 +378,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		// Indent: make current todo a child of its previous sibling
 		if len(m.FileModel.Todos) > 0 && !m.ReadOnly {
-			m.saveHistory()
+			m.history.Begin(&m.FileModel)
 			if err := m.applyAction(editor.Action{Kind: editor.Indent, Index: m.SelectedIndex}); err == nil {
+				m.history.CommitIfChanged(&m.FileModel)
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
+			} else {
+				m.history.Cancel(&m.FileModel)
 			}
 			// Silently ignore errors (e.g., can't indent first item)
 		}
@@ -389,10 +392,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		// Outdent: move current todo up one level in hierarchy
 		if len(m.FileModel.Todos) > 0 && !m.ReadOnly {
-			m.saveHistory()
+			m.history.Begin(&m.FileModel)
 			if err := m.applyAction(editor.Action{Kind: editor.Outdent, Index: m.SelectedIndex}); err == nil {
+				m.history.CommitIfChanged(&m.FileModel)
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
+			} else {
+				m.history.Cancel(&m.FileModel)
 			}
 			// Silently ignore errors (e.g., can't outdent top-level item)
 		}
@@ -550,84 +556,51 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
-	case "j", "down":
-		if m.hasActiveFilters() || m.ShowHeadings {
-			// Use document tree to calculate visible-list-based movement
-			tree := m.GetDocumentTree()
-			selectedNode := tree.GetSelectedNode()
-			if selectedNode == nil || selectedNode.Type != DocNodeTodo {
-				break
+	case "j", "down", "k", "up":
+		from := m.SelectedIndex
+		if from < 0 || from >= len(m.FileModel.Todos) {
+			break
+		}
+		down := key == "j" || key == "down"
+		target := from - 1
+		if down {
+			target = from + 1
+			for target < len(m.FileModel.Todos) && m.FileModel.Todos[target].Depth > m.FileModel.Todos[from].Depth {
+				target++
 			}
-
-			// Remember the todo text so we can find it after the move
-			movedTodoText := m.FileModel.Todos[selectedNode.TodoIndex].Text
-
-			fromIndex, targetIndex, insertAfter := tree.MoveDown()
-			if fromIndex != -1 && targetIndex != -1 {
-				// Move the todo via AST to achieve the visual position
-				if err := m.applyAction(editor.Action{Kind: editor.MoveToPosition, Index: fromIndex, Target: targetIndex, InsertAfter: insertAfter}); err == nil {
-					// Rebuild tree and headings from updated AST
-					m.InvalidateHeadingsCache() // Heading positions may have changed
-					m.InvalidateDocumentTree()
-
-					// Find where the moved todo ended up by matching text
-					for i, todo := range m.FileModel.Todos {
-						if todo.Text == movedTodoText {
-							m.SelectedIndex = i
-							break
-						}
-					}
-				}
+			for target < len(m.FileModel.Todos) && !m.isTodoVisible(target) {
+				target++
 			}
 		} else {
-			// No filters: simple insertion move
-			if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-				if err := m.applyAction(editor.Action{Kind: editor.Move, Index: m.SelectedIndex, Target: m.SelectedIndex + 1}); err == nil {
-					m.SelectedIndex++
-				}
+			for target >= 0 && !m.isTodoVisible(target) {
+				target--
 			}
 		}
-
-	case "k", "up":
-		if m.hasActiveFilters() || m.ShowHeadings {
-			// Use document tree to calculate visible-list-based movement
-			tree := m.GetDocumentTree()
-			selectedNode := tree.GetSelectedNode()
-			if selectedNode == nil || selectedNode.Type != DocNodeTodo {
+		if target < 0 || target >= len(m.FileModel.Todos) {
+			break
+		}
+		// Track the AST node rather than text: duplicate labels are valid.
+		node, err := m.FileModel.GetAST().FindTodoNode(from)
+		if err != nil {
+			m.Err = err
+			break
+		}
+		if err := m.applyAction(editor.Action{Kind: editor.MoveToPosition, Index: from, Target: target, InsertAfter: down}); err != nil {
+			m.Err = err
+			break
+		}
+		for i := range m.FileModel.Todos {
+			current, err := m.FileModel.GetAST().FindTodoNode(i)
+			if err == nil && current.ListItem == node.ListItem {
+				m.SelectedIndex = i
 				break
 			}
-
-			// Remember the todo text so we can find it after the move
-			movedTodoText := m.FileModel.Todos[selectedNode.TodoIndex].Text
-
-			fromIndex, targetIndex, insertAfter := tree.MoveUp()
-			if fromIndex != -1 && targetIndex != -1 {
-				// Move the todo via AST to achieve the visual position
-				if err := m.applyAction(editor.Action{Kind: editor.MoveToPosition, Index: fromIndex, Target: targetIndex, InsertAfter: insertAfter}); err == nil {
-					// Rebuild tree and headings from updated AST
-					m.InvalidateHeadingsCache() // Heading positions may have changed
-					m.InvalidateDocumentTree()
-
-					// Find where the moved todo ended up by matching text
-					for i, todo := range m.FileModel.Todos {
-						if todo.Text == movedTodoText {
-							m.SelectedIndex = i
-							break
-						}
-					}
-				}
-			}
-		} else {
-			// No filters: simple insertion move
-			if m.SelectedIndex > 0 {
-				if err := m.applyAction(editor.Action{Kind: editor.Move, Index: m.SelectedIndex, Target: m.SelectedIndex - 1}); err == nil {
-					m.SelectedIndex--
-				}
-			}
 		}
+		m.InvalidateHeadingsCache()
+		m.InvalidateDocumentTree()
 
 	case "enter":
-		m.history.Commit()
+		m.history.CommitIfChanged(&m.FileModel)
 		m.writeIfPersist()
 		m.MoveMode = false
 
@@ -745,6 +718,8 @@ func (m Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 			// Close filter mode after selection
 			m.FilterMode = false
+			m.adjustSelectionForFilter()
+			m.InvalidateDocumentTree()
 		}
 
 	case "esc":
@@ -801,6 +776,8 @@ func (m Model) handlePriorityFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 
 			// Close filter mode after selection
 			m.PriorityFilterMode = false
+			m.adjustSelectionForFilter()
+			m.InvalidateDocumentTree()
 		}
 
 	case "esc":
@@ -851,6 +828,8 @@ func (m Model) handleDueFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 			// Close filter mode after selection
 			m.DueFilterMode = false
+			m.adjustSelectionForFilter()
+			m.InvalidateDocumentTree()
 		}
 
 	case "esc":
@@ -1331,7 +1310,7 @@ func (m *Model) writeIfPersist() {
 
 // checkAndReloadFile checks if the file changed and reloads if safe
 func (m Model) checkAndReloadFile() tea.Cmd {
-	if m.ConflictPending || m.InputMode || m.EditMode || m.MoveMode || m.HeadingInput != "" {
+	if m.ConflictPending || m.InputMode || m.EditMode || m.MoveMode || m.VersionsMode || m.HeadingInput != "" || (m.ReadOnly && m.FileModel.HasUnsavedContent()) {
 		// Keep the revision captured before interactive input. Refreshing it here
 		// would let a later Enter overwrite external changes without a conflict.
 		return watchFileChanges() // Continue watching
@@ -1349,6 +1328,7 @@ func (m Model) checkAndReloadFile() tea.Cmd {
 		return watchFileChanges()
 	}
 	m.FileModel = *diskFM
+	m.resetFileSettings()
 	m.RefreshAvailableTags()
 	m.history.Clear()
 	m.Err = err
@@ -1495,6 +1475,9 @@ func byteToKeyMsg(b byte) tea.KeyPressMsg {
 	case 4: // Ctrl+D
 		return tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
 	default:
+		if b > 0 && b <= 26 {
+			return tea.KeyPressMsg{Code: rune(b) + 'a' - 1, Mod: tea.ModCtrl}
+		}
 		if b >= 32 && b < 127 { // Printable ASCII
 			return tea.KeyPressMsg{Code: rune(b), Text: string(b)}
 		}
@@ -1537,10 +1520,13 @@ func (m *Model) ProcessPipedInput(input []byte) {
 				"\x1b[D": tea.KeyLeft, "\x1b[C": tea.KeyRight,
 				"\x1b[A": tea.KeyUp, "\x1b[B": tea.KeyDown,
 				"\x1b[H": tea.KeyHome, "\x1b[F": tea.KeyEnd,
-				"\x1b[3~": tea.KeyDelete,
+				"\x1b[3~": tea.KeyDelete, "\x1b[5~": tea.KeyPgUp, "\x1b[6~": tea.KeyPgDown, "\x1b[Z": tea.KeyTab,
 			} {
 				if strings.HasPrefix(string(input[i:]), sequence) {
 					msg = tea.KeyPressMsg{Code: keyType}
+					if sequence == "\x1b[Z" {
+						msg.Mod = tea.ModShift
+					}
 					i += len(sequence) - 1
 					break
 				}
@@ -1554,7 +1540,7 @@ func (m *Model) ProcessPipedInput(input []byte) {
 
 		// Check for quit in normal mode (q or esc without other modes active)
 		if !m.InputMode && !m.EditMode && !m.SearchMode && !m.CommandMode &&
-			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode && !m.SectionsMode && m.HeadingInput == "" {
+			!m.MoveMode && !m.FilterMode && !m.PriorityFilterMode && !m.DueFilterMode && !m.ThemeMode && !m.VersionsMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode && !m.SectionsMode && m.HeadingInput == "" {
 			if msg.String() == "q" || msg.Code == tea.KeyEsc {
 				return
 			}
@@ -1646,6 +1632,15 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 			// Update model with new file
 			m.FilePath = selectedFile.Path
 			m.FileModel = *fm
+			m.ReadOnly = m.Config().Defaults.ReadOnly
+			m.ShowHeadings = m.Config().Defaults.ShowHeadings
+			m.MaxVisibleOverride = -1
+			m.FilterDone = m.Config().Defaults.FilterDone
+			m.WordWrap = m.Config().Defaults.WordWrap
+			m.applyFileMetadata()
+			m.FilteredTags = nil
+			m.FilteredPriorities = nil
+			m.RefreshAvailableTags()
 			m.clearSections()
 			m.history.Clear()
 			m.RecentFilesMode = false
@@ -1735,7 +1730,7 @@ func (runtime Runtime) RunPiped(filePath string, input []byte, readOnly bool) st
 	output := m.View().Content
 
 	// Save cursor position to recent files when exiting
-	_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
+	_ = m.Config().Recent.SaveFile(m.FilePath, m.SelectedIndex)
 
 	return ansi.Strip(output)
 }
@@ -1783,7 +1778,7 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 		m.ProcessPipedInput(input)
 		fmt.Print(ansi.Strip(m.View().Content))
 		// Save cursor position to recent files
-		_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
+		_ = m.Config().Recent.SaveFile(m.FilePath, m.SelectedIndex)
 		return
 	}
 
@@ -1798,7 +1793,7 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 	// Save cursor position to recent files when exiting
 	if m, ok := finalModel.(Model); ok {
 		// Save with current cursor position
-		_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
+		_ = m.Config().Recent.SaveFile(m.FilePath, m.SelectedIndex)
 	}
 }
 
@@ -1894,7 +1889,7 @@ func (m Model) restoreSelectedVersion() (tea.Model, tea.Cmd) {
 	reloaded, readErr := m.Config().Store.ReadFile(m.FilePath)
 	if reloaded != nil {
 		m.FileModel = *reloaded
-		m.applyFileMetadata()
+		m.resetFileSettings()
 		m.InvalidateHeadingsCache()
 		m.InvalidateDocumentTree()
 	}

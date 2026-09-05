@@ -117,3 +117,12 @@ func BenchmarkWrapText_VeryLong(b *testing.B) {
 		WrapText(text, 60, "    ")
 	}
 }
+
+func TestFuzzyScoreDoesNotMatchPartialUTF8Characters(t *testing.T) {
+	if score := FuzzyScore("é", "ê©"); score != 0 {
+		t.Fatalf("matched bytes from unrelated characters: %d", score)
+	}
+	if score := FuzzyScore("éx", "é z x"); score == 0 {
+		t.Fatal("valid Unicode subsequence rejected")
+	}
+}

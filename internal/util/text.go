@@ -28,15 +28,16 @@ func FuzzyScore(query, text string) int {
 	queryIdx := 0
 	lastMatchIdx := -1
 
-	for i := 0; i < len(text) && queryIdx < len(query); i++ {
-		if text[i] == query[queryIdx] {
+	queryRunes, textRunes := []rune(query), []rune(text)
+	for i := 0; i < len(textRunes) && queryIdx < len(queryRunes); i++ {
+		if textRunes[i] == queryRunes[queryIdx] {
 			score += 10
 			// Bonus for consecutive matches
 			if lastMatchIdx == i-1 {
 				score += 5
 			}
 			// Bonus for matching at word start
-			if i == 0 || text[i-1] == ' ' {
+			if i == 0 || textRunes[i-1] == ' ' {
 				score += 3
 			}
 			lastMatchIdx = i
@@ -45,7 +46,7 @@ func FuzzyScore(query, text string) int {
 	}
 
 	// Only count as match if all query chars were found
-	if queryIdx == len(query) {
+	if queryIdx == len(queryRunes) {
 		return score
 	}
 

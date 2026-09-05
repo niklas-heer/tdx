@@ -430,39 +430,20 @@ func (doc *ASTDocument) DeleteTodo(todoIndex int) (err error) {
 		return fmt.Errorf("list item has no parent")
 	}
 
-	// Find any nested list (children) within this list item
-	var nestedList *ast.List
-	for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
-		if list, ok := child.(*ast.List); ok {
-			nestedList = list
-			break
-		}
-	}
-
-	// If there are children, promote them to the parent level
-	if nestedList != nil {
-		// Collect all children first (we'll insert them after the deleted item's position)
-		var children []*ast.ListItem
-		for child := nestedList.FirstChild(); child != nil; child = child.NextSibling() {
-			if li, ok := child.(*ast.ListItem); ok {
-				children = append(children, li)
+	// Promote every nested list, preserving their order and complete subtrees.
+	var insertAfter ast.Node = listItem
+	for nested := listItem.FirstChild(); nested != nil; {
+		next := nested.NextSibling()
+		if list, ok := nested.(*ast.List); ok {
+			for child := list.FirstChild(); child != nil; {
+				nextChild := child.NextSibling()
+				list.RemoveChild(list, child)
+				parentList.InsertAfter(parentList, insertAfter, child)
+				insertAfter = child
+				child = nextChild
 			}
 		}
-
-		// Remove the nested list from the item being deleted
-		listItem.RemoveChild(listItem, nestedList)
-
-		// Insert children into parent list at the deleted item's position
-		// Insert in forward order, updating insertion point each time
-		var insertAfter ast.Node = listItem
-		for _, child := range children {
-			// Detach from nested list
-			nestedList.RemoveChild(nestedList, child)
-
-			// Insert into parent list after the insertion point
-			parentList.InsertAfter(parentList, insertAfter, child)
-			insertAfter = child // Next child goes after this one
-		}
+		nested = next
 	}
 
 	// Remove the list item itself
@@ -478,36 +459,8 @@ func (doc *ASTDocument) AddTodo(todoText string, checked bool) (err error) {
 			doc.invalidateSource()
 		}
 	}()
-	// Find the last list in the document, or create one
-	var lastList *ast.List
-
-	_ = ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if entering {
-			if list, ok := node.(*ast.List); ok {
-				// Check if this list contains task items
-				hasTaskItems := false
-				for child := list.FirstChild(); child != nil; child = child.NextSibling() {
-					if listItem, ok := child.(*ast.ListItem); ok {
-						// Check if this list item has a checkbox
-						_ = ast.Walk(listItem, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-							if entering && n.Kind() == extast.KindTaskCheckBox {
-								hasTaskItems = true
-								return ast.WalkStop, nil
-							}
-							return ast.WalkContinue, nil
-						})
-						if hasTaskItems {
-							break
-						}
-					}
-				}
-				if hasTaskItems {
-					lastList = list
-				}
-			}
-		}
-		return ast.WalkContinue, nil
-	})
+	// Append at document end; a nested list must never capture a new root task.
+	lastList, _ := doc.AST.LastChild().(*ast.List)
 
 	// If no list found, create one and append to document
 	if lastList == nil {
@@ -666,6 +619,9 @@ func (doc *ASTDocument) MoveTodoToPosition(fromIndex, targetIndex int, insertAft
 		return err
 	}
 
+	if isDescendant(nodeTarget.ListItem, nodeFrom.ListItem) {
+		return fmt.Errorf("cannot move a task into its own subtree")
+	}
 	// Remove from current parent
 	parentFrom := nodeFrom.ListItem.Parent()
 	parentFrom.RemoveChild(parentFrom, nodeFrom.ListItem)
@@ -704,6 +660,9 @@ func (doc *ASTDocument) MoveTodo(fromIndex, toIndex int) (err error) {
 		return err
 	}
 
+	if isDescendant(nodeTo.ListItem, nodeFrom.ListItem) {
+		return fmt.Errorf("cannot move a task into its own subtree")
+	}
 	// Get parents
 	parentFrom := nodeFrom.ListItem.Parent()
 	parentTo := nodeTo.ListItem.Parent()
@@ -940,4 +899,13 @@ func (doc *ASTDocument) SwapTodos(index1, index2 int) (err error) {
 	}
 
 	return nil
+}
+
+func isDescendant(node, ancestor ast.Node) bool {
+	for parent := node.Parent(); parent != nil; parent = parent.Parent() {
+		if parent == ancestor {
+			return true
+		}
+	}
+	return false
 }

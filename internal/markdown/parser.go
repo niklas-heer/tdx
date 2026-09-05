@@ -247,7 +247,13 @@ func (fm *FileModel) AddTodoItem(text string, checked bool) {
 // Returns the index of the newly inserted todo
 func (fm *FileModel) InsertTodoItemAfter(afterIndex int, text string, checked bool) int {
 	if fm.ast != nil {
-		// Use AST for inserting
+		// Resolve the insertion index after the complete selected subtree.
+		result := afterIndex + 1
+		if afterIndex >= 0 && afterIndex < len(fm.Todos) {
+			for result < len(fm.Todos) && fm.Todos[result].Depth > fm.Todos[afterIndex].Depth {
+				result++
+			}
+		}
 		_ = fm.ast.InsertTodoAfter(afterIndex, text, checked)
 		// Re-extract todos to keep cache in sync
 		fm.Todos = fm.ast.ExtractTodos()
@@ -255,7 +261,7 @@ func (fm *FileModel) InsertTodoItemAfter(afterIndex int, text string, checked bo
 		if afterIndex < 0 {
 			return 0
 		}
-		return afterIndex + 1
+		return result
 	}
 	// Legacy fallback - just append
 	fm.AddTodoItem(text, checked)

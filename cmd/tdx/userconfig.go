@@ -507,64 +507,45 @@ func getConfigPath() (string, error) {
 	return filepath.Join(configDir, "config.toml"), nil
 }
 
-// minimalSaveConfig is used for saving config without colors (colors come from theme)
-type minimalSaveConfig struct {
-	Theme struct {
-		Name string `toml:"name"`
-	} `toml:"theme"`
-	Display  *DisplayConfig  `toml:"display,omitempty"`
-	Defaults *DefaultsConfig `toml:"defaults,omitempty"`
-	Recent   *RecentConfig   `toml:"recent,omitempty"`
-}
-
-// SaveTheme saves the theme name to the config file
-// Only saves the theme name, not colors, so the builtin theme colors are used
+// SaveTheme updates the theme while retaining every other configuration key.
 func SaveTheme(themeName string) error {
 	configPath, err := getConfigPath()
 	if err != nil {
 		return err
 	}
-
-	// Load existing config to preserve other settings
-	existingConfig := &UserConfig{}
+	values := map[string]interface{}{}
 	if _, err := os.Stat(configPath); err == nil {
-		// File exists, load it to preserve settings
-		_, _ = toml.DecodeFile(configPath, existingConfig)
+		if _, err := toml.DecodeFile(configPath, &values); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
-
-	// Create config with theme name and preserve other settings
-	minConfig := &minimalSaveConfig{}
-	minConfig.Theme.Name = themeName
-
-	// Preserve display settings if they were customized
-	defaults := DefaultConfig()
-	if existingConfig.Display.CheckSymbol != "" ||
-		existingConfig.Display.SelectMarker != "" {
-		minConfig.Display = &existingConfig.Display
+	theme, ok := values["theme"].(map[string]interface{})
+	if !ok {
+		theme = map[string]interface{}{}
+		values["theme"] = theme
 	}
-
-	// Preserve defaults settings if any were customized
-	if existingConfig.Defaults.File != defaults.Defaults.File ||
-		existingConfig.Defaults.MaxVisible != defaults.Defaults.MaxVisible ||
-		existingConfig.Defaults.WordWrap != defaults.Defaults.WordWrap ||
-		existingConfig.Defaults.ShowHeadings != defaults.Defaults.ShowHeadings ||
-		existingConfig.Defaults.ReadOnly != defaults.Defaults.ReadOnly ||
-		existingConfig.Defaults.FilterDone != defaults.Defaults.FilterDone {
-		minConfig.Defaults = &existingConfig.Defaults
-	}
-
-	// Preserve recent settings if customized
-	if existingConfig.Recent.MaxFiles != 0 && existingConfig.Recent.MaxFiles != defaults.Recent.MaxFiles {
-		minConfig.Recent = &existingConfig.Recent
-	}
-
-	// Write config to file
-	f, err := os.Create(configPath)
+	theme["name"] = themeName
+	f, err := os.CreateTemp(filepath.Dir(configPath), ".config-*")
 	if err != nil {
 		return err
 	}
+	defer func() { _ = os.Remove(f.Name()) }()
 	defer func() { _ = f.Close() }()
-
-	encoder := toml.NewEncoder(f)
-	return encoder.Encode(minConfig)
+	if info, err := os.Stat(configPath); err == nil {
+		if err := f.Chmod(info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	if err := toml.NewEncoder(f).Encode(values); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), configPath)
 }

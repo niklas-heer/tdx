@@ -130,9 +130,9 @@ unknown-field: value
 ---
 # Todos
 `
-	_, _, err := markdown.ParseMetadata(content)
-	if err == nil {
-		t.Errorf("expected error for unknown field")
+	metadata, _, err := markdown.ParseMetadata(content)
+	if err != nil || metadata.ReadOnly == nil || *metadata.ReadOnly {
+		t.Errorf("unknown keys must preserve recognized settings: %v", err)
 	}
 }
 

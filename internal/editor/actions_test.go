@@ -116,3 +116,57 @@ func BenchmarkDocumentToggle(b *testing.B) {
 		})
 	}
 }
+
+func TestParitySubtreesAndBlockOwnership(t *testing.T) {
+	source := "# Work\n\n- [x] parent !p3\n  - [ ] child !p2\n\n  paragraph retained\n\n  1. [ ] other child\n- [ ] sibling !p1\n\n<div>retained</div>\n"
+	t.Run("sort keeps children and paragraphs", func(t *testing.T) {
+		doc := markdown.ParseMarkdown(source)
+		if _, err := Apply(doc, Action{Kind: SortPriority}); err != nil {
+			t.Fatal(err)
+		}
+		after := markdown.ParseMarkdown(markdown.SerializeMarkdown(doc))
+		if len(after.Todos) != 4 || after.Todos[0].Text != "sibling !p1" || after.Todos[2].ParentIndex != 1 || after.Todos[3].ParentIndex != 1 {
+			t.Fatalf("corrupted subtrees: %+v", after.Todos)
+		}
+		if !strings.Contains(markdown.SerializeMarkdown(doc), "\n  paragraph retained\n") {
+			t.Fatal("paragraph moved or flattened")
+		}
+	})
+	t.Run("delete promotes every child list", func(t *testing.T) {
+		doc := markdown.ParseMarkdown(source)
+		if _, err := Apply(doc, Action{Kind: Delete, Index: 0}); err != nil {
+			t.Fatal(err)
+		}
+		if len(doc.Todos) != 3 || doc.Todos[0].Text != "child !p2" || doc.Todos[1].Text != "other child" || doc.Todos[1].Depth != 0 {
+			t.Fatalf("lost children: %+v", doc.Todos)
+		}
+	})
+	t.Run("moving into descendant rejects without mutation", func(t *testing.T) {
+		for _, kind := range []Kind{Move, MoveToPosition} {
+			doc := markdown.ParseMarkdown(source)
+			if _, err := Apply(doc, Action{Kind: kind, Index: 0, Target: 1}); err == nil {
+				t.Fatal("accepted cyclic move")
+			}
+			if got := markdown.SerializeMarkdown(doc); got != source {
+				t.Fatalf("rejection changed source: %s", got)
+			}
+		}
+	})
+	t.Run("insert selects sibling after subtree", func(t *testing.T) {
+		doc := markdown.ParseMarkdown(source)
+		index, err := Apply(doc, Action{Kind: Insert, Index: 0, Text: "inserted"})
+		if err != nil || index != 3 || doc.Todos[index].Text != "inserted" {
+			t.Fatalf("index %d: %v %+v", index, err, doc.Todos)
+		}
+	})
+	t.Run("add appends at root after trailing content", func(t *testing.T) {
+		doc := markdown.ParseMarkdown(source)
+		if _, err := Apply(doc, Action{Kind: Add, Text: "appended"}); err != nil {
+			t.Fatal(err)
+		}
+		after := markdown.SerializeMarkdown(doc)
+		if strings.Index(after, "appended") < strings.Index(after, "<div>retained</div>") || doc.Todos[len(doc.Todos)-1].Depth != 0 {
+			t.Fatal(after)
+		}
+	})
+}
