@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -25,7 +25,7 @@ func TestEmptyFile_PressN_ShowsInputField(t *testing.T) {
 	}
 
 	// Press N to add new task at end
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'N'})}
 	result, _ := m.Update(msg)
 	m = result.(Model)
 
@@ -40,7 +40,7 @@ func TestEmptyFile_PressN_ShowsInputField(t *testing.T) {
 	}
 
 	// Render the view and check that input field is visible
-	view := m.View()
+	view := m.View().Content
 
 	// The view should contain the input field indicator (checkbox for new task)
 	// When in input mode, we should see "[ ]" for the new task being entered
@@ -58,7 +58,7 @@ func TestEmptyFile_PressSmallN_ShowsInputField(t *testing.T) {
 	m := testEmptyModel()
 
 	// Press n to add new task after cursor
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'n'})}
 	result, _ := m.Update(msg)
 	m = result.(Model)
 
@@ -73,7 +73,7 @@ func TestEmptyFile_PressSmallN_ShowsInputField(t *testing.T) {
 	}
 
 	// Render the view and check that input field is visible
-	view := m.View()
+	view := m.View().Content
 
 	// The view should contain the input field
 	if !strings.Contains(view, "[ ]") {
@@ -85,13 +85,13 @@ func TestEmptyFile_InputMode_CanTypeAndSubmit(t *testing.T) {
 	m := testEmptyModel()
 
 	// Press N to add new task
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'N'})}
 	result, _ := m.Update(msg)
 	m = result.(Model)
 
 	// Type some text
 	for _, r := range "My first task" {
-		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		msg := tea.KeyPressMsg{Text: string([]rune{r})}
 		result, _ = m.Update(msg)
 		m = result.(Model)
 	}
@@ -102,7 +102,7 @@ func TestEmptyFile_InputMode_CanTypeAndSubmit(t *testing.T) {
 	}
 
 	// Press Enter to submit
-	enterMsg := tea.KeyMsg{Type: tea.KeyEnter}
+	enterMsg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	result, _ = m.Update(enterMsg)
 	m = result.(Model)
 

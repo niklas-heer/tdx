@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -13,7 +13,7 @@ func TestHandleKey_Navigation(t *testing.T) {
 	m := testModel([]string{"Task 1", "Task 2", "Task 3"})
 
 	// Move down with j
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -30,7 +30,7 @@ func TestHandleKey_Navigation(t *testing.T) {
 	}
 
 	// Move up with k
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	msg = tea.KeyPressMsg{Text: string([]rune{'k'})}
 	result, _ = m.handleKey(msg)
 	m = result.(Model)
 
@@ -43,7 +43,7 @@ func TestHandleKey_NavigationBounds(t *testing.T) {
 	m := testModel([]string{"Task 1", "Task 2"})
 
 	// Try to move up from first item
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'k'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -55,7 +55,7 @@ func TestHandleKey_NavigationBounds(t *testing.T) {
 	m.SelectedIndex = 1
 
 	// Try to move down from last item
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg = tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ = m.handleKey(msg)
 	m = result.(Model)
 
@@ -68,7 +68,7 @@ func TestHandleKey_NavigationWithCount(t *testing.T) {
 	m := testModel([]string{"Task 1", "Task 2", "Task 3", "Task 4", "Task 5"})
 
 	// Type '3' then 'j' to move down 3
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'3'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -76,7 +76,7 @@ func TestHandleKey_NavigationWithCount(t *testing.T) {
 		t.Errorf("NumberBuffer = %q, want %q", m.NumberBuffer, "3")
 	}
 
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg = tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ = m.handleKey(msg)
 	m = result.(Model)
 
@@ -92,7 +92,7 @@ func TestHandleKey_NavigationWithCount(t *testing.T) {
 func TestHandleKey_EnterInputMode(t *testing.T) {
 	m := testModel([]string{"Task 1"})
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'n'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -107,7 +107,7 @@ func TestHandleKey_EnterInputMode(t *testing.T) {
 func TestHandleKey_EnterEditMode(t *testing.T) {
 	m := testModel([]string{"Task 1"})
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'e'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -125,7 +125,7 @@ func TestHandleKey_EnterEditMode(t *testing.T) {
 func TestHandleKey_EnterMoveMode(t *testing.T) {
 	m := testModel([]string{"Task 1", "Task 2"})
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'m'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -137,7 +137,7 @@ func TestHandleKey_EnterMoveMode(t *testing.T) {
 func TestHandleKey_EnterSearchMode(t *testing.T) {
 	m := testModel([]string{"Task 1", "Task 2"})
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'/'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -152,7 +152,7 @@ func TestHandleKey_EnterSearchMode(t *testing.T) {
 func TestHandleKey_EnterCommandMode(t *testing.T) {
 	m := testModel([]string{"Task 1"})
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{':'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -167,7 +167,7 @@ func TestHandleKey_EnterCommandMode(t *testing.T) {
 func TestHandleKey_ToggleHelp(t *testing.T) {
 	m := testModel([]string{"Task 1"})
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'?'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -189,7 +189,7 @@ func TestHandleKey_VimGG(t *testing.T) {
 	m.SelectedIndex = 2
 
 	// Press 'g' once
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'g'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -217,7 +217,7 @@ func TestHandleKey_VimG(t *testing.T) {
 	m.SelectedIndex = 2
 
 	// Press 'G' to go to end
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'G'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -231,7 +231,7 @@ func TestHandleKey_ErrorDismissal(t *testing.T) {
 	m.Err = errors.New("test error")
 
 	// Any key should dismiss error
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'x'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -246,7 +246,7 @@ func TestHandleInputKey_InsertCharacter(t *testing.T) {
 	m.InputBuffer = ""
 	m.CursorPos = 0
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'a'})}
 	result, _ := m.handleInputKey(msg)
 	m = result.(Model)
 
@@ -265,7 +265,7 @@ func TestHandleInputKey_InsertUmlaut(t *testing.T) {
 	m.CursorPos = 0
 
 	for _, r := range "Käse" {
-		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		msg := tea.KeyPressMsg{Text: string([]rune{r})}
 		result, _ := m.handleInputKey(msg)
 		m = result.(Model)
 	}
@@ -284,7 +284,7 @@ func TestHandleInputKey_BackspaceUmlaut(t *testing.T) {
 	m.InputBuffer = "Kä"
 	m.CursorPos = len("Kä")
 
-	msg := tea.KeyMsg{Type: tea.KeyBackspace}
+	msg := tea.KeyPressMsg{Code: tea.KeyBackspace}
 	result, _ := m.handleInputKey(msg)
 	m = result.(Model)
 
@@ -306,7 +306,7 @@ func TestHandleInputKey_CursorMovementUmlaut(t *testing.T) {
 	// right after 'K', i.e. inside the byte range of 'ä' if moved by
 	// byte instead of by rune.
 	for range 3 {
-		msg := tea.KeyMsg{Type: tea.KeyLeft}
+		msg := tea.KeyPressMsg{Code: tea.KeyLeft}
 		result, _ := m.handleInputKey(msg)
 		m = result.(Model)
 	}
@@ -317,7 +317,7 @@ func TestHandleInputKey_CursorMovementUmlaut(t *testing.T) {
 		t.Errorf("CursorPos = %d, want %d (right after 'K')", m.CursorPos, len("K"))
 	}
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'X'})}
 	result, _ := m.handleInputKey(msg)
 	m = result.(Model)
 	if m.InputBuffer != "KXäse" {
@@ -331,7 +331,7 @@ func TestHandleSearchKey_InsertUmlaut(t *testing.T) {
 	m.InputBuffer = ""
 	m.SearchResults = []int{0, 1}
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'ä'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'ä'})}
 	result, _ := m.handleSearchKey(msg)
 	m = result.(Model)
 
@@ -345,7 +345,7 @@ func TestHandleCommandKey_InsertUmlaut(t *testing.T) {
 	m.CommandMode = true
 	m.FilteredCmds = []int{0, 1, 2, 3}
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'ü'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'ü'})}
 	result, _ := m.handleCommandKey(msg)
 	m = result.(Model)
 
@@ -360,7 +360,7 @@ func TestHandleInputKey_Backspace(t *testing.T) {
 	m.InputBuffer = "test"
 	m.CursorPos = 4
 
-	msg := tea.KeyMsg{Type: tea.KeyBackspace}
+	msg := tea.KeyPressMsg{Code: tea.KeyBackspace}
 	result, _ := m.handleInputKey(msg)
 	m = result.(Model)
 
@@ -379,7 +379,7 @@ func TestHandleInputKey_CursorMovement(t *testing.T) {
 	m.CursorPos = 4
 
 	// Move left
-	msg := tea.KeyMsg{Type: tea.KeyLeft}
+	msg := tea.KeyPressMsg{Code: tea.KeyLeft}
 	result, _ := m.handleInputKey(msg)
 	m = result.(Model)
 
@@ -388,7 +388,7 @@ func TestHandleInputKey_CursorMovement(t *testing.T) {
 	}
 
 	// Move right
-	msg = tea.KeyMsg{Type: tea.KeyRight}
+	msg = tea.KeyPressMsg{Code: tea.KeyRight}
 	result, _ = m.handleInputKey(msg)
 	m = result.(Model)
 
@@ -397,7 +397,7 @@ func TestHandleInputKey_CursorMovement(t *testing.T) {
 	}
 
 	// Home
-	msg = tea.KeyMsg{Type: tea.KeyHome}
+	msg = tea.KeyPressMsg{Code: tea.KeyHome}
 	result, _ = m.handleInputKey(msg)
 	m = result.(Model)
 
@@ -406,7 +406,7 @@ func TestHandleInputKey_CursorMovement(t *testing.T) {
 	}
 
 	// End
-	msg = tea.KeyMsg{Type: tea.KeyEnd}
+	msg = tea.KeyPressMsg{Code: tea.KeyEnd}
 	result, _ = m.handleInputKey(msg)
 	m = result.(Model)
 
@@ -420,7 +420,7 @@ func TestHandleInputKey_EscapeCancels(t *testing.T) {
 	m.InputMode = true
 	m.InputBuffer = "new task"
 
-	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
 	result, _ := m.handleInputKey(msg)
 	m = result.(Model)
 
@@ -436,7 +436,7 @@ func TestHandleSearchKey_FilterResults(t *testing.T) {
 	m.SearchResults = []int{0, 1, 2}
 
 	// Type 'a' to filter
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'a'})}
 	result, _ := m.handleSearchKey(msg)
 	m = result.(Model)
 
@@ -454,7 +454,7 @@ func TestHandleSearchKey_SelectResult(t *testing.T) {
 	m.SearchResults = []int{2, 0} // apricot, apple
 	m.SearchCursor = 1            // pointing to apple (index 0)
 
-	msg := tea.KeyMsg{Type: tea.KeyEnter}
+	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	result, _ := m.handleSearchKey(msg)
 	m = result.(Model)
 
@@ -475,7 +475,7 @@ func TestHandleMoveKey_MoveDown(t *testing.T) {
 	m.MoveMode = true
 	m.SelectedIndex = 0
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
@@ -495,7 +495,7 @@ func TestHandleMoveKey_ExitOnEnter(t *testing.T) {
 	m.MoveMode = true
 	m.ReadOnly = true // Prevent actual write
 
-	msg := tea.KeyMsg{Type: tea.KeyEnter}
+	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
@@ -510,7 +510,7 @@ func TestHandleCommandKey_FilterCommands(t *testing.T) {
 	m.FilteredCmds = []int{0, 1, 2, 3}
 
 	// Type 'c' to filter commands
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'c'})}
 	result, _ := m.handleCommandKey(msg)
 	m = result.(Model)
 
@@ -559,7 +559,7 @@ func TestUpdateFilteredCommands_EmptyQuery(t *testing.T) {
 func TestByteToKeyMsg(t *testing.T) {
 	tests := []struct {
 		input byte
-		want  tea.KeyType
+		want  rune
 	}{
 		{'\r', tea.KeyEnter},
 		{'\n', tea.KeyEnter},
@@ -567,34 +567,34 @@ func TestByteToKeyMsg(t *testing.T) {
 		{127, tea.KeyBackspace},
 		{8, tea.KeyBackspace},
 		{'\t', tea.KeyTab},
-		{4, tea.KeyCtrlD},
-		{'a', tea.KeyRunes},
-		{'Z', tea.KeyRunes},
-		{':', tea.KeyRunes},
+		{4, 'd'},
+		{'a', 'a'},
+		{'Z', 'Z'},
+		{':', ':'},
 	}
 
 	for _, tt := range tests {
 		msg := byteToKeyMsg(tt.input)
-		if msg.Type != tt.want {
-			t.Errorf("byteToKeyMsg(%d) = %v, want %v", tt.input, msg.Type, tt.want)
+		if msg.Code != tt.want {
+			t.Errorf("byteToKeyMsg(%d) = %v, want %v", tt.input, msg.Code, tt.want)
 		}
 	}
 }
 
 func TestByteToKeyMsg_PrintableCharacters(t *testing.T) {
 	msg := byteToKeyMsg('a')
-	if msg.Type != tea.KeyRunes {
-		t.Errorf("Type = %v, want KeyRunes", msg.Type)
+	if msg.Code != 'a' {
+		t.Errorf("Type = %v, want KeyRunes", msg.Code)
 	}
-	if len(msg.Runes) != 1 || msg.Runes[0] != 'a' {
-		t.Errorf("Runes = %v, want ['a']", msg.Runes)
+	if len(msg.Text) != 1 || msg.Text[0] != 'a' {
+		t.Errorf("Runes = %v, want ['a']", msg.Text)
 	}
 }
 
 func TestByteToKeyMsg_NonPrintable(t *testing.T) {
 	// Non-printable bytes should return empty message
 	msg := byteToKeyMsg(1) // Ctrl+A raw byte
-	if msg.Type != 0 && len(msg.Runes) != 0 {
+	if msg.Code != 0 && len(msg.Text) != 0 {
 		t.Errorf("Non-printable should return empty message")
 	}
 }
@@ -926,7 +926,7 @@ func TestHandleMoveKey_WithFilterDone_MoveDown(t *testing.T) {
 	// Visible: [0, 3] (Task A, Task D)
 	// With insertion movement, 'j' inserts Task A AFTER Task D
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
@@ -960,7 +960,7 @@ func TestHandleMoveKey_WithFilterDone_MoveUp(t *testing.T) {
 	// Visible: [0, 3] (Task A, Task D)
 	// With insertion movement, 'k' inserts Task D BEFORE Task A
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'k'})}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
@@ -994,7 +994,7 @@ func TestHandleMoveKey_WithFilterDone_ConsecutiveMoves(t *testing.T) {
 	// Visible: [0, 2, 3] (Task A, Task C, Task D)
 	// With visible-swap movement, each 'j' swaps with next visible item
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 
 	// First move: Task A swaps with Task C (next visible at index 2)
 	// After: Task C(0), Task B(1), Task A(2), Task D(3)
@@ -1038,12 +1038,12 @@ func TestHandleMoveKey_WithFilterDone_MoveDownThenUp(t *testing.T) {
 	// Visible: [0, 2] (Task A, Task C)
 
 	// Move down
-	msgDown := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msgDown := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleMoveKey(msgDown)
 	m = result.(Model)
 
 	// Move back up
-	msgUp := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	msgUp := tea.KeyPressMsg{Text: string([]rune{'k'})}
 	result, _ = m.handleMoveKey(msgUp)
 	m = result.(Model)
 
@@ -1074,7 +1074,7 @@ func TestHandleMoveKey_CursorStaysOnMovedItem(t *testing.T) {
 	m.SelectedIndex = 0 // Task A
 
 	// Move down
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
@@ -1098,7 +1098,7 @@ func TestHandleMoveKey_WithTagFilter_MoveDown(t *testing.T) {
 	// Visible: [0, 2] (Task A, Task C - both have #work)
 	// With insertion movement, 'j' inserts Task A AFTER Task C
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
@@ -1128,7 +1128,7 @@ func TestHandleMoveKey_NoFilterActive_NormalBehavior(t *testing.T) {
 	// No filters active
 	m.SelectedIndex = 0
 
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 
@@ -1199,7 +1199,7 @@ func TestMovePreservesVisibleOrder(t *testing.T) {
 
 	// Move Task 1 down once (visible-swap: swaps with Task 2 at index 2)
 	m.SelectedIndex = m.getVisibleTodos()[0] // First visible (index 0)
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleMoveKey(msg)
 	m = result.(Model)
 

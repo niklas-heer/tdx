@@ -1182,8 +1182,8 @@ filter-done: true
 
 	// Cursor starts on Task B (Done Task is hidden)
 	// Toggle Task B to done, cursor should move somewhere
-	// Toggle again to undone, cursor should stay on Task B
-	output := runPiped(t, file, "  ")
+	// Undo restores the hidden task without mutating an invisible selection.
+	output := runPiped(t, file, " u")
 
 	// After toggle-untoggle, Task B should be visible and selected
 	if !strings.Contains(output, "0 ➜ [ ] Task B") {

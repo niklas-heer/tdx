@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
@@ -69,6 +69,12 @@ var (
 
 // Model holds the TUI application state
 type Model struct {
+	SectionsMode   bool
+	SectionCursor  int
+	SectionFocus   int // One-based heading index; zero means all sections.
+	FoldedSections map[int]bool
+	HeadingInput   string
+
 	FilePath            string
 	FileModel           markdown.FileModel
 	SelectedIndex       int
@@ -88,6 +94,7 @@ type Model struct {
 	CursorPos           int
 	NumberBuffer        string
 	History             *markdown.FileModel
+	UndoStack           []*markdown.FileModel
 
 	CopyFeedback bool
 	Err          error
@@ -282,7 +289,6 @@ func (m *Model) Version() string {
 // Init initializes the TUI
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
-		tea.EnableBracketedPaste,
 		watchFileChanges(), // Start watching for file changes
 	)
 }

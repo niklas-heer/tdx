@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -184,7 +184,7 @@ func TestEnterTagFilterModeRefreshesAvailableTags(t *testing.T) {
 	})
 
 	// Simulate pressing 't' to enter tag filter mode
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'t'})}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 

@@ -383,6 +383,9 @@ func InitCommands(cfg ...*ConfigType) []Command {
 				m.CursorPos = 0
 			},
 		},
+		{Name: "sections", Description: "Browse, edit, focus, and fold Markdown sections", Handler: func(m *Model) { m.openSections() }},
+		{Name: "all-sections", Description: "Clear section focus and unfold all sections", Handler: func(m *Model) { m.clearSections() }},
+
 		{
 			Name:        "show-headings",
 			Description: "Toggle displaying markdown headings between tasks",

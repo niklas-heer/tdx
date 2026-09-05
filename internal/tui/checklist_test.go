@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -55,7 +55,7 @@ filter-done: false
 				t.Fatalf("PANIC at %s: %v", step, r)
 			}
 		}()
-		_ = m.View()
+		_ = m.View().Content
 	}
 
 	renderView("initial")
@@ -231,13 +231,13 @@ filter-done: false
 
 // Helper functions
 func pressKey(t *testing.T, m Model, key string) Model {
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
+	msg := tea.KeyPressMsg{Text: key}
 	result, _ := m.Update(msg)
 	return result.(Model)
 }
 
-func pressKeyType(t *testing.T, m Model, keyType tea.KeyType) Model {
-	msg := tea.KeyMsg{Type: keyType}
+func pressKeyType(t *testing.T, m Model, keyType rune) Model {
+	msg := tea.KeyPressMsg{Code: keyType}
 	result, _ := m.Update(msg)
 	return result.(Model)
 }
@@ -316,7 +316,7 @@ filter-done: false
 		len(m.FileModel.Todos), m.SelectedIndex, m.ShowHeadings)
 
 	// Render initial view
-	view := m.View()
+	view := m.View().Content
 	t.Logf("Initial view rendered OK, length=%d", len(view))
 
 	// Execute check-all command
@@ -333,7 +333,7 @@ filter-done: false
 	}
 
 	// Render after check-all
-	view = m.View()
+	view = m.View().Content
 	t.Logf("View after check-all OK, length=%d", len(view))
 
 	// Press N (append new task at end) - THIS IS THE CRITICAL MOMENT
@@ -345,14 +345,14 @@ filter-done: false
 
 	// This is where the panic likely occurs - rendering in input mode after check-all
 	t.Log("Rendering view in input mode...")
-	view = m.View()
+	view = m.View().Content
 	t.Logf("View after N OK, length=%d", len(view))
 
 	// Press Escape to cancel
 	t.Log("Pressing Escape")
 	m = pressKeyType(t, m, tea.KeyEsc)
 
-	view = m.View()
+	view = m.View().Content
 	t.Logf("View after Escape OK, length=%d", len(view))
 
 	t.Log("Test passed - no panic!")
@@ -392,13 +392,13 @@ filter-done: false
 	t.Log("Step 1: filter-done ON")
 	executeCommand(&m, "filter-done")
 	t.Logf("  FilterDone=%v", m.FilterDone)
-	_ = m.View() // render
+	_ = m.View().Content // render
 
 	// Step 2: Toggle filter-done OFF
 	t.Log("Step 2: filter-done OFF")
 	executeCommand(&m, "filter-done")
 	t.Logf("  FilterDone=%v", m.FilterDone)
-	_ = m.View() // render
+	_ = m.View().Content // render
 
 	// Step 3: check-all
 	t.Log("Step 3: check-all")
@@ -415,7 +415,7 @@ filter-done: false
 	}
 	t.Logf("  All todos checked: %v", allChecked)
 
-	view := m.View()
+	view := m.View().Content
 	t.Logf("  View after check-all: length=%d", len(view))
 
 	// Step 4: Press N - this is where it might panic
@@ -426,7 +426,7 @@ filter-done: false
 
 	// This render might panic
 	t.Log("Step 5: Render in input mode")
-	view = m.View()
+	view = m.View().Content
 	t.Logf("  View in input mode: length=%d", len(view))
 
 	// Type some text
@@ -434,13 +434,13 @@ filter-done: false
 	for _, c := range "# Reset checklist" {
 		m = pressKey(t, m, string(c))
 	}
-	view = m.View()
+	view = m.View().Content
 	t.Logf("  View after typing: length=%d", len(view))
 
 	// Escape
 	t.Log("Step 7: Escape")
 	m = pressKeyType(t, m, tea.KeyEsc)
-	view = m.View()
+	view = m.View().Content
 	t.Logf("  View after escape: length=%d", len(view))
 
 	t.Log("Test passed - no panic!")
@@ -468,13 +468,13 @@ show-headings: true
 	m.TermWidth = 80
 
 	t.Logf("Initial: Todos=%d, FilterDone=%v", len(m.FileModel.Todos), m.FilterDone)
-	_ = m.View()
+	_ = m.View().Content
 
 	// Turn ON filter-done
 	t.Log("Step 1: filter-done ON")
 	executeCommand(&m, "filter-done")
 	t.Logf("  FilterDone=%v", m.FilterDone)
-	_ = m.View()
+	_ = m.View().Content
 
 	// check-all - now ALL todos are checked AND filter-done is ON
 	// This means todosToShow will be EMPTY!
@@ -484,7 +484,7 @@ show-headings: true
 
 	// This render might panic because todosToShow is empty
 	t.Log("Step 3: Render after check-all with filter-done ON")
-	view := m.View()
+	view := m.View().Content
 	t.Logf("  View length=%d", len(view))
 
 	// Press N (append mode) - potential panic
@@ -494,7 +494,7 @@ show-headings: true
 
 	// Render in input mode with empty todosToShow
 	t.Log("Step 5: Render in input mode")
-	view = m.View()
+	view = m.View().Content
 	t.Logf("  View length=%d", len(view))
 
 	t.Log("Test passed - no panic!")
@@ -525,7 +525,7 @@ func TestChecklistFilterDoneWithHeadings(t *testing.T) {
 	t.Logf("SelectedIndex after filter: %d", m.SelectedIndex)
 
 	// Try to render
-	view := m.View()
+	view := m.View().Content
 	t.Logf("View length: %d", len(view))
 
 	// Toggle filter-done off
@@ -533,7 +533,7 @@ func TestChecklistFilterDoneWithHeadings(t *testing.T) {
 	m.FilterDone = false
 	m.InvalidateDocumentTree()
 
-	view = m.View()
+	view = m.View().Content
 	t.Logf("View length after filter off: %d", len(view))
 
 	// Navigate
@@ -575,7 +575,7 @@ filter-done: false
 	m.TermWidth = 80
 
 	renderView := func(step string) {
-		view := m.View()
+		view := m.View().Content
 		t.Logf("  [%s] View rendered OK, length=%d", step, len(view))
 	}
 

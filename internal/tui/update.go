@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"io"
 	"os"
 	"strconv"
@@ -10,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/niklas-heer/tdx/internal/util"
@@ -44,6 +45,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reloadedMsg:
 		// Successfully reloaded from disk
 		m = msg.model
+		m.clearSections()
 		m.InvalidateHeadingsCache()  // Invalidate cache on reload
 		return m, watchFileChanges() // Continue watching
 	case SearchDebounceMsg:
@@ -60,28 +62,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searchPending = false
 		}
 		return m, nil
-	case tea.KeyMsg:
-		// Handle EOF from piped input
-		if msg.Type == tea.KeyCtrlD {
+	case tea.PasteMsg:
+		return m.handlePaste(msg.Content)
+	case tea.KeyPressMsg:
+		if msg.String() == "ctrl+d" && !m.VersionsMode {
 			return m, tea.Quit
-		}
-		// Handle bracketed paste (cmd+v on macOS)
-		if msg.Paste && (m.InputMode || m.EditMode) {
-			text := string(msg.Runes)
-			// Take only first line
-			if idx := strings.Index(text, "\n"); idx != -1 {
-				text = text[:idx]
-			}
-			m.InputBuffer = m.InputBuffer[:m.CursorPos] + text + m.InputBuffer[m.CursorPos:]
-			m.CursorPos += len(text)
-			return m, nil
 		}
 		return m.handleKey(msg)
 	}
 	return m, nil
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	if m.ConflictDiffMode {
@@ -97,6 +89,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Version browser mode takes priority over all other modes.
 	if m.VersionsMode {
 		return m.handleVersionsKey(msg)
+	}
+
+	if m.HeadingInput != "" {
+		return m.handleHeadingInput(msg)
+	}
+	if m.SectionsMode {
+		return m.handleSectionsKey(msg)
 	}
 
 	// Handle input/edit mode
@@ -154,7 +153,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Handle recent files mode
 	if m.RecentFilesMode {
-		return m.handleRecentFilesInput(key)
+		return m.handleRecentFilesKey(msg)
 	}
 
 	// Number buffer for vim-style navigation
@@ -175,6 +174,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.gPressed = false
 	}
 
+	switch key {
+	case "s":
+		m.openSections()
+		return m, nil
+	case "S":
+		m.clearSections()
+		return m, nil
+	case "space", "enter", "e", "d", "c", "m", "tab", "shift+tab":
+		if !m.isTodoVisible(m.SelectedIndex) {
+			return m, nil
+		}
+	}
 	switch key {
 	case "esc", "ctrl+c":
 		return m, tea.Quit
@@ -206,7 +217,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.SelectedIndex = util.Max(m.SelectedIndex-count, 0)
 		}
 
-	case " ", "enter":
+	case "space", "enter":
 		if len(m.FileModel.Todos) > 0 {
 			m.saveHistory()
 			todo := m.FileModel.Todos[m.SelectedIndex]
@@ -268,7 +279,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "u":
 		if m.History != nil {
 			m.FileModel.RestoreContent(m.History)
+			m.clearSections()
 			m.History = nil
+			if n := len(m.UndoStack); n > 0 {
+				m.History = m.UndoStack[n-1]
+				m.UndoStack = m.UndoStack[:n-1]
+			}
+			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 			m.writeIfPersist()
 			if m.SelectedIndex >= len(m.FileModel.Todos) {
@@ -417,7 +434,11 @@ func nextRuneLen(s string, pos int) int {
 	return size
 }
 
-func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.Text != "" {
+		m.insertInputText(msg.Text)
+		return m, nil
+	}
 	key := msg.String()
 
 	switch key {
@@ -443,6 +464,7 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.EditMode = false
 		if m.History != nil {
 			m.FileModel.RestoreContent(m.History)
+			m.clearSections()
 			m.History = nil
 		}
 
@@ -470,25 +492,14 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.CursorPos = len(m.InputBuffer)
 
 	case "ctrl+v", "ctrl+shift+v", "ctrl+y":
-		// Paste from clipboard (ctrl+y is more reliable in terminals)
-		text := util.PasteFromClipboard()
-		if text != "" {
-			m.InputBuffer = m.InputBuffer[:m.CursorPos] + text + m.InputBuffer[m.CursorPos:]
-			m.CursorPos += len(text)
-		}
+		return m.handlePaste(util.PasteFromClipboard())
 
-	default:
-		// Insert character
-		if utf8.RuneCountInString(key) == 1 {
-			m.InputBuffer = m.InputBuffer[:m.CursorPos] + key + m.InputBuffer[m.CursorPos:]
-			m.CursorPos += len(key)
-		}
 	}
 
 	return m, nil
 }
 
-func (m Model) handleMaxVisibleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleMaxVisibleInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
@@ -544,7 +555,7 @@ func (m Model) handleMaxVisibleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
@@ -631,6 +642,7 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		if m.History != nil {
 			m.FileModel.RestoreContent(m.History)
+			m.clearSections()
 			m.History = nil
 			m.InvalidateDocumentTree()
 			m.InvalidateHeadingsCache()
@@ -643,7 +655,12 @@ func (m Model) handleMoveKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.Text != "" {
+		m.insertInputText(msg.Text)
+		m.searchPending = true
+		return m, searchDebounceCmd()
+	}
 	key := msg.String()
 
 	switch key {
@@ -686,7 +703,8 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	default:
 		// Insert character
-		if utf8.RuneCountInString(key) == 1 {
+		if msg.Text != "" {
+			key := msg.Text
 			m.InputBuffer = m.InputBuffer[:m.CursorPos] + key + m.InputBuffer[m.CursorPos:]
 			m.CursorPos += len(key)
 			// Debounce search update
@@ -698,11 +716,11 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
-	case "enter", " ":
+	case "enter", "space":
 		// Toggle tag filter
 		if len(m.AvailableTags) > 0 && m.TagFilterCursor < len(m.AvailableTags) {
 			selectedTag := m.AvailableTags[m.TagFilterCursor]
@@ -754,11 +772,11 @@ func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handlePriorityFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handlePriorityFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
-	case "enter", " ":
+	case "enter", "space":
 		// Toggle priority filter
 		if len(m.AvailablePriorities) > 0 && m.PriorityFilterCursor < len(m.AvailablePriorities) {
 			selectedPriority := m.AvailablePriorities[m.PriorityFilterCursor]
@@ -813,11 +831,11 @@ func (m Model) handlePriorityFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Due date filter options
 var dueFilterOptions = []string{"overdue", "today", "week", "all"}
 
-func (m Model) handleDueFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleDueFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
-	case "enter", " ":
+	case "enter", "space":
 		// Select due date filter
 		if m.DueFilterCursor < len(dueFilterOptions) {
 			selectedFilter := dueFilterOptions[m.DueFilterCursor]
@@ -860,7 +878,7 @@ func (m Model) handleDueFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleThemeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleThemeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
@@ -909,7 +927,12 @@ func (m Model) handleThemeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleCommandKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.Text != "" {
+		m.insertInputText(msg.Text)
+		m.searchPending = true
+		return m, commandDebounceCmd()
+	}
 	key := msg.String()
 
 	switch key {
@@ -965,7 +988,8 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	default:
 		// Insert character
-		if utf8.RuneCountInString(key) == 1 {
+		if msg.Text != "" {
+			key := msg.Text
 			m.InputBuffer = m.InputBuffer[:m.CursorPos] + key + m.InputBuffer[m.CursorPos:]
 			m.CursorPos += len(key)
 			// Debounce command filter update
@@ -980,11 +1004,24 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Helper functions
 
 func (m *Model) saveHistory() {
+	if m.History != nil {
+		m.UndoStack = append(m.UndoStack, m.History)
+	}
+	if len(m.UndoStack) > 99 {
+		m.UndoStack = m.UndoStack[len(m.UndoStack)-99:]
+	}
 	m.History = m.FileModel.Clone()
 }
 
 func (m *Model) addNewTodo() {
-	if m.InsertAfterCursor && len(m.FileModel.Todos) > 0 {
+	if m.SectionFocus > 0 && (!m.InsertAfterCursor || !m.isTodoVisible(m.SelectedIndex)) {
+		index, err := m.FileModel.AddTodoInSection(m.SectionFocus-1, m.InputBuffer)
+		if err != nil {
+			m.Err = err
+			return
+		}
+		m.SelectedIndex = index
+	} else if m.InsertAfterCursor && len(m.FileModel.Todos) > 0 {
 		// Insert after current cursor position
 		newIndex := m.FileModel.InsertTodoItemAfter(m.SelectedIndex, m.InputBuffer, false)
 		m.SelectedIndex = newIndex
@@ -1192,6 +1229,9 @@ func (m *Model) updateSearchResults() {
 	if m.InputBuffer == "" {
 		// Show all todos when query is empty
 		for i := range m.FileModel.Todos {
+			if !m.isTodoVisible(i) {
+				continue
+			}
 			m.SearchResults = append(m.SearchResults, i)
 		}
 		return
@@ -1207,6 +1247,9 @@ func (m *Model) updateSearchResults() {
 	var matches []match
 
 	for i, todo := range m.FileModel.Todos {
+		if !m.isTodoVisible(i) {
+			continue
+		}
 		text := strings.ToLower(todo.Text)
 		score := util.FuzzyScore(query, text)
 		if score > 0 {
@@ -1301,6 +1344,7 @@ func (m Model) checkAndReloadFile() tea.Cmd {
 	}
 	m.FileModel = *diskFM
 	m.History = nil
+	m.UndoStack = nil
 	m.Err = err
 	return func() tea.Msg { return reloadedMsg{model: m} }
 }
@@ -1361,6 +1405,9 @@ func (m *Model) isTodoVisible(idx int) bool {
 	if idx < 0 || idx >= len(m.FileModel.Todos) {
 		return false
 	}
+	if !m.sectionAllowsTodo(idx) {
+		return false
+	}
 	todo := m.FileModel.Todos[idx]
 
 	// Hidden by filter-done
@@ -1388,7 +1435,7 @@ func (m *Model) isTodoVisible(idx int) bool {
 
 // hasActiveFilters returns true if any visibility filter is active
 func (m *Model) hasActiveFilters() bool {
-	return m.FilterDone || len(m.FilteredTags) > 0 || len(m.FilteredPriorities) > 0 || m.FilteredDueDate != ""
+	return m.SectionFocus > 0 || len(m.FoldedSections) > 0 || m.FilterDone || len(m.FilteredTags) > 0 || len(m.FilteredPriorities) > 0 || m.FilteredDueDate != ""
 }
 
 func (m *Model) getVisibleTodos() []int {
@@ -1428,25 +1475,25 @@ func (m *Model) adjustSelectionForFilter() {
 	m.SelectedIndex = bestIdx
 }
 
-// byteToKeyMsg converts a raw byte to a tea.KeyMsg for unified input handling
-func byteToKeyMsg(b byte) tea.KeyMsg {
+// byteToKeyMsg converts a raw byte to a tea.KeyPressMsg for unified input handling
+func byteToKeyMsg(b byte) tea.KeyPressMsg {
 	switch b {
 	case '\r', '\n':
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
 	case 27: // Escape
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return tea.KeyPressMsg{Code: tea.KeyEsc}
 	case 127, 8: // Backspace (DEL and BS)
-		return tea.KeyMsg{Type: tea.KeyBackspace}
+		return tea.KeyPressMsg{Code: tea.KeyBackspace}
 	case '\t':
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return tea.KeyPressMsg{Code: tea.KeyTab}
 	case 4: // Ctrl+D
-		return tea.KeyMsg{Type: tea.KeyCtrlD}
+		return tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
 	default:
 		if b >= 32 && b < 127 { // Printable ASCII
-			return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{rune(b)}}
+			return tea.KeyPressMsg{Code: rune(b), Text: string(b)}
 		}
 		// Non-printable, return empty
-		return tea.KeyMsg{}
+		return tea.KeyPressMsg{}
 	}
 }
 
@@ -1454,23 +1501,40 @@ func byteToKeyMsg(b byte) tea.KeyMsg {
 func (m *Model) ProcessPipedInput(input []byte) {
 	for i := 0; i < len(input); i++ {
 		b := input[i]
+		if strings.HasPrefix(string(input[i:]), "\x1b[200~") {
+			content, _, found := strings.Cut(string(input[i+6:]), "\x1b[201~")
+			if !found {
+				return
+			}
+			result, _ := m.Update(tea.PasteMsg{Content: content})
+			*m = result.(Model)
+			if m.SearchMode {
+				m.updateSearchResults()
+			}
+			if m.CommandMode {
+				m.updateFilteredCommands()
+			}
+			m.searchPending = false
+			i += 6 + len(content) + 6 - 1
+			continue
+		}
 		msg := byteToKeyMsg(b)
 		if b >= utf8.RuneSelf {
 			r, size := utf8.DecodeRune(input[i:])
 			if r == utf8.RuneError && size == 1 {
 				continue
 			}
-			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+			msg = tea.KeyPressMsg{Code: r, Text: string(r)}
 			i += size - 1
 		} else if b == 27 {
-			for sequence, keyType := range map[string]tea.KeyType{
+			for sequence, keyType := range map[string]rune{
 				"\x1b[D": tea.KeyLeft, "\x1b[C": tea.KeyRight,
 				"\x1b[A": tea.KeyUp, "\x1b[B": tea.KeyDown,
 				"\x1b[H": tea.KeyHome, "\x1b[F": tea.KeyEnd,
 				"\x1b[3~": tea.KeyDelete,
 			} {
 				if strings.HasPrefix(string(input[i:]), sequence) {
-					msg = tea.KeyMsg{Type: keyType}
+					msg = tea.KeyPressMsg{Code: keyType}
 					i += len(sequence) - 1
 					break
 				}
@@ -1478,14 +1542,14 @@ func (m *Model) ProcessPipedInput(input []byte) {
 		}
 
 		// Skip empty messages (non-printable bytes)
-		if msg.Type == 0 && len(msg.Runes) == 0 {
+		if msg.Code == 0 && len(msg.Text) == 0 {
 			continue
 		}
 
 		// Check for quit in normal mode (q or esc without other modes active)
 		if !m.InputMode && !m.EditMode && !m.SearchMode && !m.CommandMode &&
-			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode {
-			if msg.String() == "q" || msg.Type == tea.KeyEsc {
+			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode && !m.SectionsMode && m.HeadingInput == "" {
+			if msg.String() == "q" || msg.Code == tea.KeyEsc {
 				return
 			}
 		}
@@ -1538,18 +1602,18 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 	}
 
 	switch key {
-	case "esc", "r":
+	case "esc":
 		// Exit recent files mode
 		m.RecentFilesMode = false
 		m.RecentFilesSearch = ""
 		return m, nil
 
-	case "j", "down":
+	case "down":
 		if len(filteredFiles) > 0 {
 			m.RecentFilesCursor = (m.RecentFilesCursor + 1) % len(filteredFiles)
 		}
 
-	case "k", "up":
+	case "up":
 		if len(filteredFiles) > 0 {
 			m.RecentFilesCursor--
 			if m.RecentFilesCursor < 0 {
@@ -1576,7 +1640,9 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 			// Update model with new file
 			m.FilePath = selectedFile.Path
 			m.FileModel = *fm
+			m.clearSections()
 			m.History = nil // Clear undo history
+			m.UndoStack = nil
 			m.RecentFilesMode = false
 			m.RecentFilesSearch = ""
 
@@ -1658,12 +1724,12 @@ func RunPiped(filePath string, input []byte, readOnly bool) string {
 	}
 
 	m.ProcessPipedInput(input)
-	output := m.View()
+	output := m.View().Content
 
 	// Save cursor position to recent files when exiting
 	_ = config.SaveRecentFile(filePath, m.SelectedIndex)
 
-	return output
+	return ansi.Strip(output)
 }
 
 // Run starts the TUI with Bubbletea
@@ -1723,7 +1789,7 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 		// Piped input - process directly without Bubbletea event loop
 		input, _ := io.ReadAll(os.Stdin)
 		m.ProcessPipedInput(input)
-		fmt.Print(m.View())
+		fmt.Print(ansi.Strip(m.View().Content))
 		// Save cursor position to recent files
 		_ = config.SaveRecentFile(filePath, m.SelectedIndex)
 		return
@@ -1745,7 +1811,7 @@ func Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
 }
 
 // handleVersionsKey handles key events when the version browser modal is active.
-func (m Model) handleVersionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleVersionsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	if m.VersionsConfirmMode {

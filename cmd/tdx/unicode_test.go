@@ -12,6 +12,7 @@ import (
 
 func TestTUIUnicodeEditing(t *testing.T) {
 	cases := []struct{ name, keys, want string }{
+		{"bracketed paste", "n\x1b[200~enter ä😀\nignored\x1b[201~\r", "enter ä😀"},
 		{"insert", "nKäse überprüfen\r", "Käse überprüfen"},
 		{"delete", "nKäse\x1b[H\x1b[C\x1b[3~\r", "Kse"},
 		{"right and backspace", "nKäse\x1b[H\x1b[C\x1b[C\x7f\r", "Kse"},
