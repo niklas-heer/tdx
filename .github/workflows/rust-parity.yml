@@ -64,7 +64,7 @@ jobs:
           rustup run "$stable" cargo check --locked --all-targets --all-features --manifest-path experiments/rust-rewrite/Cargo.toml
           rustup run "$stable" cargo test --locked --all-features --manifest-path experiments/rust-rewrite/Cargo.toml
           cargo miri setup
-          for group in actions::tests document::tests input::tests console_input::tests presentation::tests; do
+          for group in actions::tests document::tests input::tests console_input::tests presentation::tests save_protocol::tests source_buffer::tests markdown_view::tests; do
             filters=()
             if [ "$group" = input::tests ]; then filters=(--skip console_input::tests); fi
             MIRIFLAGS='-Zmiri-strict-provenance' cargo miri test --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bin tdx-rust "$group" -- "${filters[@]}"
@@ -75,6 +75,7 @@ jobs:
         run: |
           ext=""
           if [ "$RUNNER_OS" = Windows ]; then ext=".exe"; fi
+          python experiments/rust-rewrite/simulation_check.py --binary "experiments/rust-rewrite/target/release/simulate$ext" --output dist/rust-rewrite/simulation --runs 1000
           python experiments/rust-rewrite/native_check.py --go dist/rust-rewrite/tdx-go.exe --rust "experiments/rust-rewrite/target/release/tdx-rust$ext" --go-adapter dist/rust-rewrite/go-parity.exe --rust-adapter "experiments/rust-rewrite/target/release/parity$ext" --output dist/rust-rewrite/native
       - name: Retain native parity evidence
         if: always()
@@ -83,4 +84,5 @@ jobs:
           name: rust-parity-${{ matrix.os }}
           path: |
             dist/rust-rewrite/native
+            dist/rust-rewrite/simulation
             experiments/rust-rewrite/target/nextest/ci/junit.xml

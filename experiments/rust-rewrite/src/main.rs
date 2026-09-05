@@ -7,8 +7,11 @@ mod document;
 mod editor;
 mod history;
 mod input;
+mod markdown_view;
 mod presentation;
 mod recent;
+mod save_protocol;
+mod source_buffer;
 mod store;
 mod tui;
 

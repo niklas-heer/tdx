@@ -103,6 +103,25 @@ impl Editor {
         self.dirty = false;
         saved.map_err(|error| error.message)
     }
+    /// Explicit source save: reject conflicts before changing the accepted document.
+    pub fn save_document(&mut self, source: String) -> Result<(), String> {
+        let next = Document::parse(source)?;
+        let saved = self.store.save(&next.source);
+        if let Err(error) = &saved
+            && !error.committed
+        {
+            return Err(error.message.clone());
+        }
+        if self.doc.source != next.source {
+            if self.past.len() == 100 {
+                self.past.pop_front();
+            }
+            self.past.push_back(self.doc.source.clone());
+        }
+        self.doc = next;
+        self.dirty = false;
+        saved.map_err(|error| error.message)
+    }
     pub fn reload(&mut self) -> Result<(), String> {
         let source = self.store.reload()?;
         self.doc = Document::parse(source)?;

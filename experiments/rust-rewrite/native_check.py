@@ -129,6 +129,8 @@ def main():
     b = application(binaries, args.output / 'application.json')
     assert not b['failures']
     report = {'source': fingerprint(), 'platform': platform.platform(), 'python': platform.python_version(), 'action_cases': a['cases'], 'action_steps': a['steps'], 'application_workflows': len(b['passed']), 'shared_lock': lock_gate(binaries, args.rust_adapter.resolve()), 'terminal': terminal_gate(binaries, args.output), 'binary_sha256': {k: hashlib.sha256(v.read_bytes()).hexdigest() for k,v in binaries.items()}}
+    from markdown_check import check as markdown_check
+    report['rust_markdown'] = markdown_check(binaries['rust'], args.output)
     (args.output / 'report.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps(report, indent=2))
 

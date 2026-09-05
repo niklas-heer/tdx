@@ -249,7 +249,7 @@ run = """
 export CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/miri-target"
 export MIRIFLAGS='-Zmiri-strict-provenance'
 cargo miri setup
-for group in actions::tests document::tests input::tests console_input::tests presentation::tests; do
+for group in actions::tests document::tests input::tests console_input::tests presentation::tests save_protocol::tests source_buffer::tests markdown_view::tests; do
   filters=()
   if [ "$group" = input::tests ]; then filters=(--skip console_input::tests); fi
   cargo miri test --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bin tdx-rust "$group" -- "${filters[@]}"
@@ -269,6 +269,7 @@ go build -o dist/rust-rewrite/go-parity ./experiments/rust-rewrite/go-parity
 python3 experiments/rust-rewrite/parity_contracts.py --rust dist/rust-rewrite/target/release/parity
 python3 experiments/rust-rewrite/application_contracts.py --rust dist/rust-rewrite/target/release/tdx-rust
 python3 experiments/rust-rewrite/contracts.py
+python3 experiments/rust-rewrite/markdown_check.py --binary dist/rust-rewrite/target/release/tdx-rust --output dist/rust-rewrite/markdown-terminal
 """
 
 [tasks."rust-rewrite:eval"]
@@ -284,4 +285,13 @@ tools.python = "3.14.7"
 run = """
 TDX_GALLERY_DIR="$PWD/dist/rust-rewrite/gallery" CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo test --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bin tdx-rust tui::tests::export_ratatui_gallery -- --ignored --exact
 python3 experiments/rust-rewrite/render_gallery.py dist/rust-rewrite/gallery
+"""
+
+[tasks."rust-rewrite:simulate"]
+description = "Deterministic save faults, replay, recovery and negative controls"
+tools.rust = "nightly-2026-09-05"
+tools.python = "3.14.7"
+run = """
+CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo build --release --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bin simulate
+python3 experiments/rust-rewrite/simulation_check.py --binary dist/rust-rewrite/target/release/simulate --output dist/rust-rewrite/simulation "$@"
 """

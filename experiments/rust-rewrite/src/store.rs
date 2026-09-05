@@ -189,98 +189,191 @@ impl Store {
         force: bool,
         before_validation: impl FnOnce(),
     ) -> Result<(), SaveError> {
-        if canonical(&self.path)? != self.target {
-            return Err("file changed externally: target changed".to_owned().into());
-        }
-        let permissions = match fs::metadata(&self.target) {
-            Ok(meta) => {
-                if !meta.is_file() {
-                    return Err("target must be a regular file".to_owned().into());
-                }
-                if meta.permissions().readonly() {
-                    return Err("file is read-only".to_owned().into());
-                }
-                Some(meta.permissions())
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(e.into()),
+        use crate::save_protocol::{Completion, Phase, Save};
+        let started = Instant::now();
+        let mut save = Save::new(force);
+        let mut driver = NativeSave {
+            store: self,
+            source,
+            force,
+            temp: None,
+            lock: None,
+            current: None,
         };
-        let parent = self
-            .target
-            .parent()
-            .ok_or_else(|| "target has no parent directory".to_owned())?;
-        let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-        if let Some(permissions) = permissions {
-            temp.as_file().set_permissions(permissions)?;
+        let mut hook = Some(before_validation);
+        while save.phase() != Phase::Done {
+            let phase = save.phase();
+            if phase == Phase::Validate
+                && let Some(hook) = hook.take()
+            {
+                hook();
+            }
+            let result = driver.execute(phase);
+            if result == Completion::Busy {
+                thread::sleep(Duration::from_millis(10));
+            }
+            save.advance(
+                result,
+                u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            );
+            #[cfg(test)]
+            crash_hook(phase);
         }
-        temp.write_all(source.as_bytes())?;
-        temp.as_file().sync_all()?;
-        fs::create_dir_all(&self.lock_root)?;
-        // Match the Go lock name and canonical path so cooperating Go/Rust saves coordinate.
-        let digest = Sha256::digest(self.target.as_os_str().as_encoded_bytes());
-        let name = format!("{digest:x}.lock");
-        let lock = OpenOptions::new()
+        save.outcome().error.as_ref().map_or(Ok(()), |message| {
+            Err(SaveError {
+                message: message.clone(),
+                committed: save.outcome().committed,
+            })
+        })
+    }
+}
+
+struct NativeSave<'a> {
+    store: &'a mut Store,
+    source: &'a str,
+    force: bool,
+    temp: Option<tempfile::NamedTempFile>,
+    lock: Option<fs::File>,
+    current: Option<String>,
+}
+impl NativeSave<'_> {
+    fn execute(&mut self, phase: crate::save_protocol::Phase) -> crate::save_protocol::Completion {
+        use crate::save_protocol::{Completion, Phase};
+        if phase == Phase::Lock {
+            if self.lock.is_none() {
+                match self.open_lock() {
+                    Ok(lock) => self.lock = Some(lock),
+                    Err(error) => return Completion::Failed(error.to_string()),
+                }
+            }
+            return match self.lock.as_ref().map(fs::File::try_lock) {
+                Some(Ok(())) => Completion::Ok,
+                Some(Err(std::fs::TryLockError::WouldBlock)) => Completion::Busy,
+                Some(Err(std::fs::TryLockError::Error(error))) => {
+                    Completion::Failed(error.to_string())
+                }
+                None => Completion::Failed("lock handle unavailable".into()),
+            };
+        }
+        match self.perform(phase) {
+            Ok(()) => Completion::Ok,
+            Err(error) => Completion::Failed(error),
+        }
+    }
+    fn open_lock(&self) -> std::io::Result<fs::File> {
+        fs::create_dir_all(&self.store.lock_root)?;
+        let digest = Sha256::digest(self.store.target.as_os_str().as_encoded_bytes());
+        OpenOptions::new()
             .create(true)
             .truncate(false)
             .read(true)
             .write(true)
-            .open(self.lock_root.join(name))?;
-        let started = Instant::now();
-        loop {
-            match lock.try_lock() {
-                Ok(()) => break,
-                Err(std::fs::TryLockError::WouldBlock)
-                    if started.elapsed() < Duration::from_secs(2) =>
-                {
-                    thread::sleep(Duration::from_millis(10));
+            .open(self.store.lock_root.join(format!("{digest:x}.lock")))
+    }
+    fn prepare(&mut self) -> Result<(), String> {
+        if canonical(&self.store.path)? != self.store.target {
+            return Err("file changed externally: target changed".into());
+        }
+        let permissions = match fs::metadata(&self.store.target) {
+            Ok(meta) => {
+                if !meta.is_file() {
+                    return Err("target must be a regular file".into());
                 }
-                Err(std::fs::TryLockError::WouldBlock) => {
-                    return Err("file is busy in another tdx process".to_owned().into());
+                if meta.permissions().readonly() {
+                    return Err("file is read-only".into());
                 }
-                Err(std::fs::TryLockError::Error(e)) => return Err(e.into()),
+                Some(meta.permissions())
             }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.to_string()),
+        };
+        let parent = self
+            .store
+            .target
+            .parent()
+            .ok_or("target has no parent directory")?;
+        let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+        if let Some(permissions) = permissions {
+            temp.as_file()
+                .set_permissions(permissions)
+                .map_err(|e| e.to_string())?;
         }
-        before_validation();
-        let current = read(&self.target)?;
-        if canonical(&self.path)? != self.target || (!force && current != self.baseline) {
-            return Err("file changed externally; reload before saving"
-                .to_owned()
-                .into());
-        }
-        if force {
-            let history = self
-                .history
-                .as_mut()
-                .ok_or_else(|| "force-save requires version history".to_owned())?;
-            if let Some(content) = &current {
-                history
-                    .capture(&self.target, content)
-                    .map_err(|e| format!("capture overwritten version: {e}"))?;
-            }
-        }
-        // The tempfile stays on the same filesystem. persist atomically replaces
-        // the target on Unix; dropping the lock releases it on every return path.
-        persist(temp, &self.target)?;
-        self.baseline = Some(source.to_owned());
-        let mut errors = Vec::new();
-        if let Err(error) = sync_directory(parent) {
-            errors.push(format!("directory sync: {error}"));
-        }
-        if let Some(history) = &mut self.history
-            && let Err(error) = history.capture(&self.target, source)
-        {
-            errors.push(format!("version capture: {error}"));
-        }
-        if let Err(error) = lock.unlock() {
-            errors.push(format!("unlock: {error}"));
-        }
-        if !errors.is_empty() {
-            return Err(SaveError {
-                message: format!("file saved, but {}", errors.join("; ")),
-                committed: true,
-            });
-        }
+        temp.write_all(self.source.as_bytes())
+            .map_err(|e| e.to_string())?;
+        temp.as_file().sync_all().map_err(|e| e.to_string())?;
+        self.temp = Some(temp);
         Ok(())
+    }
+    fn perform(&mut self, phase: crate::save_protocol::Phase) -> Result<(), String> {
+        use crate::save_protocol::Phase;
+        match phase {
+            Phase::Prepare => self.prepare(),
+            Phase::Validate => {
+                self.current = read(&self.store.target)?;
+                if canonical(&self.store.path)? != self.store.target
+                    || (!self.force && self.current != self.store.baseline)
+                {
+                    Err("file changed externally; reload before saving".into())
+                } else {
+                    Ok(())
+                }
+            }
+            Phase::CaptureBefore => {
+                let history = self
+                    .store
+                    .history
+                    .as_mut()
+                    .ok_or("force-save requires version history")?;
+                if let Some(content) = &self.current {
+                    history
+                        .capture(&self.store.target, content)
+                        .map_err(|e| format!("capture overwritten version: {e}"))?;
+                }
+                Ok(())
+            }
+            Phase::Replace => {
+                let temp = self.temp.take().ok_or("prepared replacement unavailable")?;
+                persist(temp, &self.store.target).map_err(|e| e.to_string())?;
+                self.store.baseline = Some(self.source.to_owned());
+                Ok(())
+            }
+            Phase::SyncDirectory => sync_directory(
+                self.store
+                    .target
+                    .parent()
+                    .ok_or("target has no parent directory")?,
+            )
+            .map_err(|e| e.to_string()),
+            Phase::CaptureAfter => {
+                if let Some(history) = &mut self.store.history {
+                    history.capture(&self.store.target, self.source)?;
+                }
+                Ok(())
+            }
+            Phase::Unlock => self
+                .lock
+                .as_ref()
+                .ok_or("lock handle unavailable")?
+                .unlock()
+                .map_err(|e| e.to_string()),
+            Phase::Lock | Phase::Done => Err("unexpected native save effect".into()),
+        }
+    }
+}
+
+#[cfg(test)]
+fn crash_hook(phase: crate::save_protocol::Phase) {
+    // Only the explicitly selected subprocess test can enable this barrier.
+    if std::env::var("TDX_NATIVE_CRASH_CHILD").as_deref() != Ok("1") {
+        return;
+    }
+    if std::env::var("TDX_NATIVE_CRASH_PHASE").ok().as_deref() == Some(&format!("{phase:?}")) {
+        if let Ok(path) = std::env::var("TDX_NATIVE_CRASH_READY") {
+            let _ = fs::write(path, "ready");
+        }
+        loop {
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 }
 
@@ -324,6 +417,69 @@ const fn sync_directory(_: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "subprocess barrier used by native crash/recovery test"]
+    fn native_crash_child() {
+        if std::env::var("TDX_NATIVE_CRASH_CHILD").as_deref() != Ok("1") {
+            return;
+        }
+        let base = PathBuf::from(std::env::var("TDX_NATIVE_CRASH_BASE").unwrap());
+        let mut store = Store::with_lock_root(&base.join("tasks.md"), base.join("locks")).unwrap();
+        store.enable_history(true).unwrap();
+        store.save("- [x] replacement café\n").unwrap();
+    }
+    #[test]
+    fn native_crash_at_save_boundaries_preserves_complete_file_and_recovers() {
+        for phase in [
+            "Prepare",
+            "Validate",
+            "Replace",
+            "SyncDirectory",
+            "CaptureAfter",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("tasks.md");
+            let ready = dir.path().join("ready");
+            fs::write(&path, "- [ ] original\n").unwrap();
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "store::tests::native_crash_child",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("TDX_NATIVE_CRASH_CHILD", "1")
+                .env("TDX_NATIVE_CRASH_BASE", dir.path())
+                .env("TDX_NATIVE_CRASH_PHASE", phase)
+                .env("TDX_NATIVE_CRASH_READY", &ready)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            let started = Instant::now();
+            while !ready.exists() && started.elapsed() < Duration::from_secs(10) {
+                if child.try_wait().unwrap().is_some() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            let reached = ready.exists();
+            let _ = child.kill();
+            child.wait().unwrap();
+            assert!(reached, "child did not reach {phase}");
+            let expected = if matches!(phase, "Prepare" | "Validate") {
+                "- [ ] original\n"
+            } else {
+                "- [x] replacement café\n"
+            };
+            assert_eq!(fs::read_to_string(&path).unwrap(), expected, "{phase}");
+            let mut store = Store::with_lock_root(&path, dir.path().join("locks")).unwrap();
+            store.enable_history(true).unwrap();
+            store.save("- [ ] recovered\n").unwrap();
+            store.finish().unwrap();
+            assert_eq!(fs::read_to_string(&path).unwrap(), "- [ ] recovered\n");
+        }
+    }
     #[test]
     fn conflict_preserves_external_bytes_and_cleans_temp() {
         let dir = tempfile::tempdir().unwrap();
