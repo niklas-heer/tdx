@@ -8,6 +8,6 @@ Developers need tdx to compose with scripts and editors, and contributors need a
 - Provide an isolated demo, focused-test argument forwarding, and browsable coverage reports through mise.
 
 ## Impact
-- Affected specs: tdx-cli, development-tooling, ci-pipeline.
+- Affected specs: tdx-cli, development-tooling, ci-pipeline, file-versioning.
 - Affected code: cmd/tdx, internal/cmd, mise.toml, scripts, version configuration, README.
 - Authorized by the user's request to select and implement developer improvements while retaining a pre-1.0 version.
