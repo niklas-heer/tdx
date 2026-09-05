@@ -1,0 +1,5 @@
+- [x] Audit existing Go/Rust features and review the authorized UI completion scope.
+- [ ] Implement the remaining UI information/interaction parity and Ratatui polish.
+- [ ] Assert actual rendering, Unicode input visibility, links, narrow layouts and scroll boundaries; generate reviewable previews.
+- [ ] Run all action/application/history/PTY contracts and native CI; record evidence and update comparison context.
+- [ ] Validate, commit, archive and publish the completed change.
