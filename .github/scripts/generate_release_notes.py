@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate AI-powered release notes using OpenRouter.
+Publish checked-in release notes, with OpenRouter generation as a fallback.
 
-This script analyzes git commits (including their detailed bodies) and uses
-AI to generate polished, user-friendly release notes for GitHub releases.
+Reviewed notes need no network access or API credentials. For older releases
+without reviewed notes, analyze git commits and generate notes using OpenRouter.
 """
 
 import os
+import re
 import sys
 import json
 import subprocess
@@ -194,6 +195,19 @@ Generate ONLY the release notes, starting with the first section header."""
     return release_notes
 
 
+def reviewed_release_notes(current_tag: str) -> Optional[str]:
+    """Read published user-facing notes only for a plain semantic version tag."""
+    if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", current_tag):
+        return None
+    notes_path = Path(__file__).resolve().parents[2] / "docs" / "releases" / f"{current_tag[1:]}.md"
+    if not notes_path.is_file():
+        return None
+    notes = notes_path.read_text(encoding="utf-8")
+    if not notes.strip():
+        raise ValueError(f"Reviewed release notes are empty: {notes_path}")
+    return notes
+
+
 def main():
     """Main entry point for the script."""
     # Get environment variables
@@ -210,6 +224,12 @@ def main():
     if not repo:
         print("Error: GITHUB_REPOSITORY environment variable is required", file=sys.stderr)
         sys.exit(1)
+
+    reviewed = reviewed_release_notes(current_tag)
+    if reviewed is not None:
+        print(f"Using reviewed release notes for {current_tag}", file=sys.stderr)
+        sys.stdout.write(reviewed)
+        return
 
     if not api_key:
         print("Error: OPENROUTER_API_KEY environment variable is required", file=sys.stderr)

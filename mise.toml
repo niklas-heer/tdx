@@ -69,7 +69,7 @@ run = "go test ./pipeline"
 
 [tasks.check]
 description = "Run formatting, vet, lint, tests, and workflow validation"
-run = [{ task = "fmt:check" }, { task = "vet" }, { task = "lint" }, { task = "test" }, { task = "test:pipeline" }, { task = "ci-workflows" }]
+run = [{ task = "fmt:check" }, { task = "vet" }, { task = "lint" }, { task = "test" }, { task = "test:pipeline" }, { task = "test:release-notes" }, { task = "ci-workflows" }]
 
 [tasks.ci]
 description = "Run full portable CI in Dagger (requires Docker)"
@@ -199,3 +199,8 @@ mkdir -p dist/usage/profile
 go test ./internal/usage -run TestSeededSessions -count=1 -cpuprofile=dist/usage/profile/cpu.pprof -memprofile=dist/usage/profile/heap.pprof -o dist/usage/profile/usage.test
 go test ./internal/markdown -run '^$' -bench BenchmarkLoadedCheckbox -benchmem -count=3
 """
+
+[tasks."test:release-notes"]
+description = "Verify reviewed release notes offline"
+tools.python = "3.14.7"
+run = "bash scripts/test_release_notes.sh"
