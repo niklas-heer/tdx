@@ -320,10 +320,23 @@ impl Reader {
 #[cfg(windows)]
 impl Drop for Reader {
     fn drop(&mut self) {
-        use windows_sys::Win32::System::Console::{GetStdHandle, STD_INPUT_HANDLE, SetConsoleMode};
-        // SAFETY: Restore the borrowed console's mode; the handle is not closed.
+        use windows_sys::Win32::System::Console::{
+            ENABLE_VIRTUAL_TERMINAL_INPUT, GetConsoleMode, GetStdHandle, STD_INPUT_HANDLE,
+            SetConsoleMode,
+        };
+        let mut current = 0;
+        // Restore only our bit. Ratatui's panic hook may already have restored
+        // cooked mode before this destructor runs; do not re-enable raw mode.
+        // SAFETY: The handle is borrowed and the mode output is writable storage.
         unsafe {
-            SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), self.original_mode);
+            let handle = GetStdHandle(STD_INPUT_HANDLE);
+            if GetConsoleMode(handle, &raw mut current) != 0 {
+                SetConsoleMode(
+                    handle,
+                    (current & !ENABLE_VIRTUAL_TERMINAL_INPUT)
+                        | (self.original_mode & ENABLE_VIRTUAL_TERMINAL_INPUT),
+                );
+            }
         }
     }
 }
