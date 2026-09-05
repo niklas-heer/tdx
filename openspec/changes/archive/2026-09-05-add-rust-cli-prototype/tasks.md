@@ -8,4 +8,4 @@
 - [x] 2.4 Add reproducible alternating application benchmarks and retain raw results with source/toolchain context.
 - [x] 2.5 Document measured tradeoffs, missing contracts, and recommendation.
 - [x] 2.6 Run Rust formatting, Clippy, tests, relevant Go checks and OpenSpec validation.
-- [ ] 2.7 Commit, archive the approved change and push the experiment branch.
+- [x] 2.7 Commit, archive the approved change and push the experiment branch.
