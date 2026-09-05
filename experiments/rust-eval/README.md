@@ -63,3 +63,7 @@ The next useful performance work is to measure real editing sessions, reduce rep
 Revisit a rewrite only if realistic documents remain too slow after those changes, and a broader Rust spike demonstrates equivalent metadata, structural edits, cancellation/undo, conflict detection, atomic replacement, recovery/history, and terminal behavior across macOS, Linux, and Windows. This experiment implements none of those Rust application guarantees. There is no Rust FFI integration or production dependency.
 
 Implementation references: [pulldown-cmark offset iterator](https://docs.rs/pulldown-cmark/0.13.4/pulldown_cmark/struct.Parser.html#method.into_offset_iter), [Cargo profiles](https://doc.rust-lang.org/cargo/reference/profiles.html), and [Go diagnostics](https://go.dev/doc/diagnostics).
+
+## Follow-up implementation
+
+The [sustained-use harness and Go follow-up](../usage/README.md) implements the recommendations above, including source-preserving checkbox edits, cached checked-state updates, reproducible simulated sessions and executable contracts for future rewrite candidates. Its new measurements are separate from this historical baseline; the workload definitions differ.

@@ -2,7 +2,9 @@
 
 ## Purpose
 Protect user Markdown files with revision-aware saves, atomic replacement, explicit conflict handling, and reliable recovery after write failures.
+
 ## Requirements
+
 ### Requirement: Exact revision conflict detection
 
 The system SHALL base markdown save conflicts on the exact bytes read from disk, not on file timestamps.
@@ -158,3 +160,11 @@ The system SHALL accurately communicate and test the boundary of coordination wi
 - **THEN** tdx SHALL make no compare-and-swap guarantee for that unobserved change
 - **AND** tdx SHALL still use the strongest replacement and durability primitives available on the platform
 
+### Requirement: Pending input retains its disk revision
+The file watcher SHALL defer document reload while interactive add, edit, move or heading input is pending. Saving that input SHALL compare against the revision captured before input began.
+
+#### Scenario: External writer during input
+- **WHEN** another process changes the file while a user is editing a task
+- **AND** a file-watch tick occurs before Enter
+- **THEN** the user's save produces a conflict and preserves the external bytes
+- **AND** explicit reload resolves the conflict using the current disk content

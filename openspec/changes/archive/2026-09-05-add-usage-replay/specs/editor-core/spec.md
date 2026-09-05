@@ -9,3 +9,17 @@ Toggling a task in a freshly parsed document SHALL change only the AST-identifie
 #### Scenario: Structural edit fallback
 - **WHEN** a task is added, removed, moved or renamed
 - **THEN** the AST serializer remains the structural editing path and subsequent checkbox edits reflect the current tree rather than stale source offsets
+
+### Requirement: Derived task metadata stays current
+Available tag and priority options SHALL reflect current task content after editing, undo and reload, removing active filters for metadata no longer present.
+
+#### Scenario: Undo a newly introduced priority
+- **WHEN** a task introducing a priority or tag is added and then undone
+- **THEN** the picker stops offering the removed metadata
+
+### Requirement: Structural serialization retains opaque content
+Structural task edits SHALL retain HTML blocks, valid table syntax and ordinary paragraph line breaks even when formatting is normalized.
+
+#### Scenario: Add a task after rich content
+- **WHEN** a task is added to a document containing HTML, a table and a multiline paragraph
+- **THEN** those blocks remain present and the saved file can be reopened with all tasks intact
