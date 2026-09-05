@@ -417,19 +417,17 @@ The gate runs the campaign twice and requires byte-identical summaries and trace
 
 ### Use the Markdown editor
 
-Launch the Rust TUI with `mise run rust-rewrite -- path/to/tasks.md`, then choose `:edit-markdown` to edit the entire source, or `:markdown` to preview it. Source and preview appear side by side on wide terminals; narrow terminals switch between them. The preview displays headings, emphasis, links, task lists, quotes, code blocks, frontmatter and table cells. Raw HTML is displayed as text. Tables use separators without automatic column alignment; code blocks are styled without language-specific syntax highlighting.
+Launch the Rust TUI with `mise run rust-rewrite -- path/to/tasks.md`, then choose `:markdown` or `:edit-markdown`. Both open the complete raw document in a full-width editor. Use this additional tool for quick changes to headings, surrounding prose, frontmatter or other Markdown that the normal checklist omits. All source remains available for editing, including task syntax, links, code and tables. There is no rendered preview pane; closing the editor returns to the usual headings-and-tasks view.
 
 | Key | Action |
 | --- | --- |
 | `Ctrl-S` | Explicitly save the complete draft through revision checks and history |
-| `Ctrl-P` | Switch between source and full-width preview |
-| `e` in preview | Return to source editing |
-| Arrows, Home/End, PageUp/PageDown | Navigate source or scroll preview |
-| `Ctrl-Home` / `Ctrl-End` in source | Move to the start/end of the document |
+| Arrows, Home/End, PageUp/PageDown | Navigate source |
+| `Ctrl-Home` / `Ctrl-End` | Move to the start/end of the document |
 | `Ctrl-A`, then type or paste | Replace the entire draft |
-| `Ctrl-Z` in source | Undo a draft edit, up to 100 entries |
-| `Ctrl-C` after `Ctrl-A`; `Ctrl-Y` in source | Copy selected source; paste through the configured clipboard |
-| `Esc` | Close; an unsaved draft requires `y` to discard or another `Esc` to keep editing |
+| `Ctrl-Z` | Undo a draft edit, up to 100 entries |
+| `Ctrl-C` after `Ctrl-A`; `Ctrl-Y` | Copy selected source; paste through the configured clipboard |
+| `Esc` | Return to the checklist; an unsaved draft requires `y` to discard or another `Esc` to keep editing |
 | `u` after closing | Undo a saved document change using normal application undo |
 
 Saving preserves the draft's exact bytes and reparses tasks and frontmatter. Newlines already present are preserved; Enter follows CRLF when the draft contains CRLF, otherwise LF. Unsafe terminal control characters are filtered on insertion. Existing manual-save mode still requires explicit writes, and filesystem read-only permissions are respected. An external-change conflict retains the draft and accepted document without overwriting the other writer's content. Copy the draft before discarding/reloading if you need to merge competing edits; this is not an automatic merge editor.
@@ -442,13 +440,13 @@ For ordinary documents with 2–20 tasks, the previous comparison found similar 
 
 The model assumes whole-file atomic replacement and the specified I/O outcomes. It does not emulate SQLite pages, a real kernel, a disk controller, torn target writes or physical power loss. Failed preparation represents partial temporary writes at the effect boundary; it does not emulate their individual bytes. Simulated power loss conservatively clears modeled history. Native history still uses SQLite WAL with `synchronous=NORMAL`: database consistency does not guarantee retention of the most recent history transaction after power loss. Markdown replacement and history capture remain separate transactions. The simulator also excludes arbitrary non-cooperating writes after the final revision check; advisory locking cannot prevent them. tdx has no network service, so storage delays/outages and recovery are exercised without inventing network partitions.
 
-`rust-rewrite:check`, `rust-rewrite:stable`, `rust-rewrite:miri`, `rust-rewrite:contracts` and native CI include the new coverage. Miri now exercises 19 pure application tests; native OS/SQLite behavior remains in native tests. Nextest runs 62 tests on Unix and 60 on Windows: 53/51 application tests, five repeated adapter tests, and four simulator-target tests (two repeat the shared protocol tests). The two ignored functions are explicitly invoked development helpers: gallery export and the subprocess crash barrier.
+`rust-rewrite:check`, `rust-rewrite:stable`, `rust-rewrite:miri`, `rust-rewrite:contracts` and native CI include the new coverage. Following removal of the preview renderer, Miri exercises 18 pure application tests; native OS/SQLite behavior remains in native tests. Nextest runs 61 tests on Unix and 59 on Windows: 52/50 application tests, five repeated adapter tests, and four simulator-target tests (two repeat the shared protocol tests). The two ignored functions are explicitly invoked development helpers: gallery export and the subprocess crash barrier.
 
 The first native run exposed a Windows multiline-paste defect: ConPTY stripped bracketed-paste markers while virtual-terminal input was disabled, and LF input was then treated as an ignored shortcut. The earlier single-line paste check could not detect this. The Rust reader now enables and restores virtual-terminal input, decodes navigation/control sequences, and preserves bracketed Unicode text including mixed LF/CRLF and tabs. The strengthened native test requires exact bytes and retains a failed saved file for diagnosis. This follows [Microsoft’s explanation of the console behavior](https://github.com/microsoft/terminal/issues/18094) and the [Win32 OpenSSH input approach](https://github.com/PowerShell/openssh-portable/blob/latestw_all/contrib/win32/win32compat/tncon.c). This was a native input finding, separate from the save-protocol simulation.
 
-### Verified results
+### Verified simulation milestone
 
-The [final CI run](https://github.com/niklas-heer/tdx/actions/runs/33996737572) passed at revision `4b5d450` on Linux x86_64, macOS arm64 and Windows x86_64. The [retained evidence](../rust-rewrite/simulation-evidence.json) independently verifies that every native report contains the same source files and contents as the local campaign, with fingerprint `217b2d8e2b479c5d56b651bae717f578f652866624741116c870960714e5b07e`. All **1,000 seed traces and three negative-control traces match exactly across all three platforms and the local run**. Windows file ordering differences were accounted for when reproducing its source hash.
+The following retained results describe the initial source-and-preview implementation before the source-only refinement above. The [final CI run](https://github.com/niklas-heer/tdx/actions/runs/33996737572) passed at revision `4b5d450` on Linux x86_64, macOS arm64 and Windows x86_64. The [retained evidence](../rust-rewrite/simulation-evidence.json) independently verifies that every native report contains the same source files and contents as the local campaign, with fingerprint `217b2d8e2b479c5d56b651bae717f578f652866624741116c870960714e5b07e`. All **1,000 seed traces and three negative-control traces match exactly across all three platforms and the local run**. Windows file ordering differences were accounted for when reproducing its source hash.
 
 Each campaign schedules 200 steps per seed, followed by bounded recovery:
 

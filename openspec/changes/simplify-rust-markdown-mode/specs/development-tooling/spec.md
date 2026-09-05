@@ -13,3 +13,8 @@ The Rust candidate SHALL provide full-document Unicode source editing as an addi
 - **WHEN** the file changes externally before a draft is saved
 - **THEN** the save SHALL reject the stale revision without overwriting the file or replacing the editor's accepted document
 - **AND** the draft SHALL remain available until the user explicitly discards it
+
+#### Scenario: Edit source with preview
+- **WHEN** the user invokes the former preview entry point `:markdown`
+- **THEN** it SHALL open the complete source editor directly, without a preview
+- **AND** `:edit-markdown` SHALL open the same source editor

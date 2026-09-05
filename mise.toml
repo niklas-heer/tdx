@@ -249,7 +249,7 @@ run = """
 export CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/miri-target"
 export MIRIFLAGS='-Zmiri-strict-provenance'
 cargo miri setup
-for group in actions::tests document::tests input::tests console_input::tests presentation::tests save_protocol::tests source_buffer::tests markdown_view::tests; do
+for group in actions::tests document::tests input::tests console_input::tests presentation::tests save_protocol::tests source_buffer::tests; do
   filters=()
   if [ "$group" = input::tests ]; then filters=(--skip console_input::tests); fi
   cargo miri test --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bin tdx-rust "$group" -- "${filters[@]}"

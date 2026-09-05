@@ -25,12 +25,11 @@ def check(binary, output):
             # real keyboard input and persistence effects.
             term.pump(.2)
             assert path.read_bytes()==original
-            term.send(b'e\x01\x1b[200~'+draft+b'\x1b[201~')
+            term.send(b'\x01\x1b[200~'+draft+b'\x1b[201~')
             term.pump(.3)
             assert path.read_bytes()==original, 'draft saved before explicit save'
             for width in (36,120):
                 term.resize(width,28);term.pump(.2)
-                term.send(b'\x10');term.pump(.2);term.send(b'\x10');term.pump(.2)
             term.send(b'\x13')
             term.until(lambda:path.read_bytes()==draft,'complete Unicode Markdown source save')
             term.send(b'\x1b');term.pump(.2);term.send(b'u')
@@ -58,9 +57,9 @@ def check(binary, output):
             (output/'rust-markdown-failure.bin').write_bytes(path.read_bytes())
             raise
         finally:term.cleanup(output/'rust-markdown.ansi')
-    report={'preview_edit_multiline_unicode_resize_save_undo_conflict_retention_shutdown':'passed'}
+    report={'source_edit_multiline_unicode_resize_save_undo_conflict_retention_shutdown':'passed'}
     (output/'markdown.json').write_text(json.dumps(report,indent=2)+'\n')
-    print('Native Markdown source/preview/save/undo/conflict checks passed')
+    print('Native Markdown source/save/undo/conflict checks passed')
     return report
 
 

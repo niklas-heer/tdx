@@ -6,10 +6,9 @@ use crate::{
     editor::Editor,
     history::Version,
     input::{self, Buffer},
-    markdown_view,
     presentation::{self, Links},
     recent::{Recent, RecentFile},
-    source_buffer::SourceBuffer,
+    source_buffer::{self, SourceBuffer},
     store::Store,
 };
 use chrono::{Local, NaiveDate};
@@ -61,8 +60,11 @@ const COMMANDS: &[(&str, &str)] = &[
     ("diff", "Compare local and disk changes"),
     ("theme", "Choose theme with live preview"),
     ("versions", "Browse and restore saved versions"),
-    ("markdown", "Preview the complete Markdown document"),
-    ("edit-markdown", "Edit Markdown source with live preview"),
+    ("markdown", "Edit the complete Markdown source"),
+    (
+        "edit-markdown",
+        "Edit headings, tasks and surrounding Markdown",
+    ),
 ];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
@@ -121,8 +123,6 @@ struct App<'a> {
     quit_confirm: bool,
     links: Links,
     draft: SourceBuffer,
-    markdown_preview: bool,
-    markdown_cache: Option<Vec<Vec<presentation::Glyph>>>,
     source_scroll: usize,
 }
 impl<'a> App<'a> {
@@ -169,8 +169,6 @@ impl<'a> App<'a> {
             quit_confirm: false,
             links: Links::new(),
             draft: SourceBuffer::default(),
-            markdown_preview: false,
-            markdown_cache: None,
             source_scroll: 0,
         };
         app.clamp();
@@ -422,8 +420,6 @@ impl<'a> App<'a> {
         match name {
             "markdown" | "edit-markdown" => {
                 self.draft = SourceBuffer::new(self.editor.doc.source.clone());
-                self.markdown_preview = name == "markdown";
-                self.markdown_cache = None;
                 self.source_scroll = 0;
                 self.scroll = 0;
                 self.confirm = false;
@@ -1405,10 +1401,8 @@ impl<'a> App<'a> {
                 Mode::Normal => "n new · ␣ toggle · : cmd · ? help · Esc quit".into(),
                 Mode::Markdown => if self.confirm {
                     "Discard? y yes · Esc keep"
-                } else if self.markdown_preview {
-                    "e edit · ↑↓ scroll · Esc"
                 } else {
-                    "^S save · ^P view · Esc close"
+                    "^S save · Esc checklist"
                 }
                 .into(),
                 Mode::Commands | Mode::Search | Mode::Recent => {
@@ -1551,7 +1545,6 @@ impl<'a> App<'a> {
             {
                 if matches!(key.code, KeyCode::Char('y' | 'Y')) {
                     self.draft = SourceBuffer::default();
-                    self.markdown_cache = None;
                     self.mode = Mode::Normal;
                     self.status.clear();
                 }
@@ -1560,10 +1553,7 @@ impl<'a> App<'a> {
             return;
         }
         if let Event::Paste(text) = event {
-            if !self.markdown_preview {
-                self.draft.insert(&text);
-                self.markdown_cache = None;
-            }
+            self.draft.insert(&text);
             return;
         }
         let Event::Key(key) = event else {
@@ -1576,7 +1566,6 @@ impl<'a> App<'a> {
             if self.draft.text() == self.editor.doc.source {
                 self.mode = Mode::Normal;
                 self.draft = SourceBuffer::default();
-                self.markdown_cache = None;
                 self.status.clear();
             } else {
                 self.confirm = true;
@@ -1586,11 +1575,6 @@ impl<'a> App<'a> {
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
-                KeyCode::Char('p') => {
-                    self.markdown_preview = !self.markdown_preview;
-                    self.scroll = 0;
-                    return;
-                }
                 KeyCode::Char('s') => {
                     let metadata = self.editor.doc.metadata.clone();
                     let result = self.editor.save_document(self.draft.text().to_owned());
@@ -1608,11 +1592,10 @@ impl<'a> App<'a> {
                     };
                     return;
                 }
-                KeyCode::Char('y') if !self.markdown_preview => {
+                KeyCode::Char('y') => {
                     match clipboard::paste() {
                         Ok(text) => {
                             self.draft.insert(&text);
-                            self.markdown_cache = None;
                         }
                         Err(error) => self.status = error,
                     }
@@ -1626,147 +1609,68 @@ impl<'a> App<'a> {
                 _ => {}
             }
         }
-        if self.markdown_preview {
-            match key.code {
-                KeyCode::Char('e') => self.markdown_preview = false,
-                KeyCode::Home => self.scroll = 0,
-                KeyCode::End => self.scroll = usize::MAX,
-                KeyCode::Down | KeyCode::Char('j') => self.scroll = self.scroll.saturating_add(1),
-                KeyCode::Up | KeyCode::Char('k') => self.scroll = self.scroll.saturating_sub(1),
-                KeyCode::PageDown => self.scroll = self.scroll.saturating_add(10),
-                KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(10),
-                _ => {}
-            }
-        } else {
-            self.draft.key(key);
-            self.markdown_cache = None;
-        }
+        self.draft.key(key);
     }
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Keep source/preview layout, viewport and hyperlink coordinates together"
-    )]
     fn draw_markdown(&mut self, frame: &mut Frame, area: Rect) {
-        let split = !self.markdown_preview && area.width >= 90;
-        let panes = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
-        if !self.markdown_preview {
-            let source_area = if split { panes[0] } else { area };
-            let height = usize::from(source_area.height.saturating_sub(2));
-            let width = usize::from(source_area.width.saturating_sub(8));
-            let (row, _) = self.draft.line_position();
-            if row < self.source_scroll {
-                self.source_scroll = row;
-            }
-            if row >= self.source_scroll + height {
-                self.source_scroll = row.saturating_sub(height.saturating_sub(1));
-            }
-            let mut offset = 0;
-            let lines: Vec<Line<'static>> = self
-                .draft
-                .text()
-                .split('\n')
-                .enumerate()
-                .filter_map(|(index, line)| {
-                    let start = offset;
-                    offset += line.len() + 1;
-                    if index < self.source_scroll || index >= self.source_scroll + height {
-                        return None;
-                    }
-                    let content = line.trim_end_matches('\r');
-                    let visible = if index == row {
-                        presentation::input_window(
-                            content,
-                            self.draft.cursor().saturating_sub(start),
-                            width,
-                        )
-                    } else {
-                        content.to_owned()
-                    };
-                    let style = Style::default().fg(self.color(if index == row {
-                        "Accent"
-                    } else {
-                        "Base"
-                    }));
-                    Some(Line::from(vec![
-                        Span::styled(
-                            format!("{:>4} ", index + 1),
-                            Style::default().fg(self.color("Dim")),
-                        ),
-                        Span::styled(
-                            markdown_view::safe(&visible),
-                            if self.draft.selected() {
-                                style.add_modifier(Modifier::REVERSED)
-                            } else {
-                                style
-                            },
-                        ),
-                    ]))
-                })
-                .collect();
-            let changed = if self.draft.text() == self.editor.doc.source {
-                ""
-            } else {
-                " · unsaved"
-            };
-            frame.render_widget(
-                Paragraph::new(lines)
-                    .block(self.panel(format!(" Source · line {}{changed} ", row + 1))),
-                source_area,
-            );
+        let height = usize::from(area.height.saturating_sub(2));
+        let width = usize::from(area.width.saturating_sub(8));
+        let (row, _) = self.draft.line_position();
+        if row < self.source_scroll {
+            self.source_scroll = row;
         }
-        if self.markdown_preview || split {
-            let preview_area = if split { panes[1] } else { area };
-            if self.markdown_cache.is_none() {
-                self.markdown_cache = Some(markdown_view::render(
-                    self.draft.text(),
-                    Style::default().fg(self.color("Base")),
-                    Style::default().fg(self.color("Accent")),
-                    Style::default().fg(self.color("Code")),
-                ));
-            }
-            let width = usize::from(preview_area.width.saturating_sub(2));
-            let rows: Vec<Vec<presentation::Glyph>> = self
-                .markdown_cache
-                .iter()
-                .flatten()
-                .flat_map(|row| presentation::lines(row.clone(), width, 0, true))
-                .collect();
-            let height = usize::from(preview_area.height.saturating_sub(2));
-            let top = if split {
-                self.source_scroll.min(rows.len().saturating_sub(height))
-            } else {
-                self.scroll.min(rows.len().saturating_sub(height))
-            };
-            self.scroll = top;
-            let lines: Vec<_> = rows
-                .iter()
-                .skip(top)
-                .take(height)
-                .map(|row| presentation::line(row))
-                .collect();
-            frame.render_widget(
-                Paragraph::new(lines).block(self.panel(" Markdown preview ".into())),
-                preview_area,
-            );
-            for (row, glyphs) in rows.iter().skip(top).take(height).enumerate() {
-                let mut x = preview_area.x.saturating_add(1);
-                let y = preview_area
-                    .y
-                    .saturating_add(1)
-                    .saturating_add(u16::try_from(row).unwrap_or(u16::MAX));
-                for glyph in glyphs {
-                    let size = u16::try_from(glyph.text.width()).unwrap_or(u16::MAX);
-                    if x.saturating_add(size) > preview_area.right().saturating_sub(1) {
-                        break;
-                    }
-                    if let Some(url) = &glyph.url {
-                        self.links.insert((x, y), url.clone());
-                    }
-                    x = x.saturating_add(size);
+        if row >= self.source_scroll + height {
+            self.source_scroll = row.saturating_sub(height.saturating_sub(1));
+        }
+        let mut offset = 0;
+        let lines: Vec<Line<'static>> = self
+            .draft
+            .text()
+            .split('\n')
+            .enumerate()
+            .filter_map(|(index, line)| {
+                let start = offset;
+                offset += line.len() + 1;
+                if index < self.source_scroll || index >= self.source_scroll + height {
+                    return None;
                 }
-            }
-        }
+                let content = line.trim_end_matches('\r');
+                let visible = if index == row {
+                    presentation::input_window(
+                        content,
+                        self.draft.cursor().saturating_sub(start),
+                        width,
+                    )
+                } else {
+                    content.to_owned()
+                };
+                let style =
+                    Style::default().fg(self.color(if index == row { "Accent" } else { "Base" }));
+                Some(Line::from(vec![
+                    Span::styled(
+                        format!("{:>4} ", index + 1),
+                        Style::default().fg(self.color("Dim")),
+                    ),
+                    Span::styled(
+                        source_buffer::display_text(&visible),
+                        if self.draft.selected() {
+                            style.add_modifier(Modifier::REVERSED)
+                        } else {
+                            style
+                        },
+                    ),
+                ]))
+            })
+            .collect();
+        let changed = if self.draft.text() == self.editor.doc.source {
+            ""
+        } else {
+            " · unsaved"
+        };
+        frame.render_widget(
+            Paragraph::new(lines)
+                .block(self.panel(format!(" Markdown source · line {}{changed} ", row + 1))),
+            area,
+        );
     }
     fn draw_diff(&mut self, frame: &mut Frame, area: Rect, title: &str) {
         let lines: Vec<_> = self
@@ -1796,7 +1700,7 @@ impl<'a> App<'a> {
     }
     fn controls(&self) -> String {
         match self.mode{
-            Mode::Markdown=>if self.confirm {"Discard draft? y discard · Esc keep editing"} else if self.markdown_preview {"e edit · Ctrl-P source · ↑↓/PgUp/PgDn scroll · Esc close"} else {"Ctrl-S save · Ctrl-P preview · Ctrl-A all · Ctrl-Z undo · Esc close"}.into(),
+            Mode::Markdown=>if self.confirm {"Discard draft? y discard · Esc keep editing"} else {"Ctrl-S save · Ctrl-A all · Ctrl-Z undo · Esc checklist"}.into(),
             Mode::Normal=>format!("j/k move · n/N new · e/d edit · u undo · / search · t/p/D filters · s sections · r recent · : commands · ? help{}{}{}{}",if self.tags.is_empty(){String::new()}else{format!(" #{}",self.tags.iter().cloned().collect::<Vec<_>>().join(" #"))},if self.priorities.is_empty(){String::new()}else{format!(" p{:?}",self.priorities)},if self.due.is_empty(){String::new()}else{format!(" due:{}",self.due)},if self.settings.filter_done{" · open only"}else{""}),
             Mode::Versions=>if self.confirm{"Restore this version? [y/N]"}else{"[↑/↓] Navigate  [PgUp/PgDn] Scroll  [Enter] Restore  [Esc] Close"}.into(),
             Mode::Diff=>"[PgUp/PgDn] Scroll · [Esc] Close · then :reload or :force-save".into(),
@@ -2481,27 +2385,39 @@ mod tests {
         }
     }
     #[test]
-    fn markdown_source_preview_save_undo_and_conflict() {
+    fn markdown_complete_source_save_undo_and_conflict() {
         with_app(|app| {
-            app.command("edit-markdown");
+            app.command("markdown");
             let draft = "---\ncustom: retained\nword-wrap: false\n---\n# Café 🦀\n\nText with **bold** and [guide](https://ratatui.rs).\n\n- [ ] New task\n\n```rs\nlet x = 1;\n```\n";
             keys(app, "\x01");
             app.handle(Event::Paste(draft.into()));
             assert_eq!(app.editor.doc.source, SOURCE);
+            keys(app, "\x10"); // Former preview key must not hide source.
             let wide = text(&screen(app, 120, 30));
-            assert!(
-                wide.contains("Source")
-                    && wide.contains("Markdown preview")
-                    && wide.contains("Café")
-            );
-            keys(app, "\x10");
-            assert!(text(&screen(app, 36, 24)).contains("Markdown preview"));
-            assert!(!app.links.is_empty());
+            for content in [
+                "Markdown source",
+                "custom: retained",
+                "# Café",
+                "**bold**",
+                "- [ ] New task",
+                "```rs",
+                "let x = 1;",
+            ] {
+                assert!(wide.contains(content), "missing source: {content}");
+            }
+            assert!(!wide.contains("Markdown preview"));
+            assert!(app.links.is_empty()); // Raw source is not a rendered document.
+            let narrow = text(&screen(app, 36, 24));
+            assert!(narrow.contains("Markdown source") && narrow.contains("let x = 1;"));
             keys(app, "\x13");
             assert_eq!(std::fs::read_to_string(&app.path).unwrap(), draft);
             assert_eq!(app.editor.doc.tasks[0].text, "New task");
             assert!(!app.settings.word_wrap);
-            keys(app, "\x1bu");
+            keys(app, "\x1b");
+            let checklist = text(&screen(app, 120, 30));
+            assert!(checklist.contains("New task"));
+            assert!(!checklist.contains("Text with") && !checklist.contains("let x = 1;"));
+            keys(app, "u");
             assert_eq!(std::fs::read_to_string(&app.path).unwrap(), SOURCE);
             assert!(app.settings.word_wrap);
             app.command("edit-markdown");
@@ -2779,7 +2695,6 @@ mod tests {
                 ("narrow", Mode::Normal, 48, 24),
                 ("input", Mode::Input, 48, 24),
                 ("markdown-source", Mode::Markdown, 120, 30),
-                ("markdown-preview", Mode::Markdown, 90, 30),
                 ("markdown-narrow", Mode::Markdown, 38, 24),
             ] {
                 app.mode = mode;
@@ -2788,8 +2703,6 @@ mod tests {
                         "{}\n## Release notes\n\n**Ready for review.** Keep the original Markdown and edit it here.\n\n> Save explicitly with Ctrl-S.\n\n```rust\nlet release = \"0.14.0\";\n```\n\n| Platform | Status |\n|---|---|\n| macOS | Passed |\n| Windows | Passed |\n",
                         app.editor.doc.source
                     ));
-                    app.markdown_preview = name == "markdown-preview";
-                    app.markdown_cache = None;
                     app.source_scroll = 0;
                     app.scroll = 0;
                 }

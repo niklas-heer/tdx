@@ -2,6 +2,19 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::VecDeque;
 
+pub fn display_text(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c == '\t' {
+                ' '
+            } else if c.is_control() {
+                '�'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
 #[derive(Default)]
 pub struct SourceBuffer {
     text: String,
@@ -217,6 +230,7 @@ mod tests {
     }
     #[test]
     fn unicode_crlf_edit_navigation_and_draft_undo() {
+        assert!(!display_text("hello\x1b[31m").contains('\x1b'));
         let original = "é🦀\r\n界\r\n";
         let mut b = SourceBuffer::new(original.into());
         key(&mut b, KeyCode::End);
