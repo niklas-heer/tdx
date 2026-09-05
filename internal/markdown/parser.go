@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -28,15 +29,17 @@ type Todo struct {
 
 // FileModel holds parsed file content with AST backend
 type FileModel struct {
-	Lines         []string     // Deprecated: kept for compatibility, use AST instead
-	Todos         []Todo       // Cached todos extracted from AST
-	ast           *ASTDocument // The goldmark AST (source of truth)
-	dirty         bool         // Whether todos have been modified
-	FilePath      string       // Path to the file
-	ModTime       time.Time    // File modification time when loaded
-	Metadata      *Metadata    // Per-file configuration from YAML frontmatter
-	revision      fileRevision // Exact disk revision used for conditional saves
-	revisionKnown bool
+	Lines          []string     // Deprecated: kept for compatibility, use AST instead
+	Todos          []Todo       // Cached todos extracted from AST
+	ast            *ASTDocument // The goldmark AST (source of truth)
+	dirty          bool         // Whether todos have been modified
+	FilePath       string       // Path to the file
+	ModTime        time.Time    // File modification time when loaded
+	Metadata       *Metadata    // Per-file configuration from YAML frontmatter
+	revision       fileRevision // Exact disk revision used for conditional saves
+	revisionKnown  bool
+	rawFrontmatter string
+	loadedMetadata *Metadata
 }
 
 // GetAST returns the underlying AST document
@@ -69,6 +72,8 @@ func (store Store) ReadFile(filePath string) (*FileModel, error) {
 	fm := ParseMarkdown(contentWithoutMeta)
 	fm.FilePath = filePath
 	fm.Metadata = metadata
+	fm.rawFrontmatter = content[:len(content)-len(contentWithoutMeta)]
+	fm.loadedMetadata = metadata.Clone()
 	fm.setRevision(revision, modTime)
 
 	if store.OnRead != nil {
@@ -165,8 +170,15 @@ func SerializeMarkdown(fm *FileModel) string {
 	content := SerializeAST(fm.ast)
 
 	// Ensure proper formatting
-	content = EnsureHeader(content)
-	content = EnsureTrailingNewline(content)
+	if !fm.ast.sourceValid {
+		content = EnsureHeader(content)
+		content = EnsureTrailingNewline(content)
+	}
+
+	// Preserve unfamiliar keys, comments and formatting unless settings changed.
+	if fm.rawFrontmatter != "" && reflect.DeepEqual(fm.Metadata, fm.loadedMetadata) {
+		return fm.rawFrontmatter + content
+	}
 
 	// Add metadata frontmatter if present
 	if fm.Metadata != nil && !fm.Metadata.IsEmpty() {
@@ -257,6 +269,7 @@ func (fm *FileModel) UpdateTodoItem(index int, text string, checked bool) error 
 	}
 
 	if fm.ast != nil {
+		textChanged := fm.Todos[index].Text != text
 		// Update via AST
 		if fm.Todos[index].Text != text {
 			if err := fm.ast.UpdateTodoText(index, text); err != nil {
@@ -269,7 +282,11 @@ func (fm *FileModel) UpdateTodoItem(index int, text string, checked bool) error 
 			}
 		}
 		// Re-extract todos to keep cache in sync
-		fm.Todos = fm.ast.ExtractTodos()
+		if textChanged {
+			fm.Todos = fm.ast.ExtractTodos()
+		} else {
+			fm.Todos[index].Checked = checked
+		}
 	} else {
 		// Legacy fallback
 		fm.Todos[index].Text = text
@@ -478,18 +495,24 @@ func (fm *FileModel) Clone() *FileModel {
 	if fm.ast != nil {
 		// Serialize the current AST: Source can contain stale text after edits.
 		astCopy, _ = ParseAST(SerializeAST(fm.ast))
+		parsedTodos := astCopy.ExtractTodos()
+		if !fm.dirty {
+			todos = parsedTodos
+		}
 	}
 
 	return &FileModel{
-		Lines:         lines,
-		Todos:         todos,
-		ast:           astCopy,
-		dirty:         fm.dirty,
-		FilePath:      fm.FilePath,
-		ModTime:       fm.ModTime,
-		Metadata:      fm.Metadata.Clone(),
-		revision:      fm.revision,
-		revisionKnown: fm.revisionKnown,
+		Lines:          lines,
+		Todos:          todos,
+		ast:            astCopy,
+		dirty:          fm.dirty,
+		FilePath:       fm.FilePath,
+		ModTime:        fm.ModTime,
+		Metadata:       fm.Metadata.Clone(),
+		revision:       fm.revision,
+		revisionKnown:  fm.revisionKnown,
+		rawFrontmatter: fm.rawFrontmatter,
+		loadedMetadata: fm.loadedMetadata.Clone(),
 	}
 }
 

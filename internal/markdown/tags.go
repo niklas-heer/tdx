@@ -13,6 +13,9 @@ var tagRegex = regexp.MustCompile(`#([a-zA-Z0-9_-]+)`)
 // ExtractTags extracts all tags from todo text
 // Tags are hashtags like #urgent #backend
 func ExtractTags(text string) []string {
+	if !strings.ContainsRune(text, '#') {
+		return []string{}
+	}
 	matches := tagRegex.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
 		return []string{}

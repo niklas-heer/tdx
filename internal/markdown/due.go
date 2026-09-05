@@ -16,6 +16,9 @@ var dueRegex = regexp.MustCompile(`@due\((\d{4}-\d{2}-\d{2})\)`)
 // If multiple due dates exist, returns the earliest one.
 // The returned time is in local timezone at midnight.
 func ExtractDueDate(text string) *time.Time {
+	if !strings.ContainsRune(text, '@') {
+		return nil
+	}
 	matches := dueRegex.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
 		return nil

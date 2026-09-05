@@ -14,8 +14,10 @@ import (
 
 // ASTDocument holds the goldmark AST and provides operations on it
 type ASTDocument struct {
-	Source []byte
-	AST    ast.Node
+	Source      []byte
+	AST         ast.Node
+	sourceValid bool                   // Source still represents the complete current tree.
+	checkboxes  []*extast.TaskCheckBox // Populated in extraction order.
 }
 
 // TodoNode represents a todo item in the AST with its associated checkbox
@@ -46,14 +48,16 @@ func ParseAST(content string) (*ASTDocument, error) {
 	doc := md.Parser().Parse(text.NewReader(source))
 
 	return &ASTDocument{
-		Source: source,
-		AST:    doc,
+		Source:      source,
+		AST:         doc,
+		sourceValid: true,
 	}, nil
 }
 
 // ExtractTodos walks the AST and extracts all task list items with nesting information
 func (doc *ASTDocument) ExtractTodos() []Todo {
 	var todos []Todo
+	doc.checkboxes = nil
 	todoIndex := 0
 
 	// Forward declare walkList so walkListItem can call it
@@ -86,6 +90,7 @@ func (doc *ASTDocument) ExtractTodos() []Todo {
 		// If this is a task item, extract it
 		currentIdx := -1
 		if checkbox != nil {
+			doc.checkboxes = append(doc.checkboxes, checkbox)
 			text := doc.extractTodoText(listItem, checkbox)
 			tags := ExtractTags(text)
 			priority := ExtractPriority(text)
@@ -342,20 +347,46 @@ func (doc *ASTDocument) FindTodoNode(todoIndex int) (*TodoNode, error) {
 
 // ToggleTodo toggles the checked state of a todo
 func (doc *ASTDocument) ToggleTodo(todoIndex int) error {
-	node, err := doc.FindTodoNode(todoIndex)
-	if err != nil {
-		return err
+	var checkbox *extast.TaskCheckBox
+	if todoIndex >= 0 && todoIndex < len(doc.checkboxes) {
+		checkbox = doc.checkboxes[todoIndex]
+	} else {
+		node, err := doc.FindTodoNode(todoIndex)
+		if err != nil {
+			return err
+		}
+		checkbox = node.CheckBox
 	}
-
-	// Toggle the checkbox state
-	node.CheckBox.IsChecked = !node.CheckBox.IsChecked
-	node.Checked = node.CheckBox.IsChecked
-
+	if doc.sourceValid {
+		parent := checkbox.Parent()
+		if parent == nil || parent.Lines().Len() == 0 {
+			return fmt.Errorf("checkbox source location unavailable")
+		}
+		start := parent.Lines().At(0).Start
+		if start+2 >= len(doc.Source) || doc.Source[start] != '[' || doc.Source[start+2] != ']' {
+			return fmt.Errorf("checkbox source location invalid")
+		}
+		mark := byte('x')
+		if checkbox.IsChecked {
+			mark = ' '
+		}
+		doc.Source[start+1] = mark
+	}
+	checkbox.IsChecked = !checkbox.IsChecked
 	return nil
 }
 
+// invalidateSource switches structural edits to the AST serializer and drops
+// indexes whose nodes may have moved or been removed.
+func (doc *ASTDocument) invalidateSource() { doc.sourceValid = false; doc.checkboxes = nil }
+
 // UpdateTodoText updates the text of a todo
-func (doc *ASTDocument) UpdateTodoText(todoIndex int, newText string) error {
+func (doc *ASTDocument) UpdateTodoText(todoIndex int, newText string) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
 	node, err := doc.FindTodoNode(todoIndex)
 	if err != nil {
 		return err
@@ -382,7 +413,12 @@ func (doc *ASTDocument) UpdateTodoText(todoIndex int, newText string) error {
 }
 
 // DeleteTodo removes a todo from the AST, promoting any children to the parent level
-func (doc *ASTDocument) DeleteTodo(todoIndex int) error {
+func (doc *ASTDocument) DeleteTodo(todoIndex int) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
 	node, err := doc.FindTodoNode(todoIndex)
 	if err != nil {
 		return err
@@ -436,7 +472,12 @@ func (doc *ASTDocument) DeleteTodo(todoIndex int) error {
 }
 
 // AddTodo adds a new todo to the AST
-func (doc *ASTDocument) AddTodo(todoText string, checked bool) error {
+func (doc *ASTDocument) AddTodo(todoText string, checked bool) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
 	// Find the last list in the document, or create one
 	var lastList *ast.List
 
@@ -504,7 +545,22 @@ func (doc *ASTDocument) AddTodo(todoText string, checked bool) error {
 
 // InsertTodoAfter inserts a new todo after the specified index
 // If afterIndex is -1, inserts at the beginning of the first todo list
-func (doc *ASTDocument) InsertTodoAfter(afterIndex int, todoText string, checked bool) error {
+func (doc *ASTDocument) InsertTodoAfter(afterIndex int, todoText string, checked bool) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
+	var node *TodoNode
+	if afterIndex >= 0 {
+		node, err = doc.FindTodoNode(afterIndex)
+		if err != nil {
+			return err
+		}
+		if node.ListItem.Parent() == nil {
+			return fmt.Errorf("list item has no parent")
+		}
+	}
 	// Append new text to source
 	newTodoText := []byte(todoText)
 	sourceStart := len(doc.Source)
@@ -568,12 +624,6 @@ func (doc *ASTDocument) InsertTodoAfter(afterIndex int, todoText string, checked
 		return nil
 	}
 
-	// Find the todo node at afterIndex
-	node, err := doc.FindTodoNode(afterIndex)
-	if err != nil {
-		return err
-	}
-
 	// Get the parent list
 	parentList := node.ListItem.Parent()
 	if parentList == nil {
@@ -594,7 +644,12 @@ func (doc *ASTDocument) InsertTodoAfter(afterIndex int, todoText string, checked
 // SwapTodos swaps two todos in the AST
 // MoveTodoToPosition moves a todo by removing it and inserting before/after another todo
 // insertAfter: if true, insert after targetIndex; if false, insert before targetIndex
-func (doc *ASTDocument) MoveTodoToPosition(fromIndex, targetIndex int, insertAfter bool) error {
+func (doc *ASTDocument) MoveTodoToPosition(fromIndex, targetIndex int, insertAfter bool) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
 	if fromIndex == targetIndex {
 		return nil // No-op
 	}
@@ -628,7 +683,12 @@ func (doc *ASTDocument) MoveTodoToPosition(fromIndex, targetIndex int, insertAft
 
 // MoveTodo moves a todo from fromIndex to toIndex (shifts other todos)
 // Deprecated: Use MoveTodoToPosition for more explicit control
-func (doc *ASTDocument) MoveTodo(fromIndex, toIndex int) error {
+func (doc *ASTDocument) MoveTodo(fromIndex, toIndex int) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
 	if fromIndex == toIndex {
 		return nil // No-op
 	}
@@ -665,7 +725,12 @@ func (doc *ASTDocument) MoveTodo(fromIndex, toIndex int) error {
 
 // IndentTodo makes a todo a child of its previous sibling (increases depth)
 // Returns error if the todo cannot be indented (e.g., first item in list)
-func (doc *ASTDocument) IndentTodo(todoIndex int) error {
+func (doc *ASTDocument) IndentTodo(todoIndex int) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
 	node, err := doc.FindTodoNode(todoIndex)
 	if err != nil {
 		return err
@@ -718,7 +783,12 @@ func (doc *ASTDocument) IndentTodo(todoIndex int) error {
 
 // OutdentTodo moves a todo up one level in the hierarchy (decreases depth)
 // Returns error if the todo cannot be outdented (e.g., already at top level)
-func (doc *ASTDocument) OutdentTodo(todoIndex int) error {
+func (doc *ASTDocument) OutdentTodo(todoIndex int) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
 	node, err := doc.FindTodoNode(todoIndex)
 	if err != nil {
 		return err
@@ -764,7 +834,12 @@ func (doc *ASTDocument) OutdentTodo(todoIndex int) error {
 }
 
 // SwapTodos swaps two todos in the AST (kept for backward compatibility but prefer MoveTodo)
-func (doc *ASTDocument) SwapTodos(index1, index2 int) error {
+func (doc *ASTDocument) SwapTodos(index1, index2 int) (err error) {
+	defer func() {
+		if err == nil {
+			doc.invalidateSource()
+		}
+	}()
 	node1, err := doc.FindTodoNode(index1)
 	if err != nil {
 		return err

@@ -14,6 +14,9 @@ var priorityRegex = regexp.MustCompile(`!p(\d+)`)
 // Returns the priority number (1, 2, 3, etc.) or 0 if no priority is set.
 // If multiple priorities exist, returns the highest (lowest number).
 func ExtractPriority(text string) int {
+	if !strings.ContainsRune(text, '!') {
+		return 0
+	}
 	matches := priorityRegex.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
 		return 0

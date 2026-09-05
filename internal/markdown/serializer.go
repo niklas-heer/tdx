@@ -12,6 +12,9 @@ import (
 // SerializeAST converts an AST back to markdown text
 // This is a custom implementation because goldmark's renderer had issues
 func SerializeAST(doc *ASTDocument) string {
+	if doc.sourceValid {
+		return string(doc.Source)
+	}
 	var buf bytes.Buffer
 	serializeNode(doc, doc.AST, &buf, 0)
 	return buf.String()
@@ -67,6 +70,16 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 			}
 		}
 
+		if !inListItem && n.Lines().Len() > 0 {
+			buf.Write(n.Lines().Value(doc.Source))
+			if buf.Len() > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
+				buf.WriteByte('\n')
+			}
+			if n.NextSibling() != nil {
+				buf.WriteByte('\n')
+			}
+			return
+		}
 		// Serialize children
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 			serializeNode(doc, child, buf, depth)
@@ -264,11 +277,45 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 		}
 		buf.WriteString("~~")
 
-	case *extast.Table:
-		// TODO: Implement table serialization if needed
-		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			serializeNode(doc, child, buf, depth)
+	case *ast.HTMLBlock:
+		buf.Write(n.Lines().Value(doc.Source))
+		if n.HasClosure() {
+			buf.Write(n.ClosureLine.Value(doc.Source))
 		}
+		buf.WriteString("\n\n")
+
+	case *extast.Table:
+		for row := n.FirstChild(); row != nil; row = row.NextSibling() {
+			buf.WriteString("| ")
+			for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
+				for inline := cell.FirstChild(); inline != nil; inline = inline.NextSibling() {
+					serializeNode(doc, inline, buf, depth)
+				}
+				buf.WriteString(" |")
+				if cell.NextSibling() != nil {
+					buf.WriteByte(' ')
+				}
+			}
+			buf.WriteByte('\n')
+			if row.Kind() == extast.KindTableHeader {
+				buf.WriteByte('|')
+				for _, alignment := range n.Alignments {
+					delimiter := " --- "
+					switch alignment {
+					case extast.AlignLeft:
+						delimiter = " :--- "
+					case extast.AlignRight:
+						delimiter = " ---: "
+					case extast.AlignCenter:
+						delimiter = " :---: "
+					}
+					buf.WriteString(delimiter)
+					buf.WriteByte('|')
+				}
+				buf.WriteByte('\n')
+			}
+		}
+		buf.WriteByte('\n')
 
 	default:
 		// For unknown node types, try to serialize children
