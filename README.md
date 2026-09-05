@@ -47,13 +47,42 @@ While focused, **n** adds a task after the selection; in an empty section it cre
 
 Section editing uses the same guarded saves and version history as task editing. Read-only files support section browsing and focus without permitting heading edits.
 
-### What's new in 1.0
+### What's new in 0.14 (unreleased)
 
 - Manage projects directly through Markdown headings, without opening another editor.
+- Compose tdx with scripts and editors using filtered JSON output and explicit file selection.
 - Type and paste international text in task, search, command, and recent-file inputs.
 - Use the current Bubble Tea and Lip Gloss v2 terminal renderer and input handling.
 - Use mise for reproducible development tools and tasks. `mise tasks` lists available commands; `mise run check` runs local validation.
 - Installation defaults to `~/.local/bin`; set `TDX_INSTALL_DIR` to choose another directory. Existing todo files and global configuration remain compatible.
+
+## Scripting and editor integrations
+
+Query a project without opening the TUI or writing history:
+
+```bash
+tdx --file ./TASKS list --json --status open --tag backend
+tdx tasks.md list --status done
+tdx tasks.md list --json | jq -r '.[] | select(.priority == 1) | .text'
+tdx add -- --read-only          # Add literal flag-like text
+tdx --read-only tasks.md list   # Reads work; CLI writes are rejected
+```
+
+`--file` (or `-f`) accepts any filename, including paths with spaces or without a `.md` extension. The positional `tdx tasks.md …` syntax still works. Options may appear before or after the command; use `--` before task text that starts with a dash. Shell quoting is preserved as received, including intentional quote characters in task text.
+
+`list` supports `--status all|open|done` (default `all`) and exact, case-sensitive `--tag` filters, with or without the leading `#`. Repeat `--tag` to require every tag. Filters apply to both text and JSON output. An empty JSON result is `[]`, including when the todo file does not exist; listing does not create that file or require a writable history directory.
+
+Each JSON task contains:
+
+| Field | Meaning |
+| --- | --- |
+| `index` | One-based position in the full file, preserved when filtering |
+| `text`, `checked` | Markdown task text and completion state |
+| `depth`, `parent_index` | Nesting depth and one-based parent position; `null` for root tasks |
+| `tags`, `priority` | Tag array (empty is `[]`); priority `0` means unset |
+| `due_date` | `YYYY-MM-DD` or `null` |
+
+Indexes are positions, **not persistent IDs**: re-query after inserting, deleting, reordering, or externally editing tasks before using an index in a write command. JSON goes only to stdout; errors go to stderr with exit code 1. Successful commands exit 0. The schema remains subject to change during pre-1.0 development.
 
 ## Installation
 
@@ -642,6 +671,8 @@ mise run build        # Build binary
 mise run build-all    # Build all release targets with Dagger
 mise run install      # Install to ~/.local/bin
 mise run tui          # Run TUI
+mise run demo         # Try a disposable project with isolated config/history
+mise run coverage     # Generate dist/coverage/index.html
 mise run list         # List todos
 mise run add "X"      # Add todo
 mise run toggle 1     # Toggle todo
@@ -653,6 +684,16 @@ mise run ci-test      # Run race-enabled tests through Dagger
 mise run ci-workflows # Validate GitHub workflow syntax locally
 mise run clean        # Clean artifacts
 ```
+
+For a fast feedback loop, pass Go test arguments directly:
+
+```bash
+mise run test -- ./internal/cmd -run TestList -count=1
+mise run test:race -- ./internal/markdown
+mise run coverage
+```
+
+Without arguments, both test tasks run every application package. `mise run demo` opens a temporary copy of `examples/project-tracker.md`, with its own configuration and history. Edits disappear on exit; personal settings and the source example are untouched. The command tests likewise use temporary configuration, and their subprocess binary/config directories are cleaned up after the suite finishes.
 
 The Dagger pipeline is pinned in `dagger.json` and implements CI in Go. GitHub still runs native macOS and Windows filesystem tests because those platform semantics cannot be reproduced by Linux containers.
 
