@@ -284,5 +284,6 @@ func (m *TdxCi) usageCheck(ctx context.Context, source *dagger.Directory) (strin
 		WithExec([]string{"go", "run", "./cmd/tdx-usage", "-driver", "cli", "-binary", "/tmp/tdx-usage-binary", "-sessions", "1", "-steps", "40"}).
 		WithExec([]string{"sh", "-ec", "apt-get update -qq && apt-get install -y --no-install-recommends python3"}).
 		WithExec([]string{"python3", "scripts/usage-pty.py", "--binary", "/tmp/tdx-usage-binary"}).
+		WithExec([]string{"bash", "scripts/test_release_notes.sh"}).
 		Stdout(ctx)
 }

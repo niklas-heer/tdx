@@ -68,4 +68,4 @@ Session allocation totals include the harness oracle, validation and rendering, 
 
 One hundred simulated hours do not certify one hundred wall-clock hours, idle timer behavior, clock advancement or due-date transitions, human usability, crash/power-loss recovery, unbounded documents, network filesystems or exhaustive concurrency. Separate existing save-fault/race tests cover additional failure paths. The PTY suite runs on macOS/Linux; Windows interactive parity and a full nested/structural language-neutral oracle remain requirements for a serious rewrite evaluation.
 
-Bounded seeded and regression tests run in normal Go tests. Dagger CI also runs CLI and Linux PTY contracts. The longer campaign stays an explicit `mise run test:usage` task. Production remains Go, version 0.14.0 remains unreleased, and this work does not target 1.0.
+Bounded seeded and regression tests run in normal Go tests. Dagger CI also runs CLI and Linux PTY contracts. The longer campaign stays an explicit `mise run test:usage` task. Production remains Go. These changes ship in [v0.14.0](https://github.com/niklas-heer/tdx/releases/tag/v0.14.0); the project remains pre-1.0.

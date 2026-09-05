@@ -6,7 +6,7 @@
         <title>tdx - Your todos, in markdown, done fast</title>
         <meta
             name="description"
-            content="A fast, single-binary CLI todo manager with vim-style navigation and interactive TUI. Store todos in plain markdown."
+            content="A Markdown todo manager with project sections, filtered JSON output, vim-style editing and guarded saves. Available for macOS, Linux and Windows."
         />
         <!-- Open Graph / Social -->
         <meta property="og:type" content="website" />
@@ -16,7 +16,7 @@
         />
         <meta
             property="og:description"
-            content="A fast, single-binary CLI todo manager with vim-style navigation and interactive TUI. Store todos in plain markdown."
+            content="A Markdown todo manager with project sections, filtered JSON output, vim-style editing and guarded saves. Available for macOS, Linux and Windows."
         />
         <meta
             property="og:image"
@@ -372,6 +372,18 @@
                 text-decoration: underline;
             }
 
+            .release-note { margin: 20px auto 0; color: var(--text-muted); }
+            .release-note a, .section-desc a, .feature a, .advanced-feature a { color: var(--accent); }
+            .release-highlights { margin-bottom: 48px; }
+            .release-highlights h2 { text-align: center; margin-bottom: 12px; }
+            .release-highlights .advanced-features { margin-top: 24px; }
+            .code-block code { overflow-wrap: anywhere; }
+            .code-block:has(.copy-btn) { padding-top: 48px; }
+            .shortcut { min-width: 0; }
+            .shortcut kbd { flex-shrink: 0; }
+            .shortcut span { overflow-wrap: anywhere; }
+            a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
             /* Responsive */
             @media (max-width: 600px) {
                 .hero h1 {
@@ -412,6 +424,7 @@
                     </svg>
                     View on GitHub
                 </a>
+                <p class="release-note"><a href="https://github.com/niklas-heer/tdx/releases/tag/v0.14.0">v0.14.0 release notes</a> · Project sections, JSON output and safer editing</p>
             </section>
 
             <div class="demo">
@@ -421,8 +434,19 @@
                 />
             </div>
 
-            <section class="install">
+            <section class="release-highlights" aria-labelledby="release-title">
+                <h2 id="release-title">Your projects. Your Markdown.</h2>
+                <p class="section-desc">New in v0.14.0: organize work by heading, connect your editor and scripts, and keep control when files change.</p>
+                <div class="advanced-features">
+                    <div class="advanced-feature"><h3>Sections become projects</h3><p>Press <code>s</code> to browse, focus, fold, rename or create sections—even empty ones. Press <code>S</code> to see everything again.</p></div>
+                    <div class="advanced-feature"><h3>Useful in your scripts</h3><p>Query with <code>list --json</code>, filter by status or tag, and choose any filename with <code>--file</code>.</p></div>
+                    <div class="advanced-feature"><h3>Safer while you type</h3><p>Cancelled input keeps your undo history. Changes from another editor trigger a conflict instead of silently replacing your work.</p></div>
+                </div>
+            </section>
+
+            <section class="install" id="installation">
                 <h2>Installation</h2>
+                <p class="section-desc">Already installed with Homebrew? Run <code>brew update</code>, then <code>brew upgrade niklas-heer/tap/tdx</code>. The shell installer defaults to <code>~/.local/bin</code>; add it to your PATH.</p>
                 <div class="install-methods">
                     <div class="install-method">
                         <h3>Homebrew (macOS/Linux)</h3>
@@ -478,16 +502,16 @@
                     <div class="feature-icon">⚡</div>
                     <h3>Fast</h3>
                     <p>
-                        Single 4MB binary with instant startup. 30-40x faster
-                        than alternatives.
+                        Install a native binary and start with a Markdown file.
+                        No application runtime to install.
                     </p>
                 </div>
                 <div class="feature">
                     <div class="feature-icon">📝</div>
                     <h3>Markdown-native</h3>
                     <p>
-                        Todos live in todo.md. Non-destructive saves preserve
-                        surrounding Markdown, including links and inline HTML.
+                        Todos live in your Markdown. Checkbox-only edits keep
+                        surrounding bytes intact; structural edits may normalize formatting.
                     </p>
                 </div>
                 <div class="feature">
@@ -517,8 +541,8 @@
                     <div class="feature-icon">🔧</div>
                     <h3>Scriptable</h3>
                     <p>
-                        CLI commands: list, add, toggle, edit, delete for
-                        automation.
+                        Filtered JSON queries plus list, add, toggle, edit and
+                        delete commands for editor integrations and automation.
                     </p>
                 </div>
                 <div class="feature">
@@ -530,8 +554,8 @@
                     <div class="feature-icon">🔄</div>
                     <h3>Smart Sync</h3>
                     <p>
-                        Atomic saves prevent partial writes. External edits
-                        reload automatically; true conflicts open a visual diff.
+                        Atomic saves guard against partial writes. External edits
+                        reload between edits; conflicting saves open a visual diff.
                     </p>
                 </div>
                 <div class="feature">
@@ -635,7 +659,8 @@
                         <h3>Read-Only Mode</h3>
                         <p>
                             Use <code>-r</code> flag or frontmatter for
-                            view-only checklists and templates.
+                            checklists you can edit in memory. Use <code>:save</code>
+                            to save deliberately; CLI mutations are rejected.
                         </p>
                     </div>
                 </div>
@@ -704,6 +729,7 @@
                         <kbd>D</kbd>
                         <span>Due date filter</span>
                     </div>
+                    <div class="shortcut"><kbd>s / S</kbd><span>Browse sections / show all</span></div>
                     <div class="shortcut">
                         <kbd>r</kbd>
                         <span>Recent files</span>
@@ -821,10 +847,24 @@
                         <kbd>force-save</kbd>
                         <span>Overwrite external changes</span>
                     </div>
+                    <div class="shortcut"><kbd>sections</kbd><span>Focus, fold or edit headings</span></div>
+                    <div class="shortcut"><kbd>all-sections</kbd><span>Clear focus and folds</span></div>
+                    <div class="shortcut"><kbd>diff</kbd><span>Inspect a pending conflict</span></div>
                     <div class="shortcut">
                         <kbd>versions</kbd>
                         <span>Browse version history</span>
                     </div>
+                </div>
+            </section>
+
+            <section class="install" aria-labelledby="scripting-title">
+                <h2 id="scripting-title">Fits your developer workflow</h2>
+                <p class="section-desc">Get open backend tasks without launching the TUI. JSON includes task indexes, nesting, tags, priorities and due dates.</p>
+                <div class="code-block"><code>tdx --file TASKS list --json --status open --tag backend</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+                <p class="section-desc">Indexes are file positions, so re-query after inserting, deleting or moving tasks. See the <a href="https://github.com/niklas-heer/tdx#scripting-and-editor-integrations">JSON contract and examples</a>.</p>
+                <div class="advanced-features">
+                    <div class="advanced-feature"><h3>Reproducible setup</h3><p>Contributors use <code>mise run setup</code> and <code>mise run check</code> for pinned tools and local validation. <a href="https://github.com/niklas-heer/tdx#development">Development guide</a>.</p></div>
+                    <div class="advanced-feature"><h3>Tested through sustained use</h3><p>36,000 actions passed a 100-hour simulated workload, with separate executable and terminal tests. This measures accelerated actions, not wall-clock endurance. <a href="https://github.com/niklas-heer/tdx/blob/main/experiments/usage/README.md">Read the results and limits</a>.</p></div>
                 </div>
             </section>
 
@@ -846,7 +886,7 @@
 
         <script>
             function copyCode(btn) {
-                const code = btn.previousElementSibling.textContent;
+                const code = btn.previousElementSibling.textContent.trim().replace(/\s+/g, " ");
                 navigator.clipboard.writeText(code).then(() => {
                     btn.textContent = "Copied!";
                     btn.classList.add("copied");
