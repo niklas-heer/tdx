@@ -61,11 +61,12 @@ def terminal_gate(binaries, output):
             base = Path(tmp); path = base / 'tasks.md'; config = base / 'config'
             (config / 'tdx').mkdir(parents=True)
             (config / 'tdx/config.toml').write_text('[versioning]\nmax_versions=100\n')
-            original = b'# Work\n\n- [ ] Alpha\n  - [ ] Child\n- [x] Beta\n'
+            original = b'# Work\n\n- [ ] Alpha\n  - [ ] Child\n- [x] Beta\n- [ ] [Guide](https://ratatui.rs)\n'
             path.write_bytes(original)
             term = Terminal(binary, path, config)
             try:
                 term.until(lambda: b'Alpha' in term.output, 'initial render')
+                term.until(lambda: b'\x1b]8;;https://ratatui.rs' in term.output, 'clickable terminal hyperlink')
                 for width in (24, 80, 120):
                     term.resize(width, 24); term.send(b' ')
                     term.until(lambda: path.read_bytes() == original.replace(b'[ ] Alpha', b'[x] Alpha'), 'resize toggle')

@@ -7,6 +7,7 @@ mod document;
 mod editor;
 mod history;
 mod input;
+mod presentation;
 mod recent;
 mod store;
 mod tui;

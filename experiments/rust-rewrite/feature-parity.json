@@ -109,12 +109,21 @@
         "word wrapping",
         "heading visibility",
         "scrollable help",
-        "inline diff highlighting"
+        "inline diff highlighting",
+        "clickable OSC 8 Markdown links",
+        "responsive picker overlays and history panes",
+        "visible long Unicode input cursor",
+        "complete bounded help and wrapped diff scrolling",
+        "contextual section/filter/settings indicators"
       ],
       "checks": [
         "config tests",
         "application_contracts",
-        "tui render/wrap/highlight tests"
+        "tui render/wrap/highlight tests",
+        "tui command registry matches Go source",
+        "tui presentation content/style/scroll/link contracts",
+        "presentation tests",
+        "actual Ratatui buffer gallery"
       ]
     },
     {

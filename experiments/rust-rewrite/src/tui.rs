@@ -6,6 +6,7 @@ use crate::{
     editor::Editor,
     history::Version,
     input::{self, Buffer},
+    presentation::{self, Links},
     recent::{Recent, RecentFile},
     store::Store,
 };
@@ -22,7 +23,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 use similar::{ChangeTag, TextDiff};
 use std::{
@@ -31,7 +32,7 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const COMMANDS: &[(&str, &str)] = &[
     ("check-all", "Mark all tasks complete"),
@@ -109,6 +110,7 @@ struct App<'a> {
     original_theme: String,
     moving: Option<(Document, usize, bool)>,
     quit_confirm: bool,
+    links: Links,
 }
 impl<'a> App<'a> {
     fn new(editor: &'a mut Editor, path: &Path, config: Config, flags: Overrides) -> Self {
@@ -152,6 +154,7 @@ impl<'a> App<'a> {
             original_theme: String::new(),
             moving: None,
             quit_confirm: false,
+            links: Links::new(),
         };
         app.clamp();
         app
@@ -758,9 +761,7 @@ impl<'a> App<'a> {
                 KeyCode::Enter if len > 0 => {
                     self.confirm = true;
                 }
-                KeyCode::PageDown => {
-                    self.scroll = (self.scroll + 10).min(self.diff.len().saturating_sub(1))
-                }
+                KeyCode::PageDown => self.scroll = self.scroll.saturating_add(10),
                 KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(10),
                 _ => {}
             },
@@ -1004,7 +1005,11 @@ impl<'a> App<'a> {
                 return false;
             }
             Mode::Help => {
-                if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
+                if key.code == KeyCode::Home {
+                    self.scroll = 0;
+                } else if key.code == KeyCode::End {
+                    self.scroll = usize::MAX;
+                } else if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
                     self.mode = Mode::Normal;
                 } else if matches!(
                     key.code,
@@ -1018,9 +1023,11 @@ impl<'a> App<'a> {
             }
             Mode::Diff => {
                 match key.code {
+                    KeyCode::Home => self.scroll = 0,
+                    KeyCode::End => self.scroll = usize::MAX,
                     KeyCode::Esc => self.mode = Mode::Normal,
                     KeyCode::Down | KeyCode::PageDown | KeyCode::Char('j') => {
-                        self.scroll = (self.scroll + 10).min(self.diff.len().saturating_sub(1))
+                        self.scroll = self.scroll.saturating_add(10)
                     }
                     KeyCode::Up | KeyCode::PageUp | KeyCode::Char('k') => {
                         self.scroll = self.scroll.saturating_sub(10)
@@ -1201,91 +1208,290 @@ impl<'a> App<'a> {
         }
         false
     }
-    fn header(&self) -> String {
-        format!(
-            "tdx v{}{}{}  {}",
-            crate::version(),
-            if self.settings.read_only {
-                "  READ ONLY"
-            } else {
-                ""
-            },
-            if self.editor.dirty { "  UNSAVED" } else { "" },
-            self.path.display()
-        )
+    fn mode_name(&self) -> &'static str {
+        match self.mode {
+            Mode::Normal => "TASKS",
+            Mode::Move => "MOVE",
+            Mode::Search => "SEARCH",
+            Mode::Commands => "COMMAND",
+            Mode::Recent => "RECENT",
+            Mode::Theme => "THEME",
+            Mode::Tags => "TAGS",
+            Mode::Priorities => "PRIORITY",
+            Mode::Due => "DUE DATE",
+            Mode::Sections => "SECTIONS",
+            Mode::Heading => "SECTION",
+            Mode::Versions => "HISTORY",
+            Mode::Diff => "CONFLICT",
+            Mode::Help => "HELP",
+            Mode::MaxVisible => "MAX VISIBLE",
+            Mode::Input if self.action.kind == "edit" => "EDIT",
+            Mode::Input => "NEW",
+        }
+    }
+    fn context(&self) -> String {
+        let mut parts = Vec::new();
+        if self.settings.read_only {
+            parts.push("READ ONLY".into());
+        }
+        if self.editor.dirty {
+            parts.push("UNSAVED".into());
+        }
+        if let Some(h) = self.section.and_then(|i| self.editor.doc.headings.get(i)) {
+            parts.push(format!("Section: {} · S all tasks", clean(&h.text)));
+        }
+        if !self.folded.is_empty() {
+            parts.push(format!(
+                "Folded: {}",
+                self.folded
+                    .iter()
+                    .filter_map(|i| self.editor.doc.headings.get(*i))
+                    .map(|h| clean(&h.text))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if self.settings.filter_done {
+            parts.push("open only".into());
+        }
+        parts.extend(self.tags.iter().map(|t| format!("#{t}")));
+        parts.extend(self.priorities.iter().map(|p| format!("!p{p}")));
+        if !self.due.is_empty() {
+            parts.push(format!("due:{}", self.due));
+        }
+        if self.settings.word_wrap {
+            parts.push("WRAP".into());
+        }
+        if self.settings.show_headings {
+            parts.push("HEADINGS".into());
+        }
+        if self.settings.max_visible > 0 {
+            parts.push(format!("MAX:{}", self.settings.max_visible));
+        }
+        parts.join(" · ")
+    }
+    fn panel(&self, title: String) -> Block<'static> {
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title(title)
+            .border_style(Style::default().fg(self.color("Dim")))
+            .style(Style::default().fg(self.color("Base")))
     }
     fn draw(&mut self, frame: &mut Frame) {
+        self.links.clear();
+        let area = frame.area();
+        frame.render_widget(
+            Block::default().style(Style::default().fg(self.color("Base"))),
+            area,
+        );
         let areas = Layout::vertical([
-            Constraint::Length(2),
+            Constraint::Length(3),
             Constraint::Min(1),
             Constraint::Length(3),
         ])
-        .split(frame.area());
-        frame.render_widget(
-            Paragraph::new(self.header()).style(Style::default().fg(self.color("Accent"))),
-            areas[0],
-        );
-        let footer = if matches!(self.mode, Mode::Input | Mode::Heading | Mode::MaxVisible) {
-            format!(
-                "{}: {}▏{}\nEnter save · Esc cancel · arrows/Home/End · Ctrl-Y paste",
-                if self.mode == Mode::Heading {
-                    "SECTION"
-                } else if self.mode == Mode::MaxVisible {
-                    "MAX VISIBLE"
-                } else if self.action.kind == "edit" {
-                    "EDIT"
-                } else {
-                    "NEW"
-                },
-                clean(&self.input.text[..self.input.cursor]),
-                clean(&self.input.text[self.input.cursor..])
-            )
+        .split(area);
+        let file = self
+            .path
+            .file_name()
+            .unwrap_or(self.path.as_os_str())
+            .to_string_lossy();
+        let done = self.editor.doc.tasks.iter().filter(|t| t.checked).count();
+        let visible = self.visible().len();
+        let total = self.editor.doc.tasks.len();
+        let heading = vec![
+            Line::from(vec![
+                Span::styled(
+                    " tdx ",
+                    Style::default()
+                        .fg(self.color("Accent"))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(format!("{}  ", clean(&file))),
+                Span::styled(
+                    format!("v{}", crate::version()),
+                    Style::default().fg(self.color("Dim")),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled(
+                    format!(" {} open", total - done),
+                    Style::default().fg(self.color("Accent")),
+                ),
+                Span::styled(
+                    format!(" · {done} done"),
+                    Style::default().fg(self.color("Success")),
+                ),
+                Span::raw(format!(" · {visible}/{total} visible")),
+            ]),
+            Line::styled(
+                format!(" {}", self.context()),
+                Style::default().fg(self.color(if self.editor.dirty { "Warning" } else { "Dim" })),
+            ),
+        ];
+        frame.render_widget(Paragraph::new(heading), areas[0]);
+        let input_mode = matches!(self.mode, Mode::Input | Mode::Heading | Mode::MaxVisible);
+        let controls = if area.width < 80 {
+            match self.mode {
+                Mode::Normal => "n new · ␣ toggle · : cmd · ? help · Esc quit".into(),
+                Mode::Commands | Mode::Search | Mode::Recent => {
+                    "Type query · ↑↓ select · Enter · Esc".into()
+                }
+                Mode::Theme => "↑↓ preview · Enter apply · Esc cancel".into(),
+                Mode::Sections => "Enter focus · n/N new · e rename · Esc".into(),
+                _ => self.controls(),
+            }
         } else {
-            format!("{}\n{}", self.controls(), clean(&self.status))
+            self.controls()
         };
-        frame.render_widget(Paragraph::new(footer), areas[2]);
+        if input_mode {
+            let window = presentation::input_window(
+                &self.input.text,
+                self.input.cursor,
+                areas[2].width.saturating_sub(4) as usize,
+            );
+            frame.render_widget(
+                Paragraph::new(window)
+                    .block(
+                        self.panel(format!(" {} · Enter save ", self.mode_name()))
+                            .title_bottom(if areas[2].width >= 36 {
+                                " Esc cancel · Ctrl-Y paste "
+                            } else {
+                                " Esc cancel "
+                            }),
+                    )
+                    .style(Style::default().fg(self.color("Accent"))),
+                areas[2],
+            );
+        } else {
+            let status = if self.status.is_empty() {
+                format!("{} · {}", self.mode_name(), self.path.display())
+            } else {
+                clean(&self.status)
+            };
+            frame.render_widget(
+                Paragraph::new(vec![
+                    Line::styled(controls, Style::default().fg(self.color("Dim"))),
+                    Line::styled(
+                        status,
+                        Style::default().fg(self.color(if self.status.is_empty() {
+                            "Accent"
+                        } else {
+                            "Warning"
+                        })),
+                    ),
+                ])
+                .wrap(Wrap { trim: false }),
+                areas[2],
+            );
+        }
         match self.mode {
-            Mode::Commands | Mode::Search | Mode::Recent => self.draw_picker(frame, areas[1]),
-            Mode::Tags | Mode::Priorities | Mode::Due | Mode::Theme => {
-                self.draw_options(frame, areas[1])
+            Mode::Commands
+            | Mode::Search
+            | Mode::Recent
+            | Mode::Tags
+            | Mode::Priorities
+            | Mode::Due
+            | Mode::Theme => {
+                self.draw_tasks(frame, areas[1]);
+                let body = areas[1];
+                let modal = if body.width >= 50 && body.height >= 10 {
+                    let width = body.width.saturating_sub(6).min(82);
+                    let count = match self.mode {
+                        Mode::Commands | Mode::Search | Mode::Recent => self.matches().len(),
+                        Mode::Tags => self.tags_available().len(),
+                        Mode::Priorities => self.priorities_available().len(),
+                        Mode::Due => 4,
+                        _ => self.themes.len(),
+                    };
+                    let height = body
+                        .height
+                        .saturating_sub(2)
+                        .min((count.max(1) + 2).min(13) as u16);
+                    Rect::new(
+                        body.x + (body.width - width) / 2,
+                        body.y + body.height - height - 1,
+                        width,
+                        height,
+                    )
+                } else {
+                    body
+                };
+                self.links
+                    .retain(|&(x, y), _| !modal.contains((x, y).into()));
+                frame.render_widget(Clear, modal);
+                if matches!(self.mode, Mode::Commands | Mode::Search | Mode::Recent) {
+                    self.draw_picker(frame, modal);
+                } else {
+                    self.draw_options(frame, modal);
+                }
             }
             Mode::Sections | Mode::Heading => self.draw_sections(frame, areas[1]),
             Mode::Versions => {
-                let panes =
-                    Layout::horizontal([Constraint::Percentage(28), Constraint::Percentage(72)])
-                        .split(areas[1]);
-                let rows: Vec<_> = self
+                let panes = if areas[1].width < 76 {
+                    Layout::vertical([
+                        Constraint::Length(6.min(areas[1].height / 2)),
+                        Constraint::Min(1),
+                    ])
+                    .split(areas[1])
+                } else {
+                    Layout::horizontal([Constraint::Length(29), Constraint::Min(1)]).split(areas[1])
+                };
+                let rows = self
                     .versions
                     .iter()
                     .map(|v| format!("#{} {}", v.id, v.created_at))
                     .collect();
                 self.render_list(frame, panes[0], "FILE VERSION HISTORY", rows, self.cursor);
-                frame.render_widget(
-                    Paragraph::new(self.diff.clone())
-                        .block(Block::bordered().title("Current → saved version"))
-                        .scroll((self.scroll.min(u16::MAX as usize) as u16, 0)),
-                    panes[1],
-                );
+                self.draw_diff(frame, panes[1], "Current → saved version");
             }
-            Mode::Diff => {
-                frame.render_widget(
-                    Paragraph::new(self.diff.clone())
-                        .block(Block::bordered().title("Disk → local changes"))
-                        .scroll((self.scroll.min(u16::MAX as usize) as u16, 0)),
-                    areas[1],
-                );
-            }
+            Mode::Diff => self.draw_diff(frame, areas[1], "Disk → local changes"),
             Mode::Help => {
+                let width = areas[1].width.saturating_sub(2) as usize;
+                let lines: Vec<Line<'static>> = help()
+                    .lines()
+                    .flat_map(|s| wrap(s, width, 0))
+                    .map(Line::from)
+                    .collect();
+                let max = lines
+                    .len()
+                    .saturating_sub(areas[1].height.saturating_sub(2) as usize);
+                self.scroll = self.scroll.min(max);
                 frame.render_widget(
-                    Paragraph::new(help())
-                        .block(Block::bordered().title("Help"))
-                        .wrap(Wrap { trim: false })
-                        .scroll((self.scroll.min(50) as u16, 0)),
+                    Paragraph::new(lines)
+                        .block(self.panel(" Help · Home/End · PgUp/PgDn ".into()))
+                        .scroll((self.scroll.min(u16::MAX as usize) as u16, 0)),
                     areas[1],
                 );
             }
             _ => self.draw_tasks(frame, areas[1]),
         }
+    }
+    fn draw_diff(&mut self, frame: &mut Frame, area: Rect, title: &str) {
+        let lines: Vec<_> = self
+            .diff
+            .iter()
+            .flat_map(|line| {
+                let input = line
+                    .spans
+                    .iter()
+                    .flat_map(|span| presentation::glyphs(&span.content, span.style, None))
+                    .collect();
+                presentation::lines(input, area.width.saturating_sub(2) as usize, 0, true)
+                    .iter()
+                    .map(|g| presentation::line(g))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let max = lines
+            .len()
+            .saturating_sub(area.height.saturating_sub(2) as usize);
+        self.scroll = self.scroll.min(max);
+        frame.render_widget(
+            Paragraph::new(lines)
+                .block(self.panel(format!(" {title} · {}/{} ", self.scroll + 1, max + 1)))
+                .scroll((self.scroll.min(u16::MAX as usize) as u16, 0)),
+            area,
+        );
     }
     fn controls(&self) -> String {
         match self.mode{
@@ -1308,6 +1514,11 @@ impl<'a> App<'a> {
         rows: Vec<String>,
         selected: usize,
     ) {
+        let rows = if rows.is_empty() {
+            vec!["No matches".into()]
+        } else {
+            rows
+        };
         let rows: Vec<_> = rows
             .into_iter()
             .map(|s| {
@@ -1329,12 +1540,12 @@ impl<'a> App<'a> {
         }
         frame.render_stateful_widget(
             List::new(rows)
-                .block(Block::bordered().title(title))
+                .block(self.panel(format!(" {title} ")))
                 .highlight_symbol(format!("{} ", self.config.display.select_marker))
                 .highlight_style(
                     Style::default()
                         .fg(self.color("Accent"))
-                        .add_modifier(Modifier::BOLD),
+                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
                 ),
             area,
             &mut state,
@@ -1351,14 +1562,13 @@ impl<'a> App<'a> {
             })
             .collect();
         let title = format!(
-            "{}: {}▏{}",
-            match self.mode {
-                Mode::Commands => "Command",
-                Mode::Search => "Search",
-                _ => "Recent files",
-            },
-            clean(&self.input.text[..self.input.cursor]),
-            clean(&self.input.text[self.input.cursor..])
+            "{}: {}",
+            self.mode_name(),
+            presentation::input_window(
+                &self.input.text,
+                self.input.cursor,
+                area.width.saturating_sub(self.mode_name().len() as u16 + 7) as usize
+            )
         );
         self.render_list(frame, area, &title, rows, self.cursor);
     }
@@ -1441,8 +1651,9 @@ impl<'a> App<'a> {
             self.cursor,
         );
     }
-    fn draw_tasks(&self, frame: &mut Frame, area: Rect) {
+    fn draw_tasks(&mut self, frame: &mut Frame, area: Rect) {
         let mut visible = self.visible();
+        let matched = visible.len();
         let selected_pos = visible
             .iter()
             .position(|i| *i == self.selected)
@@ -1453,7 +1664,21 @@ impl<'a> App<'a> {
                 .min(visible.len() - self.settings.max_visible);
             visible = visible[start..start + self.settings.max_visible].to_vec();
         }
+        // At most one screen of candidate tasks can be visible. Retain subtree
+        // indexes, but avoid shaping and allocating every glyph in large files.
+        let limit = (area.height as usize).max(1);
+        if visible.len() > limit {
+            let position = visible
+                .iter()
+                .position(|i| *i == self.selected)
+                .unwrap_or(0);
+            let start = position
+                .saturating_sub(limit / 2)
+                .min(visible.len() - limit);
+            visible = visible[start..start + limit].to_vec();
+        }
         let mut rows = Vec::new();
+        let mut rich_rows: Vec<Vec<Vec<presentation::Glyph>>> = Vec::new();
         let mut selected_row = None;
         let mut last_heading = None;
         for i in visible {
@@ -1469,6 +1694,7 @@ impl<'a> App<'a> {
                 if current != last_heading {
                     if let Some(h) = current {
                         let h = &self.editor.doc.headings[h];
+                        rich_rows.push(vec![vec![]]);
                         rows.push(ListItem::new(Line::styled(
                             format!("{} {}", "#".repeat(h.level), clean(&h.text)),
                             Style::default().fg(self.color("Accent")),
@@ -1504,18 +1730,25 @@ impl<'a> App<'a> {
             );
             let style =
                 Style::default().fg(self.color(if task.checked { "Important" } else { "Base" }));
-            let available = area.width.saturating_sub(6) as usize;
-            let text = format!("{}{}", prefix, clean(&task.text));
-            let lines = if self.settings.word_wrap {
-                wrap(&text, available, prefix.chars().count())
-            } else {
-                vec![text]
-            };
-            let lines: Vec<_> = lines
-                .into_iter()
-                .map(|s| Line::from(styled_text(&s, style, self)))
-                .collect();
-            rows.push(ListItem::new(lines));
+            let marker_width = self.config.display.select_marker.width() + 1;
+            let available = (area.width as usize).saturating_sub(2 + marker_width);
+            let mut rich = presentation::glyphs(&prefix, style, None);
+            rich.extend(presentation::inline(
+                &clean(&task.text),
+                style,
+                style.fg(self.color("Accent")),
+                style.bg(self.color("Dim")),
+                |s| styled_text(s, style, self),
+            ));
+            let lines =
+                presentation::lines(rich, available, prefix.width(), self.settings.word_wrap);
+            rows.push(ListItem::new(
+                lines
+                    .iter()
+                    .map(|g| presentation::line(g))
+                    .collect::<Vec<_>>(),
+            ));
+            rich_rows.push(lines);
         }
         if rows.is_empty() {
             rows.push(ListItem::new(
@@ -1526,16 +1759,43 @@ impl<'a> App<'a> {
         state.select(selected_row);
         frame.render_stateful_widget(
             List::new(rows)
-                .block(Block::bordered().title(format!(" {} tasks ", self.editor.doc.tasks.len())))
+                .block(self.panel(format!(
+                    " Tasks · {}/{} ",
+                    selected_pos + usize::from(matched > 0),
+                    matched
+                )))
                 .highlight_symbol(format!("{} ", self.config.display.select_marker))
                 .highlight_style(
                     Style::default()
                         .fg(self.color("Accent"))
-                        .add_modifier(Modifier::BOLD),
+                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
                 ),
             area,
             &mut state,
         );
+        let mut y = area.y.saturating_add(1);
+        let start_x = area
+            .x
+            .saturating_add(1 + self.config.display.select_marker.width() as u16 + 1);
+        for lines in rich_rows.iter().skip(state.offset()) {
+            for line in lines {
+                if y >= area.bottom().saturating_sub(1) {
+                    break;
+                }
+                let mut x = start_x;
+                for g in line {
+                    let width = g.text.width() as u16;
+                    if x.saturating_add(width) > area.right().saturating_sub(1) {
+                        break;
+                    }
+                    if let Some(url) = &g.url {
+                        self.links.insert((x, y), url.clone());
+                    }
+                    x = x.saturating_add(width);
+                }
+                y = y.saturating_add(1);
+            }
+        }
     }
 }
 fn clean(s: &str) -> String {
@@ -1576,50 +1836,43 @@ fn wrap(s: &str, width: usize, indent: usize) -> Vec<String> {
 }
 
 fn styled_text(s: &str, base: Style, app: &App<'_>) -> Vec<Span<'static>> {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"#[a-zA-Z0-9_-]+|!p[0-9]+|@due\([0-9]{4}-[0-9]{2}-[0-9]{2}\)").unwrap()
+    });
     let mut spans = Vec::new();
-    let mut code = false;
-    for part in s.split_inclusive(char::is_whitespace) {
+    let mut end = 0;
+    for found in re.find_iter(s) {
+        spans.push(Span::styled(s[end..found.start()].to_owned(), base));
+        let part = found.as_str();
         let color = if part.starts_with('#') {
-            Some("Tag")
-        } else if part.starts_with("!p1") {
-            Some("PriorityHigh")
-        } else if part.starts_with("!p2") {
-            Some("PriorityMedium")
-        } else if part.starts_with("!p") {
-            Some("PriorityLow")
-        } else if part.starts_with("@due(") {
-            let d = part
-                .trim()
-                .trim_start_matches("@due(")
-                .trim_end_matches(')');
+            "Tag"
+        } else if let Some(priority) = part.strip_prefix("!p") {
+            match priority {
+                "1" => "PriorityHigh",
+                "2" => "PriorityMedium",
+                _ => "PriorityLow",
+            }
+        } else {
+            let d = &part[5..part.len() - 1];
             let days = NaiveDate::parse_from_str(d, "%Y-%m-%d")
                 .map(|d| (d - Local::now().date_naive()).num_days())
                 .unwrap_or(999);
-            Some(if days <= 0 {
+            if days <= 0 {
                 "DueUrgent"
             } else if days <= 3 {
                 "DueSoon"
             } else {
                 "DueFuture"
-            })
-        } else {
-            None
+            }
         };
-        let style = color.map_or(base, |c| base.fg(app.color(c)));
-        if part.contains('`') {
-            code = !code;
-        }
-        spans.push(Span::styled(
-            part.to_owned(),
-            if code || part.contains('`') {
-                style.bg(app.color("Dim"))
-            } else {
-                style
-            },
-        ));
+        spans.push(Span::styled(part.to_owned(), base.fg(app.color(color))));
+        end = found.end();
     }
+    spans.push(Span::styled(s[end..].to_owned(), base));
     spans
 }
+
 fn diff_lines(old: &str, new: &str) -> Vec<Line<'static>> {
     let diff = TextDiff::configure()
         .timeout(Duration::from_millis(500))
@@ -1678,9 +1931,17 @@ pub fn run(editor: &mut Editor, path: &Path, config: Config, flags: Overrides) -
         #[cfg(windows)]
         let mut input = crate::console_input::Reader::default();
         let mut redraw = true;
+        let mut previous_links = Links::new();
         loop {
             if redraw {
-                terminal.draw(|f| app.draw(f))?;
+                let completed = terminal.draw(|f| app.draw(f))?;
+                presentation::sync_links(
+                    completed.buffer,
+                    &app.links,
+                    &previous_links,
+                    &mut io::stdout(),
+                )?;
+                previous_links.clone_from(&app.links);
             }
             redraw = false;
             #[cfg(windows)]
@@ -1899,6 +2160,130 @@ mod tests {
                     .iter()
                     .any(|h| h.text.starts_with("Renamed"))
             );
+        });
+    }
+    fn screen(app: &mut App<'_>, width: u16, height: u16) -> ratatui::buffer::Buffer {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+        terminal.draw(|f| app.draw(f)).unwrap();
+        terminal.backend().buffer().clone()
+    }
+    fn text(buffer: &ratatui::buffer::Buffer) -> String {
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+    #[test]
+    fn command_registry_matches_every_go_command() {
+        let source = include_str!("../../../internal/tui/commands.go");
+        let re = regex::Regex::new(r#"Name:\s*"([^"]+)""#).unwrap();
+        let go: BTreeSet<_> = re.captures_iter(source).map(|c| c[1].to_owned()).collect();
+        let rust: BTreeSet<_> = COMMANDS.iter().map(|c| c.0.to_owned()).collect();
+        assert_eq!(go, rust);
+    }
+    #[test]
+    fn presentation_exposes_context_cursor_links_and_full_scroll_content() {
+        with_app(|app| {
+            app.tags.insert("work".into());
+            app.section = Some(0);
+            let shown = text(&screen(app, 100, 28));
+            assert!(
+                shown.contains("3 open")
+                    && shown.contains("1 done")
+                    && shown.contains("Section: Work")
+                    && shown.contains("#work")
+            );
+            app.tags.clear();
+            app.section = None;
+            app.editor.doc =
+                Document::parse("- [ ] [Ratatui guide](https://ratatui.rs)\n".into()).unwrap();
+            let shown = screen(app, 48, 24);
+            assert!(text(&shown).contains("Ratatui guide") && !text(&shown).contains("](https"));
+            let ((x, y), url) = app.links.first_key_value().unwrap();
+            assert_eq!(url, "https://ratatui.rs");
+            assert_eq!(shown[(*x, *y)].symbol(), "R");
+            app.mode = Mode::Commands;
+            screen(app, 80, 28);
+            app.mode = Mode::Input;
+            app.action.kind = "edit".into();
+            app.input = Buffer::new(format!("{} café 🦀 final", "long ".repeat(30)));
+            let input = text(&screen(app, 48, 24));
+            assert!(input.contains("final▏") && input.contains("Esc cancel"));
+            app.mode = Mode::Help;
+            app.scroll = usize::MAX;
+            let shown = text(&screen(app, 24, 20));
+            assert!(app.scroll > 50 && shown.contains("characters."));
+            app.mode = Mode::Diff;
+            app.diff = diff_lines("old", &"long changed line ".repeat(60));
+            app.scroll = usize::MAX;
+            screen(app, 24, 20);
+            assert!(app.scroll > app.diff.len());
+            let end = app.scroll;
+            screen(app, 24, 20);
+            assert_eq!(app.scroll, end);
+        });
+    }
+    #[test]
+    #[ignore = "exports actual Ratatui buffers for visual review"]
+    fn export_ratatui_gallery() {
+        with_app(|app| {
+            app.editor.doc = Document::parse("# Product launch\n\n- [x] Agree on the launch scope #planning\n- [ ] Review the [Ratatui guide](https://ratatui.rs) #design !p1\n  - [ ] Check keyboard navigation and focus !p2\n  - [ ] Test small terminals and Unicode café\n- [ ] Ship the release notes #writing @due(2026-09-09)\n\n## Engineering\n\n- [ ] Verify restore and concurrent saves #quality\n- [ ] Run `cargo test` on all platforms #quality\n\n## Later\n\n- [ ] Explore render performance #research\n".into()).unwrap();
+            app.path = PathBuf::from("launch.md");
+            app.settings.show_headings = true;
+            app.selected = 1;
+            let mut screens = Vec::new();
+            for (name, mode, width, height) in [
+                ("tasks", Mode::Normal, 100, 28),
+                ("commands", Mode::Commands, 100, 28),
+                ("sections", Mode::Sections, 100, 28),
+                ("history", Mode::Versions, 100, 28),
+                ("narrow", Mode::Normal, 48, 24),
+                ("input", Mode::Input, 48, 24),
+            ] {
+                app.mode = mode;
+                app.input = if mode == Mode::Commands {
+                    Buffer::new("sort".into())
+                } else {
+                    Buffer::new("Review the release announcement and final screenshots".into())
+                };
+                app.action.kind = "edit".into();
+                app.cursor = 0;
+                app.versions = vec![
+                    Version {
+                        id: 3,
+                        created_at: "2026-09-05 16:45".into(),
+                    },
+                    Version {
+                        id: 2,
+                        created_at: "2026-09-05 16:32".into(),
+                    },
+                    Version {
+                        id: 1,
+                        created_at: "2026-09-05 16:20".into(),
+                    },
+                ];
+                app.diff = diff_lines(
+                    "- [ ] Draft launch notes\n- [ ] Review screenshots\n",
+                    "- [x] Draft launch notes\n- [ ] Review the final screenshots\n- [ ] Publish the announcement\n",
+                );
+                let buffer = screen(app, width, height);
+                let cells: Vec<_> = buffer.content().iter().map(|c| serde_json::json!({"text":c.symbol(),"fg":format!("{:?}",c.fg),"bg":format!("{:?}",c.bg),"modifiers":format!("{:?}",c.modifier)})).collect();
+                screens.push(
+                    serde_json::json!({"name":name,"width":width,"height":height,"cells":cells}),
+                );
+            }
+            let directory = std::env::var("TDX_GALLERY_DIR").expect("set TDX_GALLERY_DIR");
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(
+                Path::new(&directory).join("ratatui-screens.json"),
+                serde_json::to_string_pretty(&screens).unwrap(),
+            )
+            .unwrap();
         });
     }
     #[test]
