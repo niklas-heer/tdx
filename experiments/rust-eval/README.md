@@ -1,6 +1,6 @@
 # Go / Rust evaluation
 
-**Recommendation: keep tdx in Go for now.** Rust wins this parser experiment, but the measured Go editor operation is about 4 ms for 1,000 tasks. A rewrite would still need to reproduce the TUI, metadata, undo, version history, and safe-save behavior. The application remains Go and pre-1.0.
+**Recommendation: keep tdx in Go for now.** Rust wins this parser experiment, but the measured Go editor operation is about 3 ms for 1,000 tasks. A rewrite would still need to reproduce the TUI, metadata, undo, version history, and safe-save behavior. The application remains Go and pre-1.0.
 
 The new `internal/editor` package gives CLI and TUI a shared action boundary. Configuration, styles, recent-file storage, and Markdown history callbacks are supplied per instance. This makes engine changes and compatibility tests easier without requiring a language migration.
 
@@ -34,31 +34,31 @@ September 5, 2026; Apple M2 Pro, macOS 15.7.9, arm64. Seven trials per workload,
 
 | Tasks | Go scan | Rust scan | Go patch | Rust patch | Production Go context |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 100 | 0.174 | 0.012 | 0.151 | 0.011 | 0.323 |
-| 1,000 | 1.424 | 0.108 | 1.316 | 0.108 | 4.139 |
-| 10,000 | 15.346 | 1.360 | 12.223 | 1.196 | 30.894 |
+| 100 | 0.121 | 0.011 | 0.121 | 0.011 | 0.322 |
+| 1,000 | 1.164 | 0.107 | 1.184 | 0.109 | 3.020 |
+| 10,000 | 12.271 | 1.200 | 16.495 | 1.501 | 41.243 |
 
-Rust is roughly 10–15× faster on the matched operations on this host. Different parser designs, enabled extensions, allocation patterns, and libraries contribute to these ratios; they are not isolated language effects.
+Rust is roughly 10–11× faster on the matched operations on this host. Different parser designs, enabled extensions, allocation patterns, and libraries contribute to these ratios; they are not isolated language effects.
 
 | Measurement | Go probe | Rust probe |
 | --- | ---: | ---: |
 | Stripped release binary | 3.75 MiB | 0.63 MiB |
-| Empty-file process wall time, median of 9 | 3.94 ms | 2.53 ms |
-| Empty-file peak RSS, median | 6.64 MiB | 1.39 MiB |
-| 1,000-task scan peak RSS, median | 13.19 MiB | 3.58 MiB |
-| 10,000-task scan peak RSS, median | 31.23 MiB | 13.92 MiB |
-| Fresh build cache, one observation | 3.47 s | 7.86 s |
-| No-op build, one observation | 0.160 s | 0.099 s |
+| Empty-file process wall time, median of 9 | 8.12 ms | 5.12 ms |
+| Empty-file peak RSS, median | 6.48 MiB | 1.39 MiB |
+| 1,000-task scan peak RSS, median | 12.92 MiB | 3.88 MiB |
+| 10,000-task scan peak RSS, median | 30.05 MiB | 10.94 MiB |
+| Fresh build cache, one observation | 3.29 s | 6.58 s |
+| No-op build, one observation | 0.120 s | 0.033 s |
 
 Go's probe binary also contains the production-reference path; these are not full tdx binary sizes or minimal language-runtime sizes. Builds exclude dependency downloads. Go's fresh cache also requires standard-library compilation, while Rust ships a precompiled standard library. Rust uses release optimization, thin LTO, and one codegen unit; both binaries are stripped. RSS measures the whole process, not live heap size. Go's CPU time can exceed wall time because work runs on multiple threads.
 
 ## Profiles and decision
 
-The separate Go benchmark for 1,000 tasks recorded **4.05 ms/op, 2.98 MB allocated/op, and 39,221 allocations/op**. Its allocation profile attributed approximately 44% of cumulative allocated bytes to todo extraction, including descendants. Goldmark nodes and regular-expression extraction are useful optimization targets. The macOS CPU profile contained substantial runtime/system samples, so it is not a clean ranking of application costs.
+The separate Go benchmark for 1,000 tasks recorded **3.18 ms/op, 2.98 MB allocated/op, and 39,221 allocations/op**. Its allocation profile attributed approximately 43% of cumulative allocated bytes to todo extraction, including descendants. Goldmark nodes and regular-expression extraction are useful optimization targets. The macOS CPU profile contained substantial runtime/system samples, so it is not a clean ranking of application costs.
 
-Rust's one-second stack sample collected 854 main-thread samples. About 70% included parser construction, with the block-parsing first pass accounting for about 64% (overlapping, not additive). This locates work inside the parser; it is not a Rust allocation profile or evidence about a complete TUI. Sampling perturbs execution and uses a separately symbolized build.
+Rust's one-second stack sample collected 771 main-thread samples. About 73% included parser construction, with the block-parsing first pass accounting for about 70% (overlapping, not additive). This locates work inside the parser; it is not a Rust allocation profile or evidence about a complete TUI. Sampling perturbs execution and uses a separately symbolized build.
 
-The next useful performance work is to measure real editing sessions, reduce repeated extraction/allocation, and evaluate source-preserving Go edits through the new editor boundary. At 10,000 tasks, the roughly 31 ms parse/edit/serialize cost warrants attention, but it does not predict total interactive latency.
+The next useful performance work is to measure real editing sessions, reduce repeated extraction/allocation, and evaluate source-preserving Go edits through the new editor boundary. At 10,000 tasks, the roughly 41 ms parse/edit/serialize cost warrants attention, but it does not predict total interactive latency.
 
 Revisit a rewrite only if realistic documents remain too slow after those changes, and a broader Rust spike demonstrates equivalent metadata, structural edits, cancellation/undo, conflict detection, atomic replacement, recovery/history, and terminal behavior across macOS, Linux, and Windows. This experiment implements none of those Rust application guarantees. There is no Rust FFI integration or production dependency.
 
