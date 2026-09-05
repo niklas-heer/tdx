@@ -1,10 +1,10 @@
 # Go / Rust evaluation
 
-The complete rewrite now has a [hardened Rust development workflow](#rust-development-and-hardening) with a dated nightly, strict lints, nextest and Miri. Earlier measurements below retain their original compiler and source identity.
+The complete rewrite now includes [deterministic save-failure simulation and full-document Markdown editing](#deterministic-saves-and-full-document-markdown), alongside a [hardened Rust development workflow](#rust-development-and-hardening) with a dated nightly, strict lints, nextest and Miri. Earlier measurements below retain their original compiler and source identity.
 
 The [Ratatui UI completion](#ratatui-ui-completion) extends the full-featured application comparison with explicit presentation checks. The [full-featured application comparison](#full-featured-application-comparison) supersedes the earlier parser, basic prototype and history-only milestones below. Historical measurements remain unchanged and describe the capabilities at their original revisions.
 
-**Recommendation: pursue the complete Rust candidate while retaining Go as the production default for evaluation.** The rewrite implements the complete CLI/TUI feature matrix with a polished Ratatui interface. The latest full-application comparison shows lower memory use, a smaller executable and faster large-document editing; fresh Rust builds take longer. The [nightly comparison](#nightly-comparison) supersedes the earlier measurements below.
+**Recommendation: pursue the complete Rust candidate while retaining Go as the production default for evaluation.** The rewrite implements the complete CLI/TUI feature matrix with a polished Ratatui interface. The latest full-application comparison shows lower memory use, a smaller executable and faster large-document editing; fresh Rust builds take longer. The [nightly comparison](#nightly-comparison) supersedes the earlier measurements below. For typical small task lists, interactive timings are similar; the new work focuses on save-safety evidence and Markdown usability, not a speed-based migration case.
 
 The new `internal/editor` package gives CLI and TUI a shared action boundary. Configuration, styles, recent-file storage, and Markdown history callbacks are supplied per instance. This makes engine changes and compatibility tests easier without requiring a language migration.
 
@@ -396,3 +396,71 @@ Nine alternating CLI trials and three terminal sessions per engine/workload foll
 The stripped executables remain **10.39 MiB Go / 5.07 MiB Rust**. Fresh-cache builds took **7.28 / 37.75 seconds** and no-op builds **0.168 / 0.088 seconds** respectively. Build values are single observations excluding downloads.
 
 The decision remains to pursue the complete Rust candidate. At 10,000 tasks this sample shows about **51% less observed edit/save time**, **86% less ending RSS** and **78% less session CPU**, with a **51% smaller executable** and approximately **5.2× longer fresh builds**. Small-document timings are close. This comparison does not isolate the effect of nightly or of Rust itself: parsers, UI and database implementations differ. Observed replacement time includes parent polling and is not key-to-frame or completed durable-save latency. RSS includes retained undo/history and is neither live heap nor a leak measurement. Native correctness checks do not establish performance on CI hosts; representative real documents remain the next basis for a production migration decision.
+
+## Deterministic saves and full-document Markdown
+
+The Rust candidate now shares its production save state machine with a deterministic simulator. This follows the approach used by [TigerBeetle's VOPR](https://tigerbeetle.com/blog/2026-08-20-protocol-aware-dst/): control time and I/O around the real engine, record the seed, and replay the same decisions. [Recovery and progress](https://tigerbeetle.com/blog/2023-07-06-simulation-testing-for-liveness/) are checked alongside safety. TigerBeetle uses **Zig**; this testing method is not exclusive to Rust.
+
+The native driver and simulator both execute `save_protocol::Save`: prepare and sync a temporary file, acquire the shared lock, validate the loaded revision, capture overwritten history for force-save, replace the target, sync its directory, capture the saved version, and unlock. Exhaustive Rust enums define effect ordering. Owned temporary-file and lock handles remain in the native driver. A post-replacement failure reports that the file was saved, advances the accepted revision, and still attempts history capture and cleanup.
+
+The simulator runs three competing writers with a specified SplitMix64 generator, virtual I/O latency and occasional long delays. It injects lock contention, failures in every save effect, unavailable history, external revisions, process crashes and power loss. Independent checks verify revision preconditions, whole-file replacement, accurate commit reporting, durability of acknowledged saves, and progress after restarting/reloading with faults disabled. The real filesystem and history implementation also receive subprocess tests that kill a writer after preparation, validation, replacement, directory sync and history capture, then reopen and save successfully.
+
+Reproduce the campaign and a detailed trace from the repository root:
+
+```sh
+mise run rust-rewrite:simulate
+# Default: seeds 0–999, 200 scheduled steps per seed, then bounded recovery.
+dist/rust-rewrite/target/release/simulate --seed 0 --steps 200 --trace dist/rust-rewrite/seed-0.json
+```
+
+The gate runs the campaign twice and requires byte-identical summaries and trace hashes. Reports under `dist/rust-rewrite/simulation/` retain source identity, binary hash, coverage, a complete sample trace and counterexamples. Deliberately skipping validation, sync or replacement must each fail the oracle. These negative controls establish detection of those particular defects; they are not discoveries of existing production data-loss bugs. Replaying an old trace requires its recorded source revision, seed and step count. Wall time measures simulation plus replay and controls, not disk throughput or application latency.
+
+### Use the Markdown editor
+
+Launch the Rust TUI with `mise run rust-rewrite -- path/to/tasks.md`, then choose `:edit-markdown` to edit the entire source, or `:markdown` to preview it. Source and preview appear side by side on wide terminals; narrow terminals switch between them. The preview displays headings, emphasis, links, task lists, quotes, code blocks, frontmatter and table cells. Raw HTML is displayed as text. Tables use separators without automatic column alignment; code blocks are styled without language-specific syntax highlighting.
+
+| Key | Action |
+| --- | --- |
+| `Ctrl-S` | Explicitly save the complete draft through revision checks and history |
+| `Ctrl-P` | Switch between source and full-width preview |
+| `e` in preview | Return to source editing |
+| Arrows, Home/End, PageUp/PageDown | Navigate source or scroll preview |
+| `Ctrl-Home` / `Ctrl-End` in source | Move to the start/end of the document |
+| `Ctrl-A`, then type or paste | Replace the entire draft |
+| `Ctrl-Z` in source | Undo a draft edit, up to 100 entries |
+| `Ctrl-C` after `Ctrl-A`; `Ctrl-Y` in source | Copy selected source; paste through the configured clipboard |
+| `Esc` | Close; an unsaved draft requires `y` to discard or another `Esc` to keep editing |
+| `u` after closing | Undo a saved document change using normal application undo |
+
+Saving preserves the draft's exact bytes and reparses tasks and frontmatter. Newlines already present are preserved; Enter follows CRLF when the draft contains CRLF, otherwise LF. Unsafe terminal control characters are filtered on insertion. Existing manual-save mode still requires explicit writes, and filesystem read-only permissions are respected. An external-change conflict retains the draft and accepted document without overwriting the other writer's content. Copy the draft before discarding/reloading if you need to merge competing edits; this is not an automatic merge editor.
+
+Regression tests cover Unicode, CRLF cursor boundaries, frontmatter setting changes and their undo, empty-task documents, exact saves, history, narrow rendering, external conflicts and cancellation. Real PTY/ConPTY checks send multiline Unicode paste and the actual save/undo/discard keys. Final review also corrected frontmatter settings remaining changed after document undo, and cursor placement when an edit joins previously separate CR and LF bytes. No runtime dependency or Cargo lockfile changed.
+
+### What this establishes
+
+For ordinary documents with 2–20 tasks, the previous comparison found similar interactive timings. This work adds reproducible failure diagnostics and a testable save protocol, plus a useful source editor; it does not claim a new small-document speed advantage. Rust helps through ownership and exhaustive state handling, but the Go engine could adopt the same simulation strategy. A finite campaign cannot establish that either application can never corrupt data.
+
+The model assumes whole-file atomic replacement and the specified I/O outcomes. It does not emulate SQLite pages, a real kernel, a disk controller, torn target writes or physical power loss. Failed preparation represents partial temporary writes at the effect boundary; it does not emulate their individual bytes. Simulated power loss conservatively clears modeled history. Native history still uses SQLite WAL with `synchronous=NORMAL`: database consistency does not guarantee retention of the most recent history transaction after power loss. Markdown replacement and history capture remain separate transactions. The simulator also excludes arbitrary non-cooperating writes after the final revision check; advisory locking cannot prevent them. tdx has no network service, so storage delays/outages and recovery are exercised without inventing network partitions.
+
+`rust-rewrite:check`, `rust-rewrite:stable`, `rust-rewrite:miri`, `rust-rewrite:contracts` and native CI include the new coverage. Miri now exercises 19 pure application tests; native OS/SQLite behavior remains in native tests. Nextest runs 62 tests on Unix and 60 on Windows: 53/51 application tests, five repeated adapter tests, and four simulator-target tests (two repeat the shared protocol tests). The two ignored functions are explicitly invoked development helpers: gallery export and the subprocess crash barrier.
+
+The first native run exposed a Windows multiline-paste defect: ConPTY stripped bracketed-paste markers while virtual-terminal input was disabled, and LF input was then treated as an ignored shortcut. The earlier single-line paste check could not detect this. The Rust reader now enables and restores virtual-terminal input, decodes navigation/control sequences, and preserves bracketed Unicode text including mixed LF/CRLF and tabs. The strengthened native test requires exact bytes and retains a failed saved file for diagnosis. This follows [Microsoft’s explanation of the console behavior](https://github.com/microsoft/terminal/issues/18094) and the [Win32 OpenSSH input approach](https://github.com/PowerShell/openssh-portable/blob/latestw_all/contrib/win32/win32compat/tncon.c). This was a native input finding, separate from the save-protocol simulation.
+
+### Verified results
+
+The [final CI run](https://github.com/niklas-heer/tdx/actions/runs/33996737572) passed at revision `4b5d450` on Linux x86_64, macOS arm64 and Windows x86_64. The [retained evidence](../rust-rewrite/simulation-evidence.json) independently verifies that every native report contains the same source files and contents as the local campaign, with fingerprint `217b2d8e2b479c5d56b651bae717f578f652866624741116c870960714e5b07e`. All **1,000 seed traces and three negative-control traces match exactly across all three platforms and the local run**. Windows file ordering differences were accounted for when reproducing its source hash.
+
+Each campaign schedules 200 steps per seed, followed by bounded recovery:
+
+| Exercised condition | Count |
+| --- | ---: |
+| Simulated power losses | 1,948 |
+| Simulated process crashes | 6,957 |
+| Lock-contention outcomes | 76,522 |
+| External revisions | 1,856 |
+| Injected I/O failures across eight save effects | 14,623 |
+| Successful recovery checks | 1,000 / 1,000 |
+
+All three deliberate defects were detected at seed 0. The final local campaign, identical replay and controls together took **1.08 seconds** with virtual I/O. This makes the gate practical to run on changes; the duration is not a storage-speed benchmark. No new production data-loss defect was found by this finite simulation campaign.
+
+Every platform also passed the existing 1,154-case/2,993-state action corpus, 58 application workflows, shared Go/Rust locks, Unicode and clickable-link terminal checks, real process-crash recovery, and the strengthened Markdown source save/undo/conflict/discard test. Nextest passed **62/62 tests on Linux/macOS and 60/60 on Windows**, with no retries. Stable 1.98.1 and all **19 focused Miri tests** passed in Linux CI; formatting, strict Clippy, rustdoc and Python harness regressions passed on every platform. Local Go/project checks, the complete CLI/history/replay contract suite, visual gallery review and strict OpenSpec validation also passed. The production default remains Go; the Rust candidate adds tested safety instrumentation and Markdown usability for further evaluation.

@@ -11,3 +11,6 @@ The source editor owns a private UTF-8 draft and cursor. No model/file change oc
 - https://docs.tigerbeetle.com/single-page/
 
 The method is language-independent (TigerBeetle uses Zig). Rust contributes exhaustive effect handling, ownership of prepared resources, and a reusable deterministic core; passing finite simulations does not prove absence of corruption or superiority over Go.
+
+## Native verification finding
+The first Windows native run exposed multiline paste losing newline boundaries because ConPTY strips bracketed-paste markers without virtual-terminal input enabled. The reader now enables virtual input, parses navigation/control sequences and preserves paste text as one event, following Microsoft's console and Win32 OpenSSH guidance. Cleanup restores only the changed console flag so it cannot undo Ratatui's panic-time terminal restoration. The native source test now requires exact mixed LF/CRLF, tabs and Unicode bytes. This is a native input finding, distinct from the save simulation's intentional defect controls.
