@@ -313,7 +313,11 @@ fn persist(temp: tempfile::NamedTempFile, target: &Path) -> std::io::Result<()> 
     temp.persist(target).map(|_| ()).map_err(|e| e.error)
 }
 #[cfg(windows)]
-fn sync_directory(_: &Path) -> std::io::Result<()> {
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Matches the fallible Unix directory-sync interface at the shared save call site"
+)]
+const fn sync_directory(_: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

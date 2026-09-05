@@ -183,7 +183,7 @@ impl Reader {
             let mut record = INPUT_RECORD::default();
             let mut count = 0;
             // SAFETY: both output pointers are valid and the buffer has one record.
-            if unsafe { ReadConsoleInputW(handle, &mut record, 1, &mut count) } == 0 {
+            if unsafe { ReadConsoleInputW(handle, &raw mut record, 1, &raw mut count) } == 0 {
                 return Err(std::io::Error::last_os_error());
             }
             if count != 0 {
