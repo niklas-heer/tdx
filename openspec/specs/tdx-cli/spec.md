@@ -1,31 +1,15 @@
 # tdx-cli Specification
 
 ## Purpose
-Deliver a Bun-based TypeScript CLI named `tdx` that manages markdown todos with both an Ink-powered TUI and non-interactive commands, ensuring consistent storage, styling, and atomic file safety.
+Provide a standalone Go CLI and Bubble Tea TUI for managing Markdown tasks, with consistent storage, styling, and guarded atomic saves.
 ## Requirements
-### Requirement: Bun-based TypeScript CLI entry point
-The system SHALL provide a Bun-based TypeScript command-line tool named `tdx` as the primary interface for managing markdown-based todos.
 
-- The CLI implementation SHALL target the Bun runtime (not Node).
-- The primary CLI entrypoint SHALL be `src/cli.ts`.
-- The project SHALL be runnable in development via:
-  - `bun run src/cli.ts`
-- The project SHALL be buildable into a single binary via:
-  - `bun build --compile --minify src/cli.ts --outfile tdx`
-- The compiled `tdx` binary SHALL behave equivalently to `bun run src/cli.ts` for all supported commands.
-
+### Requirement: Go CLI entry point
+The system SHALL provide a Go command-line tool named tdx with entry point cmd/tdx/main.go, built with the toolchain pinned in mise.toml and metadata from tdx.toml.
 #### Scenario: Build and run tdx CLI
-- **WHEN** a developer runs `bun run src/cli.ts` from the project root  
-- **THEN** the CLI SHALL execute and respond to supported commands, including at least:
-  - `tdx` (interactive TUI mode)
-  - `tdx list`
-  - `tdx add "Text"`
-  - `tdx toggle 3`
-  - `tdx edit 2 "New text"`  
-
-- **WHEN** a developer runs `bun build --compile --minify src/cli.ts --outfile tdx`  
-- **THEN** a single binary named `tdx` SHALL be produced in the current directory  
-- **AND** running `./tdx` with the same arguments as `bun run src/cli.ts` SHALL produce equivalent behavior and output.
+- **WHEN** a developer runs mise run build
+- **THEN** a standalone tdx binary SHALL support interactive mode and the documented non-interactive commands
+- **AND** its version SHALL match tdx.toml
 
 ---
 
@@ -39,11 +23,11 @@ The system SHALL store and manage todos in a markdown file named `todo.md` locat
   - `- [x] ` (checked, using lowercase `x`)
 - Todo text SHALL be defined as all content after the checkbox prefix on the same line.
 - The system SHALL preserve:
-  - The exact content of all non-todo lines (including headers, paragraphs, comments, and blank lines).
+  - The content of unrelated Markdown nodes (including headers, paragraphs, and comments).
   - The original ordering of all lines (todo and non-todo).
 - On write, the system SHALL:
-  - Rewrite only the lines that correspond to todo items when their state or text changes.
-  - Leave all non-todo lines byte-for-byte unchanged.
+  - Update the selected task or heading without changing other tasks or heading titles.
+  - Preserve unrelated Markdown content while permitting serializer whitespace normalization.
 
 - All modifications to `todo.md` SHALL be performed as safe atomic writes:
   - Write to a temporary file in the same directory.
@@ -60,7 +44,7 @@ The system SHALL store and manage todos in a markdown file named `todo.md` locat
 - **WHEN** `todo.md` contains a mix of markdown headings, paragraphs, blank lines, comments, and todo lines  
 - **AND WHEN** the user toggles or edits one todo through any CLI or TUI operation  
 - **THEN** only the corresponding todo line in `todo.md` SHALL be modified  
-- **AND** all non-todo lines SHALL remain unchanged in content, spacing, and ordering.
+- **AND** all unrelated Markdown content SHALL remain in document order; serializer whitespace normalization is permitted.
 
 #### Scenario: Atomic write on modification
 - **WHEN** any command or TUI interaction changes todo state or text  
@@ -70,45 +54,23 @@ The system SHALL store and manage todos in a markdown file named `todo.md` locat
 
 ---
 
-### Requirement: Minimal custom markdown parser and writer
-The system SHALL implement a minimal, custom markdown parser and writer for managing todos, without relying on heavy markdown libraries.
-
-- The system SHALL NOT depend on large, general-purpose markdown parsers (e.g., Remark, markdown-it, or similar libraries) for todo handling.
-- Todo parsing SHALL be implemented using simple string and/or regular expression matching.
-- The parser SHALL:
-  - Read `todo.md` line-by-line.
-  - Identify todo lines strictly by the prefixes `- [ ] ` and `- [x] ` at the start of the line (after any optional leading BOM handling, but before other characters).
-  - Extract a structured representation for each todo, including at least:
-    - The 1-based line number or position.
-    - The checked/unchecked state.
-    - The todo text after the checkbox.
-  - Preserve the original content of every line, whether or not it is a todo.
-- The writer SHALL:
-  - Reconstruct the full file by iterating over the original lines.
-  - Replace only the lines that correspond to todo items whose state or text has changed.
-  - Emit updated todo lines in the same format (`- [ ] ` or `- [x] ` followed by text).
-  - Keep all other lines unchanged.
-
+### Requirement: AST-based Markdown parser and writer
+The system SHALL parse Markdown using Goldmark and perform task and heading edits through its AST. Serialization SHALL preserve unrelated content semantically; normalizing Markdown spacing is permitted.
 #### Scenario: Round-trip consistency with no changes
-- **WHEN** the parser reads `todo.md` into an in-memory representation  
-- **AND** the writer immediately writes this representation back out without any modifications  
-- **THEN** the resulting `todo.md` file on disk SHALL be byte-for-byte identical to the original.
-
+- **WHEN** a document is parsed and serialized without edits
+- **THEN** its tasks, headings, and other Markdown content SHALL remain equivalent
 #### Scenario: Correct parsing of todos and non-todos
-- **WHEN** `todo.md` contains:
-  - Multiple todo lines
-  - Lines beginning with `- ` that are not checkboxes
-  - Other markdown constructs  
-- **THEN** the parser SHALL classify only lines starting with `- [ ] ` or `- [x] ` as todos  
-- **AND** all other lines SHALL be preserved as non-todo content.
+- **WHEN** a document includes headings, ordinary lists, fenced code, and checkboxes
+- **THEN** only actual task-list nodes SHALL be treated as todos
+- **AND** unrelated Markdown constructs SHALL be retained
 
 ---
 
 ### Requirement: TUI layout and styling
-The system SHALL present an interactive terminal UI (TUI) using Ink that renders todos with a specific layout and styling.
+The system SHALL present an interactive terminal UI (TUI) using Bubble Tea that renders todos with a specific layout and styling.
 
-- The TUI implementation SHALL use Ink (React-style terminal UI library).
-- Styling for colors and emphasis SHALL use Ink’s color support and/or Chalk.
+- The TUI implementation SHALL use Bubble Tea v2.
+- Styling and overlay composition SHALL use Lip Gloss v2.
 - The TUI SHALL display each todo line in one of two textual formats:
 
   - For non-selected items:
@@ -299,4 +261,3 @@ The CLI and TUI SHALL provide clear, minimal error handling and consistent, tast
 - **WHEN** the user runs a valid command like `tdx add "Task"` or `tdx toggle 1`  
 - **THEN** the CLI SHALL exit with status code `0`  
 - **AND** any printed output SHALL be concise and human-readable, without extraneous debug information.
-

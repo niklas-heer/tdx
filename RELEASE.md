@@ -1,92 +1,22 @@
-# Release Process
+# Releasing tdx
 
-## Creating a Release
-
-### 1. Run the release script
+Update `version` in `tdx.toml` in a reviewed pull request. Merge the release changes and wait for CI to pass before publishing.
 
 ```bash
-mask release
+git switch main
+git pull --ff-only
+mise run release
 ```
 
-This interactive script will:
-- Show current version from `tdx.toml`
-- Ask you to choose: Major, Minor, or Patch
-- Calculate the next version number
-- Update `tdx.toml`
-- Commit and tag the release
-- Push to GitHub
+The release task verifies a clean checkout of `main`, checks that local and remote commits match, runs local validation, and asks before pushing the single version tag. It uses the version already configured in `tdx.toml` and does not increment it automatically.
 
-### 2. That's it! 🎉
+The tag workflow checks the version, builds five platform binaries with Dagger, generates release notes, creates the GitHub release, and updates the Homebrew tap. The application and Dagger module use the same pinned Go version.
 
-Everything else is **fully automated**. GitHub Actions will:
-
-#### Build Workflow (`release.yml`)
-- ✅ Build binaries for all platforms (macOS, Linux, Windows)
-- ✅ Generate AI-powered release notes with Claude Haiku 4.5
-- ✅ Create GitHub Release with all binaries attached
-
-#### Homebrew Tap Workflow (`update-homebrew.yml`)
-- ✅ Download all release binaries
-- ✅ Calculate SHA256 checksums
-- ✅ Update `homebrew-tap/Formula/tdx.rb` automatically
-- ✅ Commit and push to tap repository
-
-#### CI Workflow (`ci.yml`)
-- ✅ Run tests and linting on all PRs
-- ✅ Verify builds on all platforms
-
-### Monitoring the Release
-
-Watch the workflows at:
-- https://github.com/niklas-heer/tdx/actions
-
-Within minutes, users can install with:
-```bash
-brew upgrade niklas-heer/tap/tdx
-```
-
-## Conventional Commits
-
-Use these prefixes for better AI-generated release notes:
-
-- `feat:` - New features → **✨ Features** section
-- `fix:` - Bug fixes → **🐛 Bug Fixes** section
-- `docs:` - Documentation → **📚 Documentation** section
-- `chore:` - Maintenance → **⚙️ Maintenance** section
-- `refactor:` - Code improvements → **🔧 Improvements** section
-
-**Pro tip:** Add detailed commit bodies! The AI uses them to write richer release notes.
-
-Examples:
-```bash
-# Good - with detailed body
-git commit -m "feat: add dark mode support" -m "- Toggle with :dark-mode command
-- Persists user preference
-- Works with all color schemes"
-
-# Also good - simple commit
-git commit -m "fix: resolve crash on startup"
-git commit -m "docs: update installation guide"
-```
-
-## Build Artifacts
-
-The release workflow builds these binaries:
-
-| Platform | Architecture | Artifact |
-|----------|--------------|----------|
-| macOS | Apple Silicon | `tdx-darwin-arm64` |
-| macOS | Intel | `tdx-darwin-amd64` |
-| Linux | x64 | `tdx-linux-amd64` |
-| Linux | ARM64 | `tdx-linux-arm64` |
-| Windows | x64 | `tdx-windows-amd64.exe` |
-
-## Local Build
-
-To build locally for all platforms:
+To inspect release artifacts without publishing:
 
 ```bash
-mask build-all
+mise run release-artifacts
+ls dist/
 ```
 
-Binaries will be in the `dist/` directory.
+For a specific existing release, users can set `TDX_VERSION=1.0.0` when running the install script. `TDX_INSTALL_DIR` overrides its default `~/.local/bin` destination.

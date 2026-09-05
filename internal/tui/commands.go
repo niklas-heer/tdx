@@ -383,6 +383,9 @@ func InitCommands(cfg ...*ConfigType) []Command {
 				m.CursorPos = 0
 			},
 		},
+		{Name: "sections", Description: "Browse, edit, focus, and fold Markdown sections", Handler: func(m *Model) { m.openSections() }},
+		{Name: "all-sections", Description: "Clear section focus and unfold all sections", Handler: func(m *Model) { m.clearSections() }},
+
 		{
 			Name:        "show-headings",
 			Description: "Toggle displaying markdown headings between tasks",
@@ -402,6 +405,9 @@ func InitCommands(cfg ...*ConfigType) []Command {
 				}
 				m.FileModel = *fm
 				m.History = nil // Clear history
+				m.UndoStack = nil
+				m.InvalidateHeadingsCache()
+				m.clearSections()
 				m.clearConflict()
 				if m.SelectedIndex >= len(m.FileModel.Todos) {
 					m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)

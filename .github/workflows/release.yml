@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -33,13 +33,13 @@ jobs:
       - name: Build release artifacts with Dagger
         uses: dagger/dagger-for-github@v8.4.1
         with:
-          version: "0.21.7"
+          version: "0.21.9"
           call: release-artifacts --source=. export --path=release
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install release-note dependencies
         run: pip install requests==2.34.2
@@ -72,12 +72,12 @@ jobs:
 
     steps:
       - name: Checkout tdx repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           path: tdx
 
       - name: Checkout homebrew-tap repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           repository: niklas-heer/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -113,10 +113,12 @@ jobs:
 
       - name: Create summary
         run: |
-          echo "## Homebrew Tap Updated" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Formula updated to version **v${{ steps.version.outputs.version }}**." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-          echo "brew upgrade niklas-heer/tap/tdx" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+          echo "## Homebrew Tap Updated"
+          echo ""
+          echo "Formula updated to version **v${{ steps.version.outputs.version }}**."
+          echo ""
+          echo '```bash'
+          echo "brew upgrade niklas-heer/tap/tdx"
+          echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -167,12 +167,10 @@ func (doc *ASTDocument) ExtractHeadings() []Heading {
 		if node.Kind() == ast.KindHeading {
 			heading := node.(*ast.Heading)
 
-			// Extract text from heading
-			var text strings.Builder
+			// Retain inline Markdown so renaming does not silently drop links or emphasis.
+			var headingText bytes.Buffer
 			for child := heading.FirstChild(); child != nil; child = child.NextSibling() {
-				if textNode, ok := child.(*ast.Text); ok {
-					text.Write(textNode.Segment.Value(doc.Source))
-				}
+				serializeNode(doc, child, &headingText, 0)
 			}
 
 			// Get line number
@@ -184,7 +182,7 @@ func (doc *ASTDocument) ExtractHeadings() []Heading {
 			// The heading appears before the next todo we'll encounter
 			headings = append(headings, Heading{
 				Level:           heading.Level,
-				Text:            text.String(),
+				Text:            headingText.String(),
 				LineNo:          lineNo,
 				BeforeTodoIndex: nextTodoIndex,
 			})

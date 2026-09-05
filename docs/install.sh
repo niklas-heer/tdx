@@ -1,52 +1,43 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 REPO="niklas-heer/tdx"
-INSTALL_DIR="/usr/local/bin"
-
-# Detect OS
+INSTALL_DIR="${TDX_INSTALL_DIR:-$HOME/.local/bin}"
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$OS" in
-    darwin) OS="darwin" ;;
-    linux) OS="linux" ;;
+    darwin|linux) ;;
     mingw*|msys*|cygwin*) OS="windows" ;;
-    *) echo "Unsupported OS: $OS"; exit 1 ;;
+    *) printf 'Unsupported OS: %s\n' "$OS" >&2; exit 1 ;;
 esac
-
-# Detect architecture
 ARCH=$(uname -m)
 case "$ARCH" in
     x86_64|amd64) ARCH="amd64" ;;
     arm64|aarch64) ARCH="arm64" ;;
-    *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+    *) printf 'Unsupported architecture: %s\n' "$ARCH" >&2; exit 1 ;;
 esac
-
-# Build artifact name
-if [ "$OS" = "windows" ]; then
-    ARTIFACT="tdx-${OS}-${ARCH}.exe"
-    BINARY="tdx.exe"
-else
-    ARTIFACT="tdx-${OS}-${ARCH}"
-    BINARY="tdx"
+if [[ "$OS-$ARCH" == "windows-arm64" ]]; then
+    echo 'Windows ARM64 binaries are not available; use the amd64 binary with emulation.' >&2
+    exit 1
 fi
-
-echo "Detected: ${OS}-${ARCH}"
-echo "Downloading ${ARTIFACT}..."
-
-# Get latest release URL
-DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ARTIFACT}"
-
-# Download
-curl -fsSL "$DOWNLOAD_URL" -o "$BINARY"
-chmod +x "$BINARY"
-
-# Install
-if [ -w "$INSTALL_DIR" ]; then
-    mv "$BINARY" "$INSTALL_DIR/$BINARY"
-else
-    echo "Installing to $INSTALL_DIR (requires sudo)..."
-    sudo mv "$BINARY" "$INSTALL_DIR/$BINARY"
+BINARY="tdx"
+[[ "$OS" != "windows" ]] || BINARY="tdx.exe"
+ARTIFACT="tdx-${OS}-${ARCH}"
+[[ "$OS" != "windows" ]] || ARTIFACT+=".exe"
+release_path="latest/download"
+if [[ -n "${TDX_VERSION:-}" ]]; then
+    [[ "$TDX_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'TDX_VERSION must be a release version such as 1.0.0.' >&2; exit 1; }
+    release_path="download/v${TDX_VERSION#v}"
 fi
-
-echo "Installed tdx to $INSTALL_DIR/$BINARY"
-echo "Run 'tdx' to get started!"
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+printf 'Downloading %s...\n' "$ARTIFACT"
+curl --fail --show-error --silent --location --retry 3 \
+    "https://github.com/${REPO}/releases/${release_path}/${ARTIFACT}" -o "$tmp_dir/$BINARY"
+mkdir -p "$INSTALL_DIR"
+install -m 755 "$tmp_dir/$BINARY" "$INSTALL_DIR/$BINARY"
+printf 'Installed %s/%s\n' "$INSTALL_DIR" "$BINARY"
+case ":$PATH:" in
+    *":$INSTALL_DIR:"*) ;;
+    *) printf 'Add %s to your PATH to run tdx.\n' "$INSTALL_DIR" ;;
+esac
+printf 'Run tdx to get started; press ? for help and s for sections.\n'

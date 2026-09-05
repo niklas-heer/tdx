@@ -3,13 +3,14 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
@@ -48,15 +49,15 @@ func testVersionModel() Model {
 }
 
 func sendVersionsKey(m Model, key string) Model {
-	result, _ := m.handleVersionsKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+	result, _ := m.handleVersionsKey(tea.KeyPressMsg{Text: key})
 	if newModel, ok := result.(Model); ok {
 		return newModel
 	}
 	return m
 }
 
-func sendVersionsKeyType(m Model, keyType tea.KeyType) Model {
-	result, _ := m.handleVersionsKey(tea.KeyMsg{Type: keyType})
+func sendVersionsKeyType(m Model, keyType rune) Model {
+	result, _ := m.handleVersionsKey(tea.KeyPressMsg{Code: keyType})
 	if newModel, ok := result.(Model); ok {
 		return newModel
 	}
@@ -154,7 +155,7 @@ func TestRenderDiff_NoSpuriousPaddingOnMultiLineSegments(t *testing.T) {
 		{Type: diffmatchpatch.DiffDelete, Text: "x"},
 	}
 
-	rendered := renderDiff(diffs, styles)
+	rendered := ansi.Strip(renderDiff(diffs, styles))
 	lines := strings.Split(rendered, "\n")
 
 	if len(lines) != 2 {

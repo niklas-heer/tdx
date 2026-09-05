@@ -212,15 +212,14 @@ filter-done: true
 	_ = os.WriteFile(file, []byte(initial), 0644)
 
 	// Try to toggle (no visible items, cursor at index 0)
-	// This will toggle the item at index 0 even though it's filtered
+	// Hidden tasks must not be mutated by a stale cursor.
 	runPiped(t, file, " ")
 
 	todos := getTodos(t, file)
 
-	// The first task will be toggled (unchecked) because cursor is at index 0
-	// This is expected behavior - space toggles the item at cursor position
-	if !strings.Contains(todos[0], "[ ]") {
-		t.Errorf("First todo should be unchecked after toggle, got: %s", todos[0])
+	// Every task remains checked while the visible list is empty.
+	if !strings.Contains(todos[0], "[x]") {
+		t.Errorf("Hidden todo should remain checked, got: %s", todos[0])
 	}
 	// Other tasks should remain checked
 	if !strings.Contains(todos[1], "[x]") {

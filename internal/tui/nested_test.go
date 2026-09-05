@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -35,7 +35,7 @@ func TestHandleKey_IndentTodo(t *testing.T) {
 	m.SelectedIndex = 1 // Select Task 2
 
 	// Press Tab to indent Task 2
-	msg := tea.KeyMsg{Type: tea.KeyTab}
+	msg := tea.KeyPressMsg{Code: tea.KeyTab}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -60,7 +60,7 @@ func TestHandleKey_IndentFirstTodoFails(t *testing.T) {
 	m.SelectedIndex = 0 // Select first task
 
 	// Press Tab - should silently fail
-	msg := tea.KeyMsg{Type: tea.KeyTab}
+	msg := tea.KeyPressMsg{Code: tea.KeyTab}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -87,7 +87,7 @@ func TestHandleKey_OutdentTodo(t *testing.T) {
 	}
 
 	// Press Shift+Tab to outdent
-	msg := tea.KeyMsg{Type: tea.KeyShiftTab}
+	msg := tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -108,7 +108,7 @@ func TestHandleKey_OutdentTopLevelFails(t *testing.T) {
 	m.SelectedIndex = 0 // Select first task (already top level)
 
 	// Press Shift+Tab - should silently fail
-	msg := tea.KeyMsg{Type: tea.KeyShiftTab}
+	msg := tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -129,7 +129,7 @@ func TestHandleKey_IndentOutdentRoundTrip(t *testing.T) {
 	m.SelectedIndex = 1 // Select Task 2
 
 	// Indent
-	msg := tea.KeyMsg{Type: tea.KeyTab}
+	msg := tea.KeyPressMsg{Code: tea.KeyTab}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -138,7 +138,7 @@ func TestHandleKey_IndentOutdentRoundTrip(t *testing.T) {
 	}
 
 	// Outdent
-	msg = tea.KeyMsg{Type: tea.KeyShiftTab}
+	msg = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 	result, _ = m.handleKey(msg)
 	m = result.(Model)
 
@@ -158,7 +158,7 @@ func TestHandleKey_IndentReadOnlyMode(t *testing.T) {
 	m.SelectedIndex = 1
 
 	// Press Tab - should be ignored in read-only mode
-	msg := tea.KeyMsg{Type: tea.KeyTab}
+	msg := tea.KeyPressMsg{Code: tea.KeyTab}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -180,7 +180,7 @@ func TestView_NestedTasksShowIndentation(t *testing.T) {
 	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
 	m.TermWidth = 80
 
-	view := m.View()
+	view := m.View().Content
 
 	// The nested tasks should have indentation in the view
 	// We check that "Subtask A" line has more leading spaces than "Task 1"
@@ -218,7 +218,7 @@ func TestHandleKey_IndentWithUndo(t *testing.T) {
 	m.SelectedIndex = 1
 
 	// Indent Task 2
-	msg := tea.KeyMsg{Type: tea.KeyTab}
+	msg := tea.KeyPressMsg{Code: tea.KeyTab}
 	result, _ := m.handleKey(msg)
 	m = result.(Model)
 
@@ -227,7 +227,7 @@ func TestHandleKey_IndentWithUndo(t *testing.T) {
 	}
 
 	// Undo
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}}
+	msg = tea.KeyPressMsg{Text: string([]rune{'u'})}
 	result, _ = m.handleKey(msg)
 	m = result.(Model)
 

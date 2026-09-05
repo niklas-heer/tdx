@@ -22,7 +22,7 @@
         allowDirty = true;
       in
       {
-        packages.default = pkgs.buildGoModule {
+        packages.default = pkgs.buildGo127Module {
           inherit pname version;
           src =
             if allowDirty then
@@ -33,7 +33,7 @@
               }
             else
               ./.;
-          vendorHash = "sha256-wmtE/ERqlOUVUO9N2OEicA3KGdkeM0ycWL4vr+Z1ymw=";
+          vendorHash = "sha256-V7AF9AhUyekWMKHr0YRPPWPDtwksCrT5cJIJ3JLkLzo=";
           subPackages = [ "cmd/tdx" ];
           doCheck = false;
           ldflags = [
@@ -48,16 +48,16 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             pkg-config
-            go
+            go_1_27
             gopls
             delve
             gotools
             go-tools
             golangci-lint
             git
-            mask
+            mise
           ];
-          shellHook = ''echo "TDX development shell!" echo "Go version: $(go version)" '';
+          shellHook = ''echo "Run mise run check to validate tdx, or mise run dev to launch it."'';
         };
       }
     );

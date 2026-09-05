@@ -7,16 +7,25 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/niklas-heer/tdx/internal/util"
-	overlay "github.com/rmhubbert/bubbletea-overlay"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // View renders the TUI
-func (m Model) View() string {
+func (m Model) View() tea.View {
+	return tea.NewView(m.renderView())
+}
+
+func compositeOverlay(foreground, background string) string {
+	y := max(0, lipgloss.Height(background)-lipgloss.Height(foreground)-1)
+	return lipgloss.NewCompositor(lipgloss.NewLayer(background), lipgloss.NewLayer(foreground).Y(y).Z(1)).Render()
+}
+
+func (m Model) renderView() string {
 	styles := m.Styles()
 	if m.HelpMode {
 		return RenderHelp(m.Version(), styles.Cyan, styles.Dim)
@@ -30,12 +39,27 @@ func (m Model) View() string {
 		return m.renderVersionsBrowser()
 	}
 
+	if m.SectionsMode {
+		return m.renderSections()
+	}
+
 	// Render main content and status bar
 	mainContent := m.renderMainContent()
 	statusBar := m.renderStatusBar()
 
 	// Combine main content and status bar
 	background := mainContent + "\n" + statusBar
+	if m.SectionFocus > 0 && m.SectionFocus <= len(m.GetHeadings()) {
+		background = styles.Cyan("Section: "+m.GetHeadings()[m.SectionFocus-1].Text) + styles.Dim("  S all tasks · s sections") + "\n\n" + background
+	} else if len(m.FoldedSections) > 0 {
+		var names []string
+		for i, h := range m.GetHeadings() {
+			if m.FoldedSections[i] {
+				names = append(names, h.Text)
+			}
+		}
+		background = styles.Dim("Folded: "+strings.Join(names, ", ")+" · s sections · S show all") + "\n\n" + background
+	}
 
 	// If there's an overlay active, composite it on top
 	if m.RecentFilesMode {
@@ -50,7 +74,7 @@ func (m Model) View() string {
 
 		overlayContent := m.renderRecentFilesOverlay()
 		// Position overlay just above status bar
-		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+		return compositeOverlay(overlayContent, background)
 	}
 
 	if m.FilterMode {
@@ -65,7 +89,7 @@ func (m Model) View() string {
 
 		overlayContent := m.renderFilterOverlayCompact()
 		// Position overlay just above status bar
-		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+		return compositeOverlay(overlayContent, background)
 	}
 
 	if m.PriorityFilterMode {
@@ -80,7 +104,7 @@ func (m Model) View() string {
 
 		overlayContent := m.renderPriorityFilterOverlayCompact()
 		// Position overlay just above status bar
-		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+		return compositeOverlay(overlayContent, background)
 	}
 
 	if m.DueFilterMode {
@@ -95,7 +119,7 @@ func (m Model) View() string {
 
 		overlayContent := m.renderDueFilterOverlayCompact()
 		// Position overlay just above status bar
-		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+		return compositeOverlay(overlayContent, background)
 	}
 
 	if m.ThemeMode {
@@ -110,7 +134,7 @@ func (m Model) View() string {
 
 		overlayContent := m.renderThemeOverlayCompact()
 		// Position overlay just above status bar
-		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+		return compositeOverlay(overlayContent, background)
 	}
 
 	if m.CommandMode {
@@ -125,7 +149,7 @@ func (m Model) View() string {
 
 		overlayContent := m.renderCommandOverlayCompact()
 		// Position overlay just above status bar
-		return overlay.Composite(overlayContent, background, overlay.Left, overlay.Bottom, 0, -1)
+		return compositeOverlay(overlayContent, background)
 	}
 
 	return background
@@ -149,6 +173,9 @@ func (m Model) renderMainContent() string {
 	} else {
 		for i := range m.FileModel.Todos {
 			todo := m.FileModel.Todos[i]
+			if !m.sectionAllowsTodo(i) {
+				continue
+			}
 
 			// Apply filter-done if enabled
 			if m.FilterDone && todo.Checked {
@@ -280,7 +307,16 @@ func (m Model) renderMainContent() string {
 
 		// Show headings that fall between last displayed todo and current todo
 		if m.ShowHeadings {
-			for _, heading := range allHeadings {
+			for hi, heading := range allHeadings {
+				if m.SectionFocus > 0 {
+					focus := m.SectionFocus - 1
+					if hi < focus {
+						continue
+					}
+					if hi > focus && heading.Level <= allHeadings[focus].Level {
+						break
+					}
+				}
 				// Show heading if it appears after the last displayed todo
 				// and before or at the current todo
 				if heading.BeforeTodoIndex > lastDisplayedTodoIdx && heading.BeforeTodoIndex <= todoIdx {
@@ -418,7 +454,7 @@ func (m Model) renderMainContent() string {
 
 	// Input mode at end - show new task at end when not inserting after cursor
 	// Also handles the case when inserting after cursor but there are no todos
-	if m.InputMode && (!m.InsertAfterCursor || len(m.FileModel.Todos) == 0) {
+	if m.InputMode && (!m.InsertAfterCursor || len(todosToShow) == 0) {
 		b.WriteString(m.renderInputLine(styles, config))
 	}
 
@@ -439,6 +475,13 @@ func (m Model) renderMainContent() string {
 
 	// Show message when filters result in no visible todos
 	if !m.SearchMode && !m.InputMode && len(m.FileModel.Todos) > 0 && len(todosToShow) == 0 {
+		if m.SectionFocus > 0 {
+			first, last := sectionBounds(m.GetHeadings(), m.SectionFocus-1, len(m.FileModel.Todos))
+			if first == last {
+				b.WriteString(styles.Dim("No tasks in this section. Press n to add one, or S for all tasks.") + "\n")
+				return b.String()
+			}
+		}
 		b.WriteString(styles.Dim("  No todos match current filters."))
 		b.WriteString("\n")
 		// Build hint about which filters are active
@@ -633,7 +676,7 @@ func (m Model) renderStatusBar() string {
 
 		// Help hints
 		var helpParts []string
-		helpParts = append(helpParts, styles.Cyan("?")+styles.Dim(" help"))
+		helpParts = append(helpParts, styles.Cyan("?")+styles.Dim(" help")+"  "+styles.Cyan("s")+styles.Dim(" sections"))
 		helpParts = append(helpParts, styles.Cyan(":")+styles.Dim(" cmd"))
 		helpParts = append(helpParts, styles.Cyan("n")+styles.Dim(" new"))
 		helpParts = append(helpParts, styles.Cyan("␣")+styles.Dim(" toggle"))

@@ -1,7 +1,7 @@
 # file-saving Specification
 
 ## Purpose
-TBD - created by archiving change harden-file-saving. Update Purpose after archive.
+Protect user Markdown files with revision-aware saves, atomic replacement, explicit conflict handling, and reliable recovery after write failures.
 ## Requirements
 ### Requirement: Exact revision conflict detection
 

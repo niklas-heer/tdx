@@ -1,31 +1,28 @@
 # development-tooling Specification
 
 ## Purpose
-Define the synchronized Go toolchain, documented Mask task interface, and regression coverage for non-interactive command handlers.
+Define reproducible mise tasks, pinned development tools, compatible application and CI toolchains, and command-layer regression coverage.
 ## Requirements
+
 ### Requirement: Markdown task interface
-
-The project SHALL expose maintained developer tasks through a root `maskfile.md` that is both human-readable documentation and executable by Mask.
-
-- The task interface SHALL cover building, installing, development execution, todo commands, code quality, Dagger CI, release artifacts, maintenance, and releases.
-- Task chaining SHALL propagate failures and remain valid when Mask is called with an explicit maskfile path.
-- Maintained developer documentation SHALL use Mask commands rather than Just commands.
-
+The project SHALL expose maintained developer tasks through mise.toml with pinned tools and descriptions, replacing Mask.
+- Tasks SHALL cover setup, build, install, development, todo commands, formatting, lint, tests, CI, and release artifacts.
+- Local installation SHALL default to a user-writable binary directory.
+#### Scenario: Developer starts from a fresh clone
+- **WHEN** a developer trusts the project and runs mise install followed by mise run check
+- **THEN** the documented tools SHALL be available and validation SHALL execute with pinned versions
 #### Scenario: Developer discovers and runs a task
-
-- **WHEN** a developer opens `maskfile.md` or runs `mask --help`
-- **THEN** the available task names and descriptions SHALL be visible
-- **AND** running a documented command SHALL execute the corresponding project operation
+- **WHEN** a developer runs mise tasks
+- **THEN** task names and descriptions SHALL be visible
+- **AND** a documented task SHALL execute the corresponding operation
 
 ### Requirement: Synchronized Go toolchain
-
-The application module, Dagger module, and pinned Dagger Go container SHALL use the same supported Go release.
-
+The application module and portable build container SHALL use the same current Go release. The isolated Dagger SDK module SHALL target the newest Go release supported by its generator; compatibility exceptions SHALL be documented.
 #### Scenario: Go version is updated
-
-- **WHEN** the project updates its supported Go release
-- **THEN** both module directives and the portable build container SHALL be updated together
-- **AND** the complete portable and native-focused test suites SHALL pass with the updated toolchain
+- **WHEN** the application Go release is updated
+- **THEN** mise and the portable build container SHALL be updated together
+- **AND** the Dagger SDK module SHALL remain compatible with its generator
+- **AND** portable and native test suites SHALL pass
 
 ### Requirement: Command-layer regression coverage
 

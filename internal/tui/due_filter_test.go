@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -188,7 +188,7 @@ func TestDueFilter_KeyBinding(t *testing.T) {
 	}
 
 	// Simulate pressing 'D'
-	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	newModel, _ := m.Update(tea.KeyPressMsg{Text: string([]rune{'D'})})
 	m = newModel.(Model)
 
 	// Should now be in due filter mode
@@ -197,7 +197,7 @@ func TestDueFilter_KeyBinding(t *testing.T) {
 	}
 
 	// Simulate pressing 'Esc' to exit
-	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	newModel, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = newModel.(Model)
 
 	// Should exit due filter mode
@@ -219,7 +219,7 @@ func TestDueFilter_SelectFilter(t *testing.T) {
 	m.DueFilterCursor = 0 // "overdue" is first option
 
 	// Simulate pressing Space to select
-	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	newModel, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	m = newModel.(Model)
 
 	// Filter should be set
@@ -246,7 +246,7 @@ func TestDueFilter_ClearFilter(t *testing.T) {
 	m.DueFilterMode = true
 
 	// Simulate pressing 'c' to clear
-	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	newModel, _ := m.Update(tea.KeyPressMsg{Text: string([]rune{'c'})})
 	m = newModel.(Model)
 
 	// Filter should be cleared
@@ -268,7 +268,7 @@ func TestDueFilter_Navigation(t *testing.T) {
 	m.DueFilterCursor = 0
 
 	// Navigate down
-	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	newModel, _ := m.Update(tea.KeyPressMsg{Text: string([]rune{'j'})})
 	m = newModel.(Model)
 
 	if m.DueFilterCursor != 1 {
@@ -276,7 +276,7 @@ func TestDueFilter_Navigation(t *testing.T) {
 	}
 
 	// Navigate up
-	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	newModel, _ = m.Update(tea.KeyPressMsg{Text: string([]rune{'k'})})
 	m = newModel.(Model)
 
 	if m.DueFilterCursor != 0 {
@@ -321,7 +321,7 @@ func TestDueFilter_ViewRendering(t *testing.T) {
 	m.TermWidth = 80
 
 	// Render view - should contain the due date
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "@due(") {
 		t.Error("View should contain due date marker")
 	}
@@ -340,7 +340,7 @@ func TestDueFilter_StatusBarIndicator(t *testing.T) {
 	m.FilteredDueDate = "today"
 
 	// Render view - should show filter indicator
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "today") {
 		t.Error("Status bar should show 'today' filter indicator")
 	}
@@ -360,7 +360,7 @@ func TestDueFilter_OverlayRendering(t *testing.T) {
 	m.DueFilterMode = true
 
 	// Render view - should show overlay
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "Overdue") {
 		t.Error("Due filter overlay should contain 'Overdue' option")
 	}

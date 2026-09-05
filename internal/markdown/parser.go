@@ -475,12 +475,8 @@ func (fm *FileModel) Clone() *FileModel {
 	// Deep copy AST if present
 	var astCopy *ASTDocument
 	if fm.ast != nil {
-		// Copy source bytes
-		source := make([]byte, len(fm.ast.Source))
-		copy(source, fm.ast.Source)
-
-		// Parse again to get a fresh AST (simplest way to deep copy)
-		astCopy, _ = ParseAST(string(source))
+		// Serialize the current AST: Source can contain stale text after edits.
+		astCopy, _ = ParseAST(SerializeAST(fm.ast))
 	}
 
 	return &FileModel{

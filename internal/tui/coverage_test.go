@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -558,7 +558,7 @@ func TestHandleFilterKey_Navigation(t *testing.T) {
 	m.TagFilterCursor = 0
 
 	// Navigate down
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleFilterKey(msg)
 	m = result.(Model)
 
@@ -567,7 +567,7 @@ func TestHandleFilterKey_Navigation(t *testing.T) {
 	}
 
 	// Navigate up
-	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	msg = tea.KeyPressMsg{Text: string([]rune{'k'})}
 	result, _ = m.handleFilterKey(msg)
 	m = result.(Model)
 
@@ -589,7 +589,7 @@ func TestHandleFilterKey_SelectTag(t *testing.T) {
 	m.FilteredTags = []string{}
 
 	// Select tag with enter
-	msg := tea.KeyMsg{Type: tea.KeyEnter}
+	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	result, _ := m.handleFilterKey(msg)
 	m = result.(Model)
 
@@ -612,7 +612,7 @@ func TestHandleFilterKey_ClearFilters(t *testing.T) {
 	m.FilteredTags = []string{"urgent", "backend"}
 
 	// Clear filters with 'c'
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'c'})}
 	result, _ := m.handleFilterKey(msg)
 	m = result.(Model)
 
@@ -626,7 +626,7 @@ func TestHandleFilterKey_Escape(t *testing.T) {
 	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "test")
 	m.FilterMode = true
 
-	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
 	result, _ := m.handleFilterKey(msg)
 	m = result.(Model)
 
@@ -648,7 +648,7 @@ func TestHandlePriorityFilterKey_Navigation(t *testing.T) {
 	m.PriorityFilterCursor = 0
 
 	// Navigate down
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handlePriorityFilterKey(msg)
 	m = result.(Model)
 
@@ -669,7 +669,7 @@ func TestHandlePriorityFilterKey_Select(t *testing.T) {
 	m.PriorityFilterCursor = 0
 	m.FilteredPriorities = []int{}
 
-	msg := tea.KeyMsg{Type: tea.KeyEnter}
+	msg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	result, _ := m.handlePriorityFilterKey(msg)
 	m = result.(Model)
 
@@ -683,7 +683,7 @@ func TestHandlePriorityFilterKey_Escape(t *testing.T) {
 	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "test")
 	m.PriorityFilterMode = true
 
-	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
 	result, _ := m.handlePriorityFilterKey(msg)
 	m = result.(Model)
 
@@ -697,7 +697,7 @@ func TestHandleThemeKey_Escape(t *testing.T) {
 	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "test")
 	m.ThemeMode = true
 
-	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
 	result, _ := m.handleThemeKey(msg)
 	m = result.(Model)
 
@@ -711,7 +711,7 @@ func TestHandleMaxVisibleInputKey_Escape(t *testing.T) {
 	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "test")
 	m.MaxVisibleInputMode = true
 
-	msg := tea.KeyMsg{Type: tea.KeyEsc}
+	msg := tea.KeyPressMsg{Code: tea.KeyEsc}
 	result, _ := m.handleMaxVisibleInputKey(msg)
 	m = result.(Model)
 
@@ -760,7 +760,7 @@ func TestView_HelpMode(t *testing.T) {
 	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "test")
 	m.HelpMode = true
 
-	view := m.View()
+	view := m.View().Content
 	if view == "" {
 		t.Error("View() returned empty string")
 	}
@@ -781,7 +781,7 @@ func TestView_NormalMode(t *testing.T) {
 	m.TermWidth = 80
 	m.TermHeight = 24
 
-	view := m.View()
+	view := m.View().Content
 	if view == "" {
 		t.Error("View() returned empty string")
 	}
@@ -803,7 +803,7 @@ func TestView_FilterMode(t *testing.T) {
 	m.FilterMode = true
 	m.AvailableTags = []string{"urgent", "backend"}
 
-	view := m.View()
+	view := m.View().Content
 	if view == "" {
 		t.Error("View() returned empty string in filter mode")
 	}
@@ -820,7 +820,7 @@ func TestView_CommandMode(t *testing.T) {
 	m.TermHeight = 24
 	m.CommandMode = true
 
-	view := m.View()
+	view := m.View().Content
 	if view == "" {
 		t.Error("View() returned empty string in command mode")
 	}
@@ -838,7 +838,7 @@ func TestView_ThemeMode(t *testing.T) {
 	m.ThemeMode = true
 	m.AvailableThemes = []string{"default", "dracula"}
 
-	view := m.View()
+	view := m.View().Content
 	if view == "" {
 		t.Error("View() returned empty string in theme mode")
 	}
@@ -856,7 +856,7 @@ func TestView_PriorityFilterMode(t *testing.T) {
 	m.PriorityFilterMode = true
 	m.AvailablePriorities = []int{1, 2, 3}
 
-	view := m.View()
+	view := m.View().Content
 	if view == "" {
 		t.Error("View() returned empty string in priority filter mode")
 	}
@@ -874,7 +874,7 @@ func TestView_SearchMode(t *testing.T) {
 	m.TermHeight = 24
 	m.SearchMode = true
 
-	view := m.View()
+	view := m.View().Content
 	if view == "" {
 		t.Error("View() returned empty string in search mode")
 	}
@@ -892,7 +892,7 @@ func TestView_InputMode(t *testing.T) {
 	m.InputMode = true
 	m.InputBuffer = "New task text"
 
-	view := m.View()
+	view := m.View().Content
 	if view == "" {
 		t.Error("View() returned empty string in input mode")
 	}
@@ -912,7 +912,7 @@ func TestHandleThemeKey_NavigationCoverage(t *testing.T) {
 	m.ThemeCursor = 0
 
 	// Navigate down
-	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+	msg := tea.KeyPressMsg{Text: string([]rune{'j'})}
 	result, _ := m.handleThemeKey(msg)
 	m = result.(Model)
 

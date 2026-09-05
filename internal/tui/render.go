@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/mattn/go-runewidth"
 	"github.com/niklas-heer/tdx/internal/util"
 )
@@ -118,6 +118,8 @@ func RenderHelp(version string, cyanStyle, dimStyle func(string) string) string 
 				{"j", "Down"},
 				{"k", "Up"},
 				{"5j", "Jump 5 down"},
+				{"s", "Sections / projects"},
+				{"S", "Show all sections"},
 				{"/", "Search"},
 				{"t", "Filter tags"},
 				{"p", "Filter priority"},

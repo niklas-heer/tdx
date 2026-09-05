@@ -2,12 +2,13 @@ package tui
 
 import (
 	"errors"
+	"github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -54,7 +55,7 @@ func TestSaveConflictRetainsLocalAndAuthoritativeDiskContent(t *testing.T) {
 		t.Fatalf("disk content = %q, want authoritative external content", got)
 	}
 
-	rendered := m.View()
+	rendered := ansi.Strip(m.View().Content)
 	if !strings.Contains(rendered, "FILE CONFLICT") || !strings.Contains(rendered, "external task") {
 		t.Fatalf("conflict view missing context:\n%s", rendered)
 	}
