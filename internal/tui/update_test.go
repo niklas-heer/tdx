@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"testing"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/niklas-heer/tdx/internal/markdown"
@@ -254,6 +255,102 @@ func TestHandleInputKey_InsertCharacter(t *testing.T) {
 	}
 	if m.CursorPos != 1 {
 		t.Errorf("CursorPos = %d, want 1", m.CursorPos)
+	}
+}
+
+func TestHandleInputKey_InsertUmlaut(t *testing.T) {
+	m := testModel([]string{})
+	m.InputMode = true
+	m.InputBuffer = ""
+	m.CursorPos = 0
+
+	for _, r := range "Käse" {
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		result, _ := m.handleInputKey(msg)
+		m = result.(Model)
+	}
+
+	if m.InputBuffer != "Käse" {
+		t.Errorf("InputBuffer = %q, want %q", m.InputBuffer, "Käse")
+	}
+	if m.CursorPos != len("Käse") {
+		t.Errorf("CursorPos = %d, want %d", m.CursorPos, len("Käse"))
+	}
+}
+
+func TestHandleInputKey_BackspaceUmlaut(t *testing.T) {
+	m := testModel([]string{})
+	m.InputMode = true
+	m.InputBuffer = "Kä"
+	m.CursorPos = len("Kä")
+
+	msg := tea.KeyMsg{Type: tea.KeyBackspace}
+	result, _ := m.handleInputKey(msg)
+	m = result.(Model)
+
+	if m.InputBuffer != "K" {
+		t.Errorf("InputBuffer = %q, want %q", m.InputBuffer, "K")
+	}
+	if !utf8.ValidString(m.InputBuffer) {
+		t.Errorf("InputBuffer is not valid UTF-8: %q", m.InputBuffer)
+	}
+}
+
+func TestHandleInputKey_CursorMovementUmlaut(t *testing.T) {
+	m := testModel([]string{})
+	m.InputMode = true
+	m.InputBuffer = "Käse"
+	m.CursorPos = len("Käse")
+
+	// Move left three times: past 'e', 's', then 'ä' -> cursor lands
+	// right after 'K', i.e. inside the byte range of 'ä' if moved by
+	// byte instead of by rune.
+	for range 3 {
+		msg := tea.KeyMsg{Type: tea.KeyLeft}
+		result, _ := m.handleInputKey(msg)
+		m = result.(Model)
+	}
+	if !utf8.ValidString(m.InputBuffer[:m.CursorPos]) {
+		t.Fatalf("cursor split a multi-byte rune: prefix %q is invalid UTF-8", m.InputBuffer[:m.CursorPos])
+	}
+	if m.CursorPos != len("K") {
+		t.Errorf("CursorPos = %d, want %d (right after 'K')", m.CursorPos, len("K"))
+	}
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}}
+	result, _ := m.handleInputKey(msg)
+	m = result.(Model)
+	if m.InputBuffer != "KXäse" {
+		t.Errorf("InputBuffer = %q, want %q", m.InputBuffer, "KXäse")
+	}
+}
+
+func TestHandleSearchKey_InsertUmlaut(t *testing.T) {
+	m := testModel([]string{"Käse", "banana"})
+	m.SearchMode = true
+	m.InputBuffer = ""
+	m.SearchResults = []int{0, 1}
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'ä'}}
+	result, _ := m.handleSearchKey(msg)
+	m = result.(Model)
+
+	if m.InputBuffer != "ä" {
+		t.Errorf("InputBuffer = %q, want %q", m.InputBuffer, "ä")
+	}
+}
+
+func TestHandleCommandKey_InsertUmlaut(t *testing.T) {
+	m := testModel([]string{"Task 1"})
+	m.CommandMode = true
+	m.FilteredCmds = []int{0, 1, 2, 3}
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'ü'}}
+	result, _ := m.handleCommandKey(msg)
+	m = result.(Model)
+
+	if m.InputBuffer != "ü" {
+		t.Errorf("InputBuffer = %q, want %q", m.InputBuffer, "ü")
 	}
 }
 

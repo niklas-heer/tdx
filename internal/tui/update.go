@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/niklas-heer/tdx/internal/config"
@@ -394,6 +395,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// prevRuneLen returns the byte length of the rune immediately before
+// byte offset pos in s. CursorPos is a byte offset, not a rune count,
+// so callers must step by this width (not by 1) to stay on a valid
+// UTF-8 boundary when the buffer contains multi-byte characters.
+func prevRuneLen(s string, pos int) int {
+	if pos <= 0 || pos > len(s) {
+		return 0
+	}
+	_, size := utf8.DecodeLastRuneInString(s[:pos])
+	return size
+}
+
+// nextRuneLen returns the byte length of the rune starting at byte
+// offset pos in s. See prevRuneLen for why this matters.
+func nextRuneLen(s string, pos int) int {
+	if pos < 0 || pos >= len(s) {
+		return 0
+	}
+	_, size := utf8.DecodeRuneInString(s[pos:])
+	return size
+}
+
 func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
@@ -424,25 +447,21 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "backspace", "ctrl+h":
-		if m.CursorPos > 0 {
-			m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
-			m.CursorPos--
+		if n := prevRuneLen(m.InputBuffer, m.CursorPos); n > 0 {
+			m.InputBuffer = m.InputBuffer[:m.CursorPos-n] + m.InputBuffer[m.CursorPos:]
+			m.CursorPos -= n
 		}
 
 	case "delete":
-		if m.CursorPos < len(m.InputBuffer) {
-			m.InputBuffer = m.InputBuffer[:m.CursorPos] + m.InputBuffer[m.CursorPos+1:]
+		if n := nextRuneLen(m.InputBuffer, m.CursorPos); n > 0 {
+			m.InputBuffer = m.InputBuffer[:m.CursorPos] + m.InputBuffer[m.CursorPos+n:]
 		}
 
 	case "left":
-		if m.CursorPos > 0 {
-			m.CursorPos--
-		}
+		m.CursorPos -= prevRuneLen(m.InputBuffer, m.CursorPos)
 
 	case "right":
-		if m.CursorPos < len(m.InputBuffer) {
-			m.CursorPos++
-		}
+		m.CursorPos += nextRuneLen(m.InputBuffer, m.CursorPos)
 
 	case "home", "ctrl+a":
 		m.CursorPos = 0
@@ -460,9 +479,9 @@ func (m Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	default:
 		// Insert character
-		if len(key) == 1 {
+		if utf8.RuneCountInString(key) == 1 {
 			m.InputBuffer = m.InputBuffer[:m.CursorPos] + key + m.InputBuffer[m.CursorPos:]
-			m.CursorPos++
+			m.CursorPos += len(key)
 		}
 	}
 
@@ -657,9 +676,9 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "backspace", "ctrl+h":
-		if m.CursorPos > 0 {
-			m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
-			m.CursorPos--
+		if n := prevRuneLen(m.InputBuffer, m.CursorPos); n > 0 {
+			m.InputBuffer = m.InputBuffer[:m.CursorPos-n] + m.InputBuffer[m.CursorPos:]
+			m.CursorPos -= n
 			// Debounce search update
 			m.searchPending = true
 			return m, searchDebounceCmd()
@@ -667,9 +686,9 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	default:
 		// Insert character
-		if len(key) == 1 {
+		if utf8.RuneCountInString(key) == 1 {
 			m.InputBuffer = m.InputBuffer[:m.CursorPos] + key + m.InputBuffer[m.CursorPos:]
-			m.CursorPos++
+			m.CursorPos += len(key)
 			// Debounce search update
 			m.searchPending = true
 			return m, searchDebounceCmd()
@@ -936,9 +955,9 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "backspace", "ctrl+h":
-		if m.CursorPos > 0 {
-			m.InputBuffer = m.InputBuffer[:m.CursorPos-1] + m.InputBuffer[m.CursorPos:]
-			m.CursorPos--
+		if n := prevRuneLen(m.InputBuffer, m.CursorPos); n > 0 {
+			m.InputBuffer = m.InputBuffer[:m.CursorPos-n] + m.InputBuffer[m.CursorPos:]
+			m.CursorPos -= n
 			// Debounce command filter update
 			m.searchPending = true
 			return m, commandDebounceCmd()
@@ -946,9 +965,9 @@ func (m Model) handleCommandKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	default:
 		// Insert character
-		if len(key) == 1 {
+		if utf8.RuneCountInString(key) == 1 {
 			m.InputBuffer = m.InputBuffer[:m.CursorPos] + key + m.InputBuffer[m.CursorPos:]
-			m.CursorPos++
+			m.CursorPos += len(key)
 			// Debounce command filter update
 			m.searchPending = true
 			return m, commandDebounceCmd()
@@ -1431,12 +1450,32 @@ func byteToKeyMsg(b byte) tea.KeyMsg {
 	}
 }
 
-// ProcessPipedInput handles input byte-by-byte for testing/scripting
-// It converts bytes to tea.KeyMsg and delegates to the unified handlers
+// ProcessPipedInput decodes UTF-8 and terminal editing keys for testing/scripting.
 func (m *Model) ProcessPipedInput(input []byte) {
 	for i := 0; i < len(input); i++ {
 		b := input[i]
 		msg := byteToKeyMsg(b)
+		if b >= utf8.RuneSelf {
+			r, size := utf8.DecodeRune(input[i:])
+			if r == utf8.RuneError && size == 1 {
+				continue
+			}
+			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+			i += size - 1
+		} else if b == 27 {
+			for sequence, keyType := range map[string]tea.KeyType{
+				"\x1b[D": tea.KeyLeft, "\x1b[C": tea.KeyRight,
+				"\x1b[A": tea.KeyUp, "\x1b[B": tea.KeyDown,
+				"\x1b[H": tea.KeyHome, "\x1b[F": tea.KeyEnd,
+				"\x1b[3~": tea.KeyDelete,
+			} {
+				if strings.HasPrefix(string(input[i:]), sequence) {
+					msg = tea.KeyMsg{Type: keyType}
+					i += len(sequence) - 1
+					break
+				}
+			}
+		}
 
 		// Skip empty messages (non-printable bytes)
 		if msg.Type == 0 && len(msg.Runes) == 0 {
@@ -1446,7 +1485,7 @@ func (m *Model) ProcessPipedInput(input []byte) {
 		// Check for quit in normal mode (q or esc without other modes active)
 		if !m.InputMode && !m.EditMode && !m.SearchMode && !m.CommandMode &&
 			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode {
-			if b == 'q' || b == 27 {
+			if msg.String() == "q" || msg.Type == tea.KeyEsc {
 				return
 			}
 		}
@@ -1565,14 +1604,15 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 		}
 
 	case "backspace":
-		if len(m.RecentFilesSearch) > 0 {
-			m.RecentFilesSearch = m.RecentFilesSearch[:len(m.RecentFilesSearch)-1]
+		if s := m.RecentFilesSearch; s != "" {
+			_, size := utf8.DecodeLastRuneInString(s)
+			m.RecentFilesSearch = s[:len(s)-size]
 			m.RecentFilesCursor = 0 // Reset cursor when search changes
 		}
 
 	default:
 		// Add to search buffer (printable characters, but skip leading spaces)
-		if len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
+		if r, size := utf8.DecodeRuneInString(key); size == len(key) && r >= 32 && r != utf8.RuneError {
 			// Skip leading spaces
 			if m.RecentFilesSearch != "" || key != " " {
 				m.RecentFilesSearch += key
