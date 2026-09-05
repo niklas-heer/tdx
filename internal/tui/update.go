@@ -280,11 +280,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.History != nil {
 			m.FileModel.RestoreContent(m.History)
 			m.clearSections()
-			m.History = nil
-			if n := len(m.UndoStack); n > 0 {
-				m.History = m.UndoStack[n-1]
-				m.UndoStack = m.UndoStack[:n-1]
-			}
+			m.popHistory()
 			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 			m.writeIfPersist()
@@ -464,8 +460,8 @@ func (m Model) handleInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.EditMode = false
 		if m.History != nil {
 			m.FileModel.RestoreContent(m.History)
-			m.clearSections()
-			m.History = nil
+			m.popHistory()
+			m.InvalidateHeadingsCache()
 		}
 
 	case "backspace", "ctrl+h":
@@ -642,8 +638,8 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		if m.History != nil {
 			m.FileModel.RestoreContent(m.History)
-			m.clearSections()
-			m.History = nil
+			m.popHistory()
+			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 			m.InvalidateHeadingsCache()
 		}
@@ -1002,6 +998,14 @@ func (m Model) handleCommandKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // Helper functions
+
+func (m *Model) popHistory() {
+	m.History = nil
+	if n := len(m.UndoStack); n > 0 {
+		m.History = m.UndoStack[n-1]
+		m.UndoStack = m.UndoStack[:n-1]
+	}
+}
 
 func (m *Model) saveHistory() {
 	if m.History != nil {

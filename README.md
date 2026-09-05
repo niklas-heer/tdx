@@ -43,7 +43,7 @@ Press **s** to open the section overview. It lists every Markdown heading, inclu
 | a | Show all tasks and clear folds |
 | Esc | Return to the task list |
 
-While focused, **n** adds a task after the selection; in an empty section it creates that section's first task. **N** adds to the focused section's own task list. Press **S** to return to all sections. Tag, priority, due-date, completed-task filters, and search respect the current section. Focus and folds last for the current session and reset when a file is reloaded or headings change. **u** undoes up to 100 edits during the session.
+While focused, **n** adds a task after the selection; in an empty section it creates that section's first task. **N** adds to the focused section's own task list. Press **S** to return to all sections. Tag, priority, due-date, completed-task filters, and search respect the current section. Focus and folds last for the current session and reset when a file is reloaded, headings change, or an edit is undone. **u** undoes up to 100 edits during the session.
 
 Section editing uses the same guarded saves and version history as task editing. Read-only files support section browsing and focus without permitting heading edits.
 

@@ -176,11 +176,11 @@ func main() {
 				if num, err := strconv.Atoi(args[i]); err == nil && num >= 0 {
 					maxVisible = num
 				} else {
-					lipgloss.Fprintf(os.Stdout, "Error: --max-visible requires a non-negative integer\n")
+					_, _ = lipgloss.Fprintf(os.Stdout, "Error: --max-visible requires a non-negative integer\n")
 					os.Exit(1)
 				}
 			} else {
-				lipgloss.Fprintf(os.Stdout, "Error: --max-visible requires a number argument\n")
+				_, _ = lipgloss.Fprintf(os.Stdout, "Error: --max-visible requires a number argument\n")
 				os.Exit(1)
 			}
 		default:
@@ -224,20 +224,20 @@ func main() {
 	case "help", "--help", "-h":
 		printHelp()
 	case "--version", "-v":
-		lipgloss.Fprintf(os.Stdout, "tdx v%s\n", Version)
+		_, _ = lipgloss.Fprintf(os.Stdout, "tdx v%s\n", Version)
 	case "--debug-config":
-		lipgloss.Fprintf(os.Stdout, "Theme: %s\n", appConfig.Theme.Name)
-		lipgloss.Fprintf(os.Stdout, "Colors.Accent: %s\n", appConfig.Colors.Accent)
-		lipgloss.Fprintf(os.Stdout, "Colors.Success: %s\n", appConfig.Colors.Success)
-		lipgloss.Fprintf(os.Stdout, "Display.CheckSymbol: %s\n", appConfig.Display.CheckSymbol)
-		lipgloss.Fprintf(os.Stdout, "Display.SelectMarker: %s\n", appConfig.Display.SelectMarker)
-		lipgloss.Fprintf(os.Stdout, "Defaults.File: %s\n", appConfig.Defaults.File)
-		lipgloss.Fprintf(os.Stdout, "Defaults.MaxVisible: %d\n", appConfig.Defaults.MaxVisible)
-		lipgloss.Fprintf(os.Stdout, "Defaults.WordWrap: %v\n", appConfig.Defaults.WordWrap)
-		lipgloss.Fprintf(os.Stdout, "Defaults.ShowHeadings: %v\n", appConfig.Defaults.ShowHeadings)
-		lipgloss.Fprintf(os.Stdout, "Defaults.ReadOnly: %v\n", appConfig.Defaults.ReadOnly)
-		lipgloss.Fprintf(os.Stdout, "Defaults.FilterDone: %v\n", appConfig.Defaults.FilterDone)
-		lipgloss.Fprintf(os.Stdout, "Recent.MaxFiles: %d\n", appConfig.Recent.MaxFiles)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Theme: %s\n", appConfig.Theme.Name)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Colors.Accent: %s\n", appConfig.Colors.Accent)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Colors.Success: %s\n", appConfig.Colors.Success)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Display.CheckSymbol: %s\n", appConfig.Display.CheckSymbol)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Display.SelectMarker: %s\n", appConfig.Display.SelectMarker)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.File: %s\n", appConfig.Defaults.File)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.MaxVisible: %d\n", appConfig.Defaults.MaxVisible)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.WordWrap: %v\n", appConfig.Defaults.WordWrap)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.ShowHeadings: %v\n", appConfig.Defaults.ShowHeadings)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.ReadOnly: %v\n", appConfig.Defaults.ReadOnly)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.FilterDone: %v\n", appConfig.Defaults.FilterDone)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Recent.MaxFiles: %d\n", appConfig.Recent.MaxFiles)
 	case "list", "add", "toggle", "edit", "delete":
 		cmd.HandleCommand(command, cmdArgs, filePath)
 	case "last":
@@ -248,7 +248,7 @@ func main() {
 		// Launch TUI
 		tui.Run(filePath, readOnly, showHeadings, maxVisible)
 	default:
-		lipgloss.Fprintf(os.Stdout, "Unknown command: %s\n", command)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Unknown command: %s\n", command)
 		printHelp()
 		os.Exit(1)
 	}
@@ -290,19 +290,19 @@ TUI Controls:
   :                   Command palette
   ?                   Toggle help
   Esc                 Quit`, Description)
-	lipgloss.Fprintln(os.Stdout, help)
+	_, _ = lipgloss.Fprintln(os.Stdout, help)
 }
 
 func handleLastCommand(readOnly bool, showHeadings bool, maxVisible int) {
 	// Load recent files
 	recentFiles, err := config.LoadRecentFiles()
 	if err != nil {
-		lipgloss.Fprintf(os.Stdout, "Error loading recent files: %v\n", err)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Error loading recent files: %v\n", err)
 		os.Exit(1)
 	}
 
 	if len(recentFiles.Files) == 0 {
-		lipgloss.Fprintln(os.Stdout, "No recent files. Open a file first with 'tdx <file.md>'")
+		_, _ = lipgloss.Fprintln(os.Stdout, "No recent files. Open a file first with 'tdx <file.md>'")
 		os.Exit(1)
 	}
 
@@ -316,22 +316,22 @@ func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVis
 	// Handle "clear" subcommand
 	if len(args) > 0 && args[0] == "clear" {
 		if err := config.ClearRecentFiles(); err != nil {
-			lipgloss.Fprintf(os.Stdout, "Error clearing recent files: %v\n", err)
+			_, _ = lipgloss.Fprintf(os.Stdout, "Error clearing recent files: %v\n", err)
 			os.Exit(1)
 		}
-		lipgloss.Fprintln(os.Stdout, "Recent files cleared")
+		_, _ = lipgloss.Fprintln(os.Stdout, "Recent files cleared")
 		return
 	}
 
 	// Load recent files
 	recentFiles, err := config.LoadRecentFiles()
 	if err != nil {
-		lipgloss.Fprintf(os.Stdout, "Error loading recent files: %v\n", err)
+		_, _ = lipgloss.Fprintf(os.Stdout, "Error loading recent files: %v\n", err)
 		os.Exit(1)
 	}
 
 	if len(recentFiles.Files) == 0 {
-		lipgloss.Fprintln(os.Stdout, "No recent files")
+		_, _ = lipgloss.Fprintln(os.Stdout, "No recent files")
 		return
 	}
 
@@ -342,7 +342,7 @@ func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVis
 	if len(args) > 0 {
 		index, err := strconv.Atoi(args[0])
 		if err != nil || index < 1 || index > len(recentFiles.Files) {
-			lipgloss.Fprintf(os.Stdout, "Error: invalid file number. Use 1-%d\n", len(recentFiles.Files))
+			_, _ = lipgloss.Fprintf(os.Stdout, "Error: invalid file number. Use 1-%d\n", len(recentFiles.Files))
 			os.Exit(1)
 		}
 
@@ -353,7 +353,7 @@ func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVis
 	}
 
 	// No args - list all recent files
-	lipgloss.Fprintln(os.Stdout, "Recent files:")
+	_, _ = lipgloss.Fprintln(os.Stdout, "Recent files:")
 	for i, file := range recentFiles.Files {
 		// Show relative path if in home directory
 		displayPath := file.Path
@@ -363,13 +363,13 @@ func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVis
 			}
 		}
 
-		lipgloss.Fprintf(os.Stdout, "  %d. %s (accessed %d times, last: %s)\n",
+		_, _ = lipgloss.Fprintf(os.Stdout, "  %d. %s (accessed %d times, last: %s)\n",
 			i+1,
 			displayPath,
 			file.AccessCount,
 			file.LastAccessed.Format("2006-01-02 15:04"))
 	}
-	lipgloss.Fprintln(os.Stdout, "\nUse 'tdx recent <number>' to open a file")
+	_, _ = lipgloss.Fprintln(os.Stdout, "\nUse 'tdx recent <number>' to open a file")
 }
 
 // resolveFilePath expands ~ to home directory and resolves relative paths to absolute

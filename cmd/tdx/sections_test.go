@@ -69,3 +69,21 @@ func TestTUISectionReadOnly(t *testing.T) {
 		t.Fatalf("read-only file changed: %s", got)
 	}
 }
+
+func TestTUIUndoAfterCancelAndReload(t *testing.T) {
+	for _, keys := range []string{" n\x1bu", "  :reload\r uuu"} {
+		t.Run(keys, func(t *testing.T) {
+			dir := t.TempDir()
+			config.SetConfigDirForTesting(dir)
+			t.Cleanup(config.ResetConfigDirForTesting)
+			file := filepath.Join(dir, "todo.md")
+			if err := os.WriteFile(file, []byte("- [ ] Task\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			runPiped(t, file, keys)
+			if got := readTestFile(t, file); !strings.Contains(got, "- [ ] Task") {
+				t.Fatalf("undo crossed a discarded snapshot: %s", got)
+			}
+		})
+	}
+}

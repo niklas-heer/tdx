@@ -405,6 +405,9 @@ func InitCommands(cfg ...*ConfigType) []Command {
 				}
 				m.FileModel = *fm
 				m.History = nil // Clear history
+				m.UndoStack = nil
+				m.InvalidateHeadingsCache()
+				m.clearSections()
 				m.clearConflict()
 				if m.SelectedIndex >= len(m.FileModel.Todos) {
 					m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)

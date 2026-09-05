@@ -33,7 +33,7 @@
               }
             else
               ./.;
-          vendorHash = "sha256-a2njh3B1OqL1yzL2eM3+qnYeHq7LbgYod6Bs5IeXvZs=";
+          vendorHash = "sha256-V7AF9AhUyekWMKHr0YRPPWPDtwksCrT5cJIJ3JLkLzo=";
           subPackages = [ "cmd/tdx" ];
           doCheck = false;
           ldflags = [
