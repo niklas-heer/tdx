@@ -26,7 +26,11 @@ func historyStore(versions *versioning.Store) markdown.Store {
 
 func wireVersioningTUI(cfg *tui.ConfigType, versions *versioning.Store) {
 	cfg.ListVersionsFunc = func(filePath string) ([]tui.VersionInfo, error) {
-		list, err := versions.ListVersions(filePath)
+		path, err := canonicalHistoryPath(filePath)
+		if err != nil {
+			return nil, err
+		}
+		list, err := versions.ListVersions(path)
 		if err != nil {
 			return nil, err
 		}
@@ -36,7 +40,33 @@ func wireVersioningTUI(cfg *tui.ConfigType, versions *versioning.Store) {
 		}
 		return out, nil
 	}
-	cfg.ReadVersionFunc = versions.ReadVersion
+	cfg.ReadVersionFunc = func(filePath string, id int64) (string, error) {
+		path, err := canonicalHistoryPath(filePath)
+		if err != nil {
+			return "", err
+		}
+		return versions.ReadVersion(path, id)
+	}
+}
+
+// History lookup must use the same canonical identity as safe-save callbacks.
+func canonicalHistoryPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
+		return resolved, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(parent, filepath.Base(abs)), nil
 }
 
 func commandUsesVersioning(command string, args []string) bool {
