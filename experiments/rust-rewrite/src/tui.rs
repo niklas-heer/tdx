@@ -2306,7 +2306,7 @@ pub fn run(editor: &mut Editor, path: &Path, config: Config, flags: Overrides) -
         let mut app = App::new(editor, path, config, flags);
         let mut checked = Instant::now();
         #[cfg(windows)]
-        let mut input = crate::console_input::Reader::default();
+        let mut input = crate::console_input::Reader::new()?;
         let mut redraw = true;
         let mut previous_links = Links::new();
         loop {

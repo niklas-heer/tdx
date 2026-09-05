@@ -14,7 +14,7 @@ def check(binary, output):
         (config/'tdx').mkdir(parents=True)
         (config/'tdx/config.toml').write_text('[versioning]\nmax_versions=100\n')
         original = '# Project\n\nOriginal prose.\n\n- [ ] Original task\n'.encode()
-        draft = '# Café 🦀\n\n**Bold** and [Guide](https://ratatui.rs).\n\n- [ ] New task\n\n```rs\nlet value = 1;\n```\n'.encode()
+        draft = '# Café 🦀\n\n**Bold** and [Guide](https://ratatui.rs).\n\n- [ ] New task\n\n```rs\r\n\tlet value = 1;\r\n```\n'.encode()
         path.write_bytes(original)
         term = Terminal(binary.resolve(), path, config)
         try:
@@ -54,6 +54,9 @@ def check(binary, output):
             term.send(b'\x1b');term.pump(.2);term.send(b'y');term.pump(.2)
             term.close()
             assert path.read_bytes()==original
+        except BaseException:
+            (output/'rust-markdown-failure.bin').write_bytes(path.read_bytes())
+            raise
         finally:term.cleanup(output/'rust-markdown.ansi')
     report={'preview_edit_multiline_unicode_resize_save_undo_conflict_retention_shutdown':'passed'}
     (output/'markdown.json').write_text(json.dumps(report,indent=2)+'\n')

@@ -78,65 +78,157 @@ impl Decoder {
 #[derive(Default)]
 pub struct Input {
     pending: std::collections::VecDeque<Event>,
-    escape: Vec<KeyEvent>,
+    escape: String,
     paste: Option<String>,
 }
 
+fn character_key(ch: char) -> KeyEvent {
+    let (code, modifiers) = match ch {
+        '\r' | '\n' => (KeyCode::Enter, KeyModifiers::NONE),
+        '\t' => (KeyCode::Tab, KeyModifiers::NONE),
+        '\x08' | '\x7f' => (KeyCode::Backspace, KeyModifiers::NONE),
+        '\x1b' => (KeyCode::Esc, KeyModifiers::NONE),
+        '\x01'..='\x1a' => (
+            KeyCode::Char(char::from_u32(u32::from(ch) + u32::from(b'a') - 1).unwrap_or(ch)),
+            KeyModifiers::CONTROL,
+        ),
+        _ => (KeyCode::Char(ch), KeyModifiers::NONE),
+    };
+    KeyEvent::new(code, modifiers)
+}
+
+fn sequence_key(sequence: &str) -> Option<KeyEvent> {
+    let body = sequence
+        .strip_prefix("\x1b[")
+        .or_else(|| sequence.strip_prefix("\x1bO"))?;
+    let end = body.chars().next_back()?;
+    let parameters = body.strip_suffix(end)?;
+    let mut parameters = parameters.split(';');
+    let first = parameters.next().unwrap_or("");
+    let modifier = parameters
+        .next()
+        .unwrap_or("1")
+        .parse::<u8>()
+        .ok()?
+        .checked_sub(1)?;
+    let mut modifiers = KeyModifiers::NONE;
+    if modifier & 1 != 0 {
+        modifiers |= KeyModifiers::SHIFT;
+    }
+    if modifier & 2 != 0 {
+        modifiers |= KeyModifiers::ALT;
+    }
+    if modifier & 4 != 0 {
+        modifiers |= KeyModifiers::CONTROL;
+    }
+    let code = match end {
+        'A' => KeyCode::Up,
+        'B' => KeyCode::Down,
+        'C' => KeyCode::Right,
+        'D' => KeyCode::Left,
+        'H' => KeyCode::Home,
+        'F' => KeyCode::End,
+        'P'..='S' => KeyCode::F(u8::try_from(u32::from(end) - u32::from('P') + 1).ok()?),
+        'Z' => {
+            modifiers |= KeyModifiers::SHIFT;
+            KeyCode::BackTab
+        }
+        '~' => match first.parse::<u8>().ok()? {
+            1 | 7 => KeyCode::Home,
+            4 | 8 => KeyCode::End,
+            2 => KeyCode::Insert,
+            3 => KeyCode::Delete,
+            5 => KeyCode::PageUp,
+            6 => KeyCode::PageDown,
+            n @ 11..=15 => KeyCode::F(n - 10),
+            n @ 17..=21 => KeyCode::F(n - 11),
+            n @ 23..=24 => KeyCode::F(n - 12),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(KeyEvent::new(code, modifiers))
+}
+
 impl Input {
-    fn key(&mut self, key: KeyEvent) {
-        let ch = match key.code {
-            KeyCode::Esc => Some('\x1b'),
-            KeyCode::Enter => Some('\n'),
-            KeyCode::Tab => Some('\t'),
-            KeyCode::Char(ch) => Some(ch),
-            _ => None,
-        };
+    fn character(&mut self, ch: char) {
         if let Some(paste) = &mut self.paste {
-            if let Some(ch) = ch {
-                paste.push(ch);
-                if paste.ends_with("\x1b[201~") {
-                    paste.truncate(paste.len() - 6);
-                    if let Some(paste) = self.paste.take() {
-                        self.pending.push_back(Event::Paste(paste));
-                    }
+            paste.push(ch);
+            if paste.ends_with("\x1b[201~") {
+                paste.truncate(paste.len() - 6);
+                if let Some(paste) = self.paste.take() {
+                    self.pending.push_back(Event::Paste(paste));
                 }
             }
-        } else if !self.escape.is_empty() || key.code == KeyCode::Esc {
-            self.escape.push(key);
-            let text: String = self
-                .escape
-                .iter()
-                .map(|k| match k.code {
-                    KeyCode::Esc => '\x1b',
-                    KeyCode::Char(ch) => ch,
-                    _ => '\0',
-                })
-                .collect();
-            if text == "\x1b[200~" {
+            return;
+        }
+        if self.escape.is_empty() && ch != '\x1b' {
+            self.pending.push_back(Event::Key(character_key(ch)));
+            return;
+        }
+        self.escape.push(ch);
+        if matches!(self.escape.as_str(), "\x1b" | "\x1b[" | "\x1bO") {
+            return;
+        }
+        if self.escape == "\x1b[200~" {
+            self.escape.clear();
+            self.paste = Some(String::new());
+        } else if self.escape.starts_with("\x1b[") || self.escape.starts_with("\x1bO") {
+            if ('@'..='~').contains(&ch) {
+                if let Some(key) = sequence_key(&self.escape) {
+                    self.pending.push_back(Event::Key(key));
+                }
                 self.escape.clear();
-                self.paste = Some(String::new());
-            } else if !"\x1b[200~".starts_with(&text) {
-                self.flush_escape();
+            } else if self.escape.len() > 32 {
+                self.escape.clear(); // Bound malformed terminal sequences.
             }
         } else {
+            let mut key = character_key(ch);
+            key.modifiers |= KeyModifiers::ALT;
             self.pending.push_back(Event::Key(key));
+            self.escape.clear();
         }
     }
 
     fn flush_escape(&mut self) {
-        self.pending.extend(self.escape.drain(..).map(Event::Key));
+        if self.escape == "\x1b" {
+            self.pending.push_back(Event::Key(character_key('\x1b')));
+        }
+        self.escape.clear();
     }
 }
 
 #[cfg(windows)]
-#[derive(Default)]
 pub struct Reader {
     decoder: Decoder,
     input: Input,
+    original_mode: u32,
 }
 
 #[cfg(windows)]
 impl Reader {
+    pub fn new() -> std::io::Result<Self> {
+        use windows_sys::Win32::System::Console::{
+            ENABLE_VIRTUAL_TERMINAL_INPUT, GetConsoleMode, GetStdHandle, STD_INPUT_HANDLE,
+            SetConsoleMode,
+        };
+        let mut mode = 0;
+        // SAFETY: The pseudo-handle selector is valid; mode is writable storage.
+        let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+        // SAFETY: The borrowed console handle is checked by these APIs; no pointers escape.
+        let configured = unsafe {
+            GetConsoleMode(handle, &raw mut mode) != 0
+                && SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_INPUT) != 0
+        };
+        if !configured {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(Self {
+            decoder: Decoder::default(),
+            input: Input::default(),
+            original_mode: mode,
+        })
+    }
     pub fn next(
         &mut self,
         timeout: std::time::Duration,
@@ -194,13 +286,16 @@ impl Reader {
                         // SAFETY: ReadConsoleInputW populates the Unicode member.
                         let unit = unsafe { key.uChar.UnicodeChar };
                         if let Some(event) = self.decoder.key(
-                            key.bKeyDown != 0,
-                            key.wVirtualKeyCode,
+                            // VT input is Unicode text, including escape/control bytes.
+                            // VK_MENU key-up records carry legacy Unicode input.
+                            key.bKeyDown != 0 || key.wVirtualKeyCode == 0x12,
+                            0,
                             unit,
-                            key.dwControlKeyState,
-                        ) {
+                            0,
+                        ) && let KeyCode::Char(ch) = event.code
+                        {
                             for _ in 0..key.wRepeatCount.max(1) {
-                                self.input.key(event);
+                                self.input.character(ch);
                             }
                         }
                     }
@@ -218,6 +313,17 @@ impl Reader {
                 self.input.flush_escape();
                 return Ok(self.input.pending.pop_front());
             }
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Reader {
+    fn drop(&mut self) {
+        use windows_sys::Win32::System::Console::{GetStdHandle, STD_INPUT_HANDLE, SetConsoleMode};
+        // SAFETY: Restore the borrowed console's mode; the handle is not closed.
+        unsafe {
+            SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), self.original_mode);
         }
     }
 }
@@ -241,23 +347,56 @@ mod tests {
     #[test]
     fn bracketed_paste_is_one_event_and_escape_still_cancels() {
         let mut input = Input::default();
-        for ch in "\x1b[200~café 🦀\nsecond line\x1b[201~".chars() {
-            let code = match ch {
-                '\x1b' => KeyCode::Esc,
-                '\n' => KeyCode::Enter,
-                _ => KeyCode::Char(ch),
-            };
-            input.key(KeyEvent::new(code, KeyModifiers::empty()));
+        for ch in "\x1b[200~café 🦀\nsecond\r\nthird\tline\x1b[201~".chars() {
+            input.character(ch);
         }
         assert_eq!(
             input.pending.pop_front(),
-            Some(Event::Paste("café 🦀\nsecond line".into()))
+            Some(Event::Paste("café 🦀\nsecond\r\nthird\tline".into()))
         );
         assert!(input.pending.is_empty());
         let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::empty());
-        input.key(esc);
+        input.character('\x1b');
         input.flush_escape();
         assert_eq!(input.pending.pop_front(), Some(Event::Key(esc)));
+    }
+
+    #[test]
+    fn virtual_input_navigation_controls_and_unicode_paste() {
+        let mut input = Input::default();
+        for ch in "\x1b[A\x1bOB\x1b[1;5H\x1b[3~\x1b[6~\x1b[Z\x13\n".chars() {
+            input.character(ch);
+        }
+        for (code, modifiers) in [
+            (KeyCode::Up, KeyModifiers::NONE),
+            (KeyCode::Down, KeyModifiers::NONE),
+            (KeyCode::Home, KeyModifiers::CONTROL),
+            (KeyCode::Delete, KeyModifiers::NONE),
+            (KeyCode::PageDown, KeyModifiers::NONE),
+            (KeyCode::BackTab, KeyModifiers::SHIFT),
+            (KeyCode::Char('s'), KeyModifiers::CONTROL),
+            (KeyCode::Enter, KeyModifiers::NONE),
+        ] {
+            assert_eq!(
+                input.pending.pop_front(),
+                Some(Event::Key(KeyEvent::new(code, modifiers)))
+            );
+        }
+        let mut decoder = Decoder::default();
+        let source = "\x1b[200~# 🦀\n\n- [ ] café\r\n\x1b[201~";
+        for unit in source.encode_utf16() {
+            if let Some(event) = decoder.key(true, 0, unit, 0)
+                && let KeyCode::Char(ch) = event.code
+            {
+                input.character(ch);
+            }
+            assert!(decoder.key(false, 0, unit, 0).is_none());
+        }
+        assert_eq!(
+            input.pending.pop_front(),
+            Some(Event::Paste("# 🦀\n\n- [ ] café\r\n".into()))
+        );
+        assert!(input.pending.is_empty());
     }
 
     #[test]
