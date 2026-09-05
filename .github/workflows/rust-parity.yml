@@ -40,7 +40,7 @@ jobs:
           esac
           curl --fail --location --silent --show-error "https://get.nexte.st/$version/$platform" --output "$RUNNER_TEMP/nextest.tar.gz"
           mkdir -p "$HOME/.cargo/bin"
-          tar -xzf "$RUNNER_TEMP/nextest.tar.gz" -C "$HOME/.cargo/bin"
+          tar -xzf - -C "$HOME/.cargo/bin" < "$RUNNER_TEMP/nextest.tar.gz"
           cargo nextest --version
           if [ "$RUNNER_OS" = Windows ]; then python -m pip install pywinpty==3.0.2; fi
       - name: Native builds and regression tests
