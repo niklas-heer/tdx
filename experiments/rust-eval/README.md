@@ -1,8 +1,8 @@
 # Go / Rust evaluation
 
-The [full-featured application comparison](#full-featured-application-comparison) supersedes the earlier parser, basic prototype and history-only milestones below. Historical measurements remain unchanged and describe the capabilities at their original revisions.
+The [Ratatui UI completion](#ratatui-ui-completion) extends the full-featured application comparison with explicit presentation checks. The [full-featured application comparison](#full-featured-application-comparison) supersedes the earlier parser, basic prototype and history-only milestones below. Historical measurements remain unchanged and describe the capabilities at their original revisions.
 
-**Recommendation: keep Go as the default and pursue Rust for its resource savings.** The standalone Rust candidate now implements the complete CLI/TUI feature matrix. Full-application measurements show substantially lower memory use and a smaller executable, but text editing is slower on large documents and fresh builds take longer. Those tradeoffs matter more than the earlier parser-only speedup.
+**Recommendation: pursue the complete Rust candidate while retaining Go as the production default for evaluation.** The rewrite implements the complete CLI/TUI feature matrix with a polished Ratatui interface. The latest full-application comparison shows lower memory use, a smaller executable and faster large-document editing; fresh Rust builds take longer. The [updated decision](#updated-decision) supersedes the earlier milestones below.
 
 The new `internal/editor` package gives CLI and TUI a shared action boundary. Configuration, styles, recent-file storage, and Markdown history callbacks are supplied per instance. This makes engine changes and compatibility tests easier without requiring a language migration.
 
@@ -241,7 +241,7 @@ Observed terminal save latency runs from sending input to observing the expected
 
 Both executables are stripped release builds; Rust uses thin LTO and one codegen unit. Fresh-cache build timings exclude downloads and are single observations. Go compiles its standard library while Rust ships one precompiled and builds bundled C dependencies. Measurements describe one local Apple M2 Pro/macOS host, not cross-platform performance or CI thresholds. Other host activity and run-to-run variation are uncontrolled; native CI separately validates correctness.
 
-### Full-application measurements
+### Full-application measurements before UI completion
 
 September 5, 2026; Apple M2 Pro, macOS 15.7.9 arm64; Go 1.27.1, Rust 1.98.1 and Python 3.14.7. The [raw full-parity baseline](../rust-rewrite/full-parity-baseline.json) records revision `c4084c4` and source fingerprint `c1a9a7c552ce93aab346468a719e38e4d20ac2d105bc2a988eb0a509bf1f5ad8`. Source remained unchanged throughout measurement; the recorded dirty working tree contained report/matrix updates.
 
@@ -269,10 +269,63 @@ September 5, 2026; Apple M2 Pro, macOS 15.7.9 arm64; Go 1.27.1, Rust 1.98.1 and 
 | Fresh-cache build (s) | 7.511 | 40.469 |
 | No-op build (s) | 0.289 | 0.130 |
 
-### Decision after full parity
+### Decision before UI completion (historical)
 
 Rust retains a strong resource advantage with the full services enabled: about **74% less RSS after 20 distinct edits at 1,000 tasks**, **85% less at 10,000 tasks**, and a **52% smaller executable**. JSON queries and CLI edits are faster on this host. Both retain the required snapshot counts; the 10,000-task edit history occupies 156 KiB in Go and 188 KiB in Rust after checkpoint.
 
 The interactive tradeoff is substantial: Rust distinct edits take about **1.43× as long at 1,000 tasks** and **2.39× as long at 10,000 tasks** on the observed-save metric. At 10,000 tasks they consume about **63% more whole-session CPU**, despite faster checkbox toggles. Fresh Rust builds take about **5.4× as long** in this observation. The full-featured result reverses the earlier, simpler prototype's text-edit advantage; its earlier performance ratios should not be used to justify migration.
 
 The rewrite is worth pursuing when memory or executable size is a concrete product requirement, but it is not a clear overall replacement for Go. Keep Go as the default while profiling Rust text input/edit/render work and comparing a bounded source-snapshot undo strategy in Go. Those are follow-up optimization experiments, not missing application features. The current measurements do not identify a single proven cause for the edit slowdown or isolate language effects from parser, renderer, undo and database-library choices. Try the complete candidate with representative documents before making a production migration decision.
+
+
+## Ratatui UI completion
+
+The standalone rewrite already uses [Ratatui 0.30.2](https://ratatui.rs/). Ratatui provides widgets, styling and responsive layout; it does not automatically reproduce Go's presentation. A further audit after the behavioral parity milestone found missing clickable terminal links, insufficient context indicators, long-input clipping and a hard-coded help scroll limit. Those were presentation gaps beyond what the earlier action/application corpus established.
+
+This revision completes those behaviors and improves the interface with theme-aware rounded panels, a stronger selection indicator, compact pickers over the task list, task counts and section/filter/settings context, Unicode input that keeps the cursor visible, and history panes that stack on narrow terminals. Help and wrapped diffs scroll through their full content. Markdown link labels are styled and emitted with OSC 8 hyperlinks; the renderer also clears stale hyperlink metadata after filtering or changing modes. Inline code and metadata retain their styles across wrapping. Only the visible window of task candidates is shaped, avoiding text layout for thousands of off-screen tasks. Recent-file search matches Go’s case-insensitive substring behavior and preserves frecency order; navigation wraps, and rows retain the filename and access count. Theme and due-filter pickers show their active state and explanations, with positions and empty-state messages throughout the pickers.
+
+All 24 Go command names are checked automatically against the Rust registry. The prior document, CLI, TUI, configuration, recent-file, history and native-save feature matrix remains implemented. New tests assert rendered information, long-input visibility, clickable-link positions and complete scroll boundaries. The native terminal gate verifies OSC 8 output as well as resize, Unicode typing/paste, moves, undo, conflict/reload and shutdown. The gallery export is an explicitly invoked development utility, separate from the acceptance tests.
+
+Generate and inspect actual Ratatui screens with `mise run rust-rewrite:gallery`. It exports six real renderer buffers with sample Markdown to `dist/rust-rewrite/gallery/`, including `index.html`, `tasks.svg`, `commands.svg`, `sections.svg`, `history.svg`, `narrow.svg` and `input.svg`. These are generated from the Rust renderer, not design mockups. The sample terminal background uses the Tokyo Night palette; the application continues to respect the user's terminal background and selected theme. Run the complete CLI/TUI with `mise run rust-rewrite -- --file /path/to/tasks.md`.
+
+“Full parity” refers to all documented Go application features and passing compatibility contracts. The two renderers can place cells differently, and finite tests cannot prove bug-free equivalence for every possible input or terminal.
+
+### Measurements after UI completion
+
+September 5, 2026; Apple M2 Pro, macOS 15.7.9 arm64; Go 1.27.1, Rust 1.98.1 and Python 3.14.7. The [Ratatui baseline](../rust-rewrite/ratatui-baseline.json) records revision `4bff503` and source fingerprint `3cf0aeaa15500106e0aa1a01a781d4855591a9687e6b55079b015030b83efe8f`. All measured source stayed unchanged; the dirty working tree contained report/matrix updates. The method and limitations above still apply: nine alternating CLI trials and three terminal sessions per engine/workload with 20 actions each, using full history, configuration and recent-file services.
+
+| Tasks | Go JSON (ms) | Rust JSON (ms) | Go CLI edit/save (ms) | Rust CLI edit/save (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 9.90 | 6.08 | 20.19 | 15.79 |
+| 1,000 | 12.27 | 7.26 | 25.68 | 18.22 |
+| 10,000 | 42.12 | 22.88 | 79.63 | 47.77 |
+
+| Tasks | Go TUI toggle/save (ms) | Rust TUI toggle/save (ms) | Go TUI distinct edit/save (ms) | Rust TUI distinct edit/save (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 6.66 | 6.68 | 9.00 | 8.82 |
+| 1,000 | 9.22 | 8.19 | 12.91 | 9.05 |
+| 10,000 | 30.74 | 22.32 | 43.27 | 20.21 |
+
+| Tasks, after 20 distinct edits | Go RSS (MiB) | Rust RSS (MiB) | Go session CPU (ms) | Rust session CPU (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 38.38 | 10.08 | 188.42 | 99.31 |
+| 1,000 | 86.89 | 17.12 | 353.94 | 120.93 |
+| 10,000 | 605.97 | 102.23 | 1745.14 | 397.34 |
+
+| Measurement | Go | Rust |
+| --- | ---: | ---: |
+| Stripped executable (MiB) | 10.39 | 5.07 |
+| Fresh-cache build (s) | 7.271 | 37.199 |
+| No-op build (s) | 0.191 | 0.155 |
+
+The full comparison passes 1,154 differential cases with 2,993 action states, 58 application workflows, CLI fixtures and replay, cross-language history, restore/conflict recovery, and the full PTY suite. The UI adds seven application tests over the prior milestone: **39 pass on Unix, 37 on Windows**, including two presentation helper tests in those totals. The three document tests also run through the parity adapter and are not extra unique tests. The ignored gallery exporter is run explicitly to produce the inspected previews.
+
+The first final Windows run exposed a polling race in the test harness: a read during atomic replacement raised `PermissionError`. The native polling now retries within its original deadline. Three Python regressions verify transient recovery, bounded permanent failure, and propagation of unrelated exceptions; these run locally and in native CI.
+
+Final native CI passed on **macOS arm64, Linux x86_64 and Windows x86_64** at revision `4bff503`. Every platform passed the complete action/application corpus, shared locks, and PTY/ConPTY resize, Unicode typing/paste, moves, undo, conflict/reload and clean shutdown. Both engines emitted clickable OSC 8 links in every platform’s retained transcript. The [native evidence](../rust-rewrite/ratatui-native.json) and [successful CI run](https://github.com/niklas-heer/tdx/actions/runs/33988052015) identify the same source files and contents as the measured baseline; Windows path-order differences were verified independently. Rust formatting/Clippy/tests, the three polling regressions, Go/project checks and workflow validation also passed. Native correctness does not establish native performance on those CI hosts.
+
+### Updated decision
+
+**The complete Rust candidate is now worth pursuing for both resource use and large-document interaction.** At 10,000 tasks it uses about **83% less RSS** after 20 distinct edits, takes about **53% less observed edit/save time**, and consumes about **77% less whole-session CPU** than Go. The executable is **51% smaller**. At 1,000 tasks, edit/save time is about 30% lower and RSS about 80% lower. At 100 tasks the interactive timings are effectively similar in this sample.
+
+The earlier text-edit slowdown is no longer present after the rendering changes, which restrict task layout to the visible window. This is a comparison of completed applications using different parsers, renderers and database libraries; it does not isolate a Rust language advantage. Observed save time is not key-to-frame or completed durable-save latency. Fresh Rust builds still take about **5.1× longer** in this run (37.2 versus 7.3 seconds). The generated workload and short sessions support further use with representative documents, not an immediate production migration decision. Go remains the default while the complete standalone Rust candidate is available for that comparison.

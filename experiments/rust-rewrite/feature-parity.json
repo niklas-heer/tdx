@@ -114,7 +114,8 @@
         "responsive picker overlays and history panes",
         "visible long Unicode input cursor",
         "complete bounded help and wrapped diff scrolling",
-        "contextual section/filter/settings indicators"
+        "contextual section/filter/settings indicators",
+        "active theme indicator, due-filter explanations and picker positions"
       ],
       "checks": [
         "config tests",
@@ -135,11 +136,15 @@
         "search and switch",
         "hash-guarded cursor restoration",
         "per-file settings reset",
-        "save cursor for actual active file"
+        "save cursor for actual active file",
+        "case-insensitive substring search preserving frecency order",
+        "wraparound navigation",
+        "home abbreviation, Unicode-safe filename visibility and access counts"
       ],
       "checks": [
         "recent tests",
-        "application_contracts recent switch"
+        "application_contracts recent switch",
+        "tui recent picker matching/navigation/render contract"
       ]
     },
     {
