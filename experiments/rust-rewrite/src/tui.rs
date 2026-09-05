@@ -79,6 +79,10 @@ enum Mode {
     MaxVisible,
     Move,
 }
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Independent settings and mode state match the documented Go controls"
+)]
 struct App<'a> {
     editor: &'a mut Editor,
     path: PathBuf,
@@ -302,6 +306,10 @@ impl<'a> App<'a> {
         };
         self.clamp();
     }
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "Command callers transfer ownership of action payloads"
+    )]
     fn apply(&mut self, action: Action) {
         self.editor.readonly = self.settings.read_only;
         let result = self.editor.action(&action);
@@ -337,14 +345,18 @@ impl<'a> App<'a> {
                 .collect(),
             _ => vec![],
         };
+        if self.mode == Mode::Recent {
+            let query = self.input.text().to_lowercase();
+            return rows
+                .into_iter()
+                .filter(|(_, s)| s.to_lowercase().contains(&query))
+                .map(|(i, _)| i)
+                .collect();
+        }
         let mut matches: Vec<_> = rows
             .iter()
             .filter_map(|(i, s)| {
-                let score = if self.mode == Mode::Recent {
-                    usize::from(s.to_lowercase().contains(&self.input.text.to_lowercase()))
-                } else {
-                    input::fuzzy(&self.input.text, s)
-                };
+                let score = input::fuzzy(self.input.text(), s);
                 (score > 0).then_some((*i, score))
             })
             .collect();
@@ -546,7 +558,7 @@ impl<'a> App<'a> {
             match clipboard::paste() {
                 Ok(s) => self.input.insert(&s),
                 Err(e) => self.status = e,
-            };
+            }
             return;
         }
         match key.code {
@@ -560,22 +572,22 @@ impl<'a> App<'a> {
                 self.status = "Cancelled".into();
             }
             KeyCode::Enter => {
-                if self.input.text.trim().is_empty() {
+                if self.input.text().trim().is_empty() {
                     self.mode = Mode::Normal;
                     return;
                 }
                 if self.mode == Mode::MaxVisible {
-                    match self.input.text.parse::<usize>() {
+                    match self.input.text().parse::<usize>() {
                         Ok(n) => {
                             self.settings.max_visible = n;
                             self.mode = Mode::Normal;
                         }
                         Err(_) => self.status = "Enter a non-negative number".into(),
-                    };
+                    }
                     return;
                 }
                 let mut action = self.action.clone();
-                action.text = self.input.text.clone();
+                self.input.text().clone_into(&mut action.text);
                 let heading = self.mode == Mode::Heading;
                 if heading && self.settings.read_only {
                     self.status = "read-only file: section editing disabled".into();
@@ -665,12 +677,16 @@ impl<'a> App<'a> {
                 } else if self.input.key(key) {
                     self.cursor = 0;
                 }
-                if self.mode == Mode::Recent && self.input.text.starts_with(' ') {
-                    self.input = Buffer::new(self.input.text.trim_start().into());
+                if self.mode == Mode::Recent && self.input.text().starts_with(' ') {
+                    self.input = Buffer::new(self.input.text().trim_start().into());
                 }
             }
         }
     }
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Keep mode dispatch and rendering order visible in one place"
+    )]
     fn overlay_key(&mut self, mut key: KeyEvent) {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             key.code = match key.code {
@@ -719,7 +735,7 @@ impl<'a> App<'a> {
                         Mode::Tags => self.tags.clear(),
                         Mode::Priorities => self.priorities.clear(),
                         _ => self.due.clear(),
-                    };
+                    }
                     self.clamp();
                 }
                 KeyCode::Char(' ') | KeyCode::Enter => {
@@ -823,7 +839,7 @@ impl<'a> App<'a> {
                     };
                     (
                         "rename-heading",
-                        self.cursor as isize,
+                        isize::try_from(self.cursor).unwrap_or(-1),
                         h.level,
                         h.text.clone(),
                     )
@@ -837,7 +853,7 @@ impl<'a> App<'a> {
                     (
                         "create-heading",
                         if heading.is_some() {
-                            self.cursor as isize
+                            isize::try_from(self.cursor).unwrap_or(-1)
                         } else {
                             -1
                         },
@@ -897,8 +913,8 @@ impl<'a> App<'a> {
                 if let Some(target) = target {
                     let action = Action {
                         kind: "move-to-position".into(),
-                        index: self.selected as isize,
-                        target: target as isize,
+                        index: isize::try_from(self.selected).unwrap_or(-1),
+                        target: isize::try_from(target).unwrap_or(-1),
                         insert_after: down,
                         ..Action::default()
                     };
@@ -945,6 +961,10 @@ impl<'a> App<'a> {
             _ => {}
         }
     }
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Keep mode dispatch and rendering order visible in one place"
+    )]
     fn handle(&mut self, event: Event) -> bool {
         if let Event::Paste(s) = event {
             if matches!(
@@ -1039,10 +1059,10 @@ impl<'a> App<'a> {
                     KeyCode::End => self.scroll = usize::MAX,
                     KeyCode::Esc => self.mode = Mode::Normal,
                     KeyCode::Down | KeyCode::PageDown | KeyCode::Char('j') => {
-                        self.scroll = self.scroll.saturating_add(10)
+                        self.scroll = self.scroll.saturating_add(10);
                     }
                     KeyCode::Up | KeyCode::PageUp | KeyCode::Char('k') => {
-                        self.scroll = self.scroll.saturating_sub(10)
+                        self.scroll = self.scroll.saturating_sub(10);
                     }
                     _ => {}
                 }
@@ -1101,7 +1121,7 @@ impl<'a> App<'a> {
             }
             KeyCode::Home => self.selected = visible.first().copied().unwrap_or(0),
             KeyCode::End | KeyCode::Char('G') => {
-                self.selected = visible.last().copied().unwrap_or(0)
+                self.selected = visible.last().copied().unwrap_or(0);
             }
             KeyCode::Char('g') => {
                 if self.g {
@@ -1138,7 +1158,7 @@ impl<'a> App<'a> {
                     "add"
                 };
                 let index = if kind == "add-in-section" {
-                    self.section.unwrap()
+                    self.section.unwrap_or(self.selected)
                 } else {
                     self.selected
                 };
@@ -1153,7 +1173,7 @@ impl<'a> App<'a> {
                     },
                     self.selected,
                     "",
-                ))
+                ));
             }
             KeyCode::Char('u') => {
                 let result = self.editor.undo();
@@ -1289,6 +1309,10 @@ impl<'a> App<'a> {
             .border_style(Style::default().fg(self.color("Dim")))
             .style(Style::default().fg(self.color("Base")))
     }
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Keep mode dispatch and rendering order visible in one place"
+    )]
     fn draw(&mut self, frame: &mut Frame) {
         self.links.clear();
         let area = frame.area();
@@ -1357,9 +1381,9 @@ impl<'a> App<'a> {
         };
         if input_mode {
             let window = presentation::input_window(
-                &self.input.text,
-                self.input.cursor,
-                areas[2].width.saturating_sub(4) as usize,
+                self.input.text(),
+                self.input.cursor(),
+                usize::from(areas[2].width.saturating_sub(4)),
             );
             frame.render_widget(
                 Paragraph::new(window)
@@ -1418,7 +1442,7 @@ impl<'a> App<'a> {
                     let height = body
                         .height
                         .saturating_sub(2)
-                        .min((count.max(1) + 2).min(13) as u16);
+                        .min(u16::try_from(count.clamp(1, 11) + 2).unwrap_or(13));
                     Rect::new(
                         body.x + (body.width - width) / 2,
                         body.y + body.height - height - 1,
@@ -1458,7 +1482,7 @@ impl<'a> App<'a> {
             }
             Mode::Diff => self.draw_diff(frame, areas[1], "Disk → local changes"),
             Mode::Help => {
-                let width = areas[1].width.saturating_sub(2) as usize;
+                let width = usize::from(areas[1].width.saturating_sub(2));
                 let lines: Vec<Line<'static>> = help()
                     .lines()
                     .flat_map(|s| wrap(s, width, 0))
@@ -1466,12 +1490,11 @@ impl<'a> App<'a> {
                     .collect();
                 let max = lines
                     .len()
-                    .saturating_sub(areas[1].height.saturating_sub(2) as usize);
+                    .saturating_sub(usize::from(areas[1].height.saturating_sub(2)));
                 self.scroll = self.scroll.min(max);
                 frame.render_widget(
-                    Paragraph::new(lines)
-                        .block(self.panel(" Help · Home/End · PgUp/PgDn ".into()))
-                        .scroll((self.scroll.min(u16::MAX as usize) as u16, 0)),
+                    Paragraph::new(lines.into_iter().skip(self.scroll).collect::<Vec<_>>())
+                        .block(self.panel(" Help · Home/End · PgUp/PgDn ".into())),
                     areas[1],
                 );
             }
@@ -1488,7 +1511,7 @@ impl<'a> App<'a> {
                     .iter()
                     .flat_map(|span| presentation::glyphs(&span.content, span.style, None))
                     .collect();
-                presentation::lines(input, area.width.saturating_sub(2) as usize, 0, true)
+                presentation::lines(input, usize::from(area.width.saturating_sub(2)), 0, true)
                     .iter()
                     .map(|g| presentation::line(g))
                     .collect::<Vec<_>>()
@@ -1496,12 +1519,11 @@ impl<'a> App<'a> {
             .collect();
         let max = lines
             .len()
-            .saturating_sub(area.height.saturating_sub(2) as usize);
+            .saturating_sub(usize::from(area.height.saturating_sub(2)));
         self.scroll = self.scroll.min(max);
         frame.render_widget(
-            Paragraph::new(lines)
-                .block(self.panel(format!(" {title} · {}/{} ", self.scroll + 1, max + 1)))
-                .scroll((self.scroll.min(u16::MAX as usize) as u16, 0)),
+            Paragraph::new(lines.into_iter().skip(self.scroll).collect::<Vec<_>>())
+                .block(self.panel(format!(" {title} · {}/{} ", self.scroll + 1, max + 1))),
             area,
         );
     }
@@ -1530,7 +1552,7 @@ impl<'a> App<'a> {
         let rows = if rows.is_empty() {
             vec![
                 match self.mode {
-                    Mode::Recent if self.input.text.is_empty() => "No recent files",
+                    Mode::Recent if self.input.text().is_empty() => "No recent files",
                     Mode::Recent => "No matching files",
                     Mode::Tags => "No tags found",
                     Mode::Priorities => "No priorities found",
@@ -1550,7 +1572,7 @@ impl<'a> App<'a> {
                 if matches!(self.mode, Mode::Search | Mode::Commands) {
                     ListItem::new(Line::from(highlight(
                         &text,
-                        &self.input.text,
+                        self.input.text(),
                         self.color("Accent"),
                     )))
                 } else {
@@ -1597,7 +1619,7 @@ impl<'a> App<'a> {
                         })
                         .unwrap_or_else(|| file.path.display().to_string());
                     let info = format!(" ×{}", file.access_count);
-                    let width = (area.width as usize).saturating_sub(
+                    let width = (usize::from(area.width)).saturating_sub(
                         3 + self.config.display.select_marker.width() + info.width(),
                     );
                     format!(
@@ -1612,9 +1634,15 @@ impl<'a> App<'a> {
             "{}: {}",
             self.mode_name(),
             presentation::input_window(
-                &self.input.text,
-                self.input.cursor,
-                area.width.saturating_sub(self.mode_name().len() as u16 + 7) as usize
+                self.input.text(),
+                self.input.cursor(),
+                usize::from(
+                    area.width.saturating_sub(
+                        u16::try_from(self.mode_name().len())
+                            .unwrap_or(u16::MAX)
+                            .saturating_add(7)
+                    )
+                )
             )
         );
         self.render_list(frame, area, &title, rows, self.cursor);
@@ -1718,6 +1746,10 @@ impl<'a> App<'a> {
             self.cursor,
         );
     }
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Keep mode dispatch and rendering order visible in one place"
+    )]
     fn draw_tasks(&mut self, frame: &mut Frame, area: Rect) {
         let mut visible = self.visible();
         let matched = visible.len();
@@ -1733,7 +1765,7 @@ impl<'a> App<'a> {
         }
         // At most one screen of candidate tasks can be visible. Retain subtree
         // indexes, but avoid shaping and allocating every glyph in large files.
-        let limit = (area.height as usize).max(1);
+        let limit = (usize::from(area.height)).max(1);
         if visible.len() > limit {
             let position = visible
                 .iter()
@@ -1798,7 +1830,7 @@ impl<'a> App<'a> {
             let style =
                 Style::default().fg(self.color(if task.checked { "Important" } else { "Base" }));
             let marker_width = self.config.display.select_marker.width() + 1;
-            let available = (area.width as usize).saturating_sub(2 + marker_width);
+            let available = (usize::from(area.width)).saturating_sub(2 + marker_width);
             let mut rich = presentation::glyphs(&prefix, style, None);
             rich.extend(presentation::inline(
                 &clean(&task.text),
@@ -1841,9 +1873,11 @@ impl<'a> App<'a> {
             &mut state,
         );
         let mut y = area.y.saturating_add(1);
-        let start_x = area
-            .x
-            .saturating_add(1 + self.config.display.select_marker.width() as u16 + 1);
+        let start_x = area.x.saturating_add(
+            u16::try_from(self.config.display.select_marker.width())
+                .unwrap_or(u16::MAX)
+                .saturating_add(2),
+        );
         for lines in rich_rows.iter().skip(state.offset()) {
             for line in lines {
                 if y >= area.bottom().saturating_sub(1) {
@@ -1851,7 +1885,7 @@ impl<'a> App<'a> {
                 }
                 let mut x = start_x;
                 for g in line {
-                    let width = g.text.width() as u16;
+                    let width = u16::try_from(g.text.width()).unwrap_or(u16::MAX);
                     if x.saturating_add(width) > area.right().saturating_sub(1) {
                         break;
                     }
@@ -1904,6 +1938,10 @@ fn wrap(s: &str, width: usize, indent: usize) -> Vec<String> {
 
 fn styled_text(s: &str, base: Style, app: &App<'_>) -> Vec<Span<'static>> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Fixed regex literal; metadata rendering regressions initialize it"
+    )]
     let re = RE.get_or_init(|| {
         regex::Regex::new(r"#[a-zA-Z0-9_-]+|!p[0-9]+|@due\([0-9]{4}-[0-9]{2}-[0-9]{2}\)").unwrap()
     });
@@ -1954,7 +1992,7 @@ fn diff_lines(old: &str, new: &str) -> Vec<Line<'static>> {
             let (prefix, color) = match change.tag() {
                 ChangeTag::Delete => ("- ", Color::Red),
                 ChangeTag::Insert => ("+ ", Color::Green),
-                _ => ("  ", Color::DarkGray),
+                ChangeTag::Equal => ("  ", Color::DarkGray),
             };
             let mut spans = vec![Span::styled(prefix, Style::default().fg(color))];
             for (emphasized, text) in change.iter_strings_lossy() {
@@ -2056,8 +2094,10 @@ pub fn piped(editor: &mut Editor, path: &Path, config: Config, flags: Overrides)
         }
     }
     let backend = ratatui::backend::TestBackend::new(100, 40);
-    let mut terminal = ratatui::Terminal::new(backend).unwrap();
-    terminal.draw(|f| app.draw(f)).unwrap();
+    let mut terminal = ratatui::Terminal::new(backend).unwrap_or_else(|never| match never {});
+    terminal
+        .draw(|f| app.draw(f))
+        .unwrap_or_else(|never| match never {});
     let buffer = terminal.backend().buffer();
     for y in 0..40 {
         let mut line = String::new();
@@ -2111,7 +2151,7 @@ fn decode_input(mut text: &str) -> Vec<Event> {
         if sequence {
             continue;
         }
-        let ch = text.chars().next().unwrap();
+        let Some(ch) = text.chars().next() else { break };
         text = &text[ch.len_utf8()..];
         let (code, modifiers) = match ch {
             '\r' | '\n' => (KeyCode::Enter, KeyModifiers::NONE),
@@ -2119,7 +2159,7 @@ fn decode_input(mut text: &str) -> Vec<Event> {
             '\x1b' => (KeyCode::Esc, KeyModifiers::NONE),
             '\x7f' => (KeyCode::Backspace, KeyModifiers::NONE),
             '\x01'..='\x1a' => (
-                KeyCode::Char((ch as u8 + b'a' - 1) as char),
+                KeyCode::Char(char::from_u32(u32::from(ch) + u32::from(b'a') - 1).unwrap_or(ch)),
                 KeyModifiers::CONTROL,
             ),
             c => (KeyCode::Char(c), KeyModifiers::NONE),
@@ -2219,7 +2259,7 @@ mod tests {
     fn sections_can_focus_empty_create_and_cancel() {
         with_app(|app| {
             keys(app, "sG\r");
-            assert!(app.visible().is_empty());
+            assert_eq!(app.visible(), Vec::<usize>::new());
             keys(app, "NAdded\r");
             assert_eq!(app.editor.doc.tasks.last().unwrap().text, "Added");
             keys(app, "Sse\x01Renamed \r");
@@ -2248,6 +2288,23 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+    #[test]
+    fn huge_diff_and_display_marker_do_not_truncate_or_overflow() {
+        with_app(|app| {
+            app.mode = Mode::Diff;
+            app.diff = vec![Line::from("old change"); usize::from(u16::MAX) + 30];
+            app.diff.push(Line::from("FINAL CHANGE"));
+            app.scroll = usize::MAX;
+            let shown = text(&screen(app, 48, 20));
+            assert!(app.scroll > usize::from(u16::MAX));
+            assert!(shown.contains("FINAL CHANGE"));
+            app.mode = Mode::Normal;
+            app.config.display.select_marker = "x".repeat(usize::from(u16::MAX));
+            app.editor.doc = Document::parse("- [ ] [guide](https://ratatui.rs)\n".into()).unwrap();
+            screen(app, 24, 20);
+            assert!(app.links.is_empty());
+        });
     }
     #[test]
     fn recent_picker_preserves_substring_order_wraps_and_shows_file_info() {

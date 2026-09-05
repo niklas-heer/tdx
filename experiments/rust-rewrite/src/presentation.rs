@@ -6,7 +6,7 @@ use ratatui::{
     text::{Line, Span},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     io::{self, Write},
     sync::OnceLock,
 };
@@ -75,19 +75,23 @@ pub fn inline(
     plain: impl Fn(&str) -> Vec<Span<'static>>,
 ) -> Vec<Glyph> {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
+    #[expect(
+        clippy::unwrap_used,
+        reason = "Fixed regex literal; inline rendering tests initialize it"
+    )]
     let re = RE.get_or_init(|| regex::Regex::new(r"`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)").unwrap());
     let mut out = Vec::new();
     let mut end = 0;
     for caps in re.captures_iter(text) {
-        let whole = caps.get(0).unwrap();
+        let Some(whole) = caps.get(0) else { continue };
         for span in plain(&text[end..whole.start()]) {
             out.extend(glyphs(&span.content, base.patch(span.style), None));
         }
         if let Some(body) = caps.get(1) {
             out.extend(glyphs(&format!(" {} ", body.as_str()), code, None));
-        } else {
-            let label = caps.get(2).unwrap().as_str();
-            let url = caps.get(3).unwrap().as_str();
+        } else if let (Some(label), Some(url)) = (caps.get(2), caps.get(3)) {
+            let label = label.as_str();
+            let url = url.as_str();
             let safe = !url.chars().any(char::is_control);
             out.extend(glyphs(
                 label,
@@ -155,6 +159,7 @@ pub fn input_window(text: &str, cursor: usize, width: usize) -> String {
     if width == 0 {
         return String::new();
     }
+    let cursor = text.floor_char_boundary(cursor.min(text.len()));
     let before = &text[..cursor];
     let after = &text[cursor..];
     let budget = width.saturating_sub(1);
@@ -192,8 +197,7 @@ pub fn sync_links(
 ) -> io::Result<()> {
     for &(x, y) in current
         .keys()
-        .chain(previous.keys())
-        .collect::<BTreeSet<_>>()
+        .chain(previous.keys().filter(|key| !current.contains_key(key)))
     {
         if !buffer.area.contains((x, y).into()) {
             continue;
@@ -201,11 +205,11 @@ pub fn sync_links(
         let covered = (buffer.area.x..x)
             .rev()
             .take(2)
-            .any(|p| p as usize + buffer[(p, y)].symbol().width() > x as usize);
+            .any(|p| usize::from(p) + buffer[(p, y)].symbol().width() > usize::from(x));
         if covered {
             continue;
         }
-        let url = current.get(&(x, y)).map(String::as_str).unwrap_or("");
+        let url = current.get(&(x, y)).map_or("", String::as_str);
         write!(writer, "\x1b]8;;{url}\x1b\\")?;
         CrosstermBackend::new(&mut *writer).draw(std::iter::once((x, y, &buffer[(x, y)])))?;
         write!(writer, "\x1b]8;;\x1b\\")?;
@@ -222,6 +226,9 @@ mod tests {
         let tail = input_window(text, text.len(), 10);
         assert!(tail.ends_with("final▏") && tail.width() <= 10);
         assert!(input_window(text, 0, 8).starts_with('▏'));
+        assert_eq!(input_window("🦀 tail", 1, 4), "▏🦀 ");
+        assert_eq!(input_window("🦀 tail", usize::MAX, 5), "tail▏");
+        assert_eq!(input_window(text, usize::MAX, 0), "");
     }
     #[test]
     fn links_wrap_with_metadata_and_clear_without_glyph_changes() {

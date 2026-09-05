@@ -3,13 +3,25 @@ use chrono::NaiveDate;
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{ops::Range, sync::LazyLock};
+use std::{fmt::Write as _, ops::Range, sync::LazyLock};
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "Fixed regex literal; parser regression tests initialize it"
+)]
 static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#([a-zA-Z0-9_-]+)").unwrap());
+#[expect(
+    clippy::unwrap_used,
+    reason = "Fixed regex literal; parser regression tests initialize it"
+)]
 static PRIORITY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!p(\d+)").unwrap());
+#[expect(
+    clippy::unwrap_used,
+    reason = "Fixed regex literal; parser regression tests initialize it"
+)]
 static DUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@due\((\d{4}-\d{2}-\d{2})\)").unwrap());
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct Metadata {
     pub read_only: Option<bool>,
@@ -18,7 +30,7 @@ pub struct Metadata {
     pub filter_done: Option<bool>,
     pub word_wrap: Option<bool>,
 }
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct Task {
     pub index: usize,
     pub text: String,
@@ -35,7 +47,7 @@ pub struct Task {
     #[serde(skip)]
     pub paragraph: Range<usize>,
 }
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct Heading {
     pub level: usize,
     pub text: String,
@@ -119,18 +131,25 @@ fn metadata(text: &str) -> (Vec<String>, i64, Option<String>) {
     (tags, priority, due)
 }
 impl Document {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Keep the complete parser/action dispatch and its state transitions together"
+    )]
     pub fn parse(source: String) -> Result<Self, String> {
         let body = body_offset(&source);
         let meta = if body > 0 {
-            let start = source.find('\n').unwrap() + 1;
-            let end = source[..body].trim_end().rfind("---").unwrap();
+            let start = source.find('\n').ok_or("invalid frontmatter opening")? + 1;
+            let end = source[..body]
+                .trim_end()
+                .rfind("---")
+                .ok_or("invalid frontmatter closing")?;
             // Unknown frontmatter keys belong to the document and remain untouched.
             serde_yaml_ng::from_str::<Metadata>(&source[start..end]).unwrap_or_default()
         } else {
             Metadata::default()
         };
         let mut doc = Self {
-            source: source.clone(),
+            source: String::new(),
             tasks: vec![],
             headings: vec![],
             metadata: meta,
@@ -226,7 +245,14 @@ impl Document {
                         raw.lines().next().unwrap_or("").trim().to_owned()
                     };
                     doc.headings.push(Heading {
-                        level: *level as usize,
+                        level: match level {
+                            pulldown_cmark::HeadingLevel::H1 => 1,
+                            pulldown_cmark::HeadingLevel::H2 => 2,
+                            pulldown_cmark::HeadingLevel::H3 => 3,
+                            pulldown_cmark::HeadingLevel::H4 => 4,
+                            pulldown_cmark::HeadingLevel::H5 => 5,
+                            pulldown_cmark::HeadingLevel::H6 => 6,
+                        },
                         text,
                         before_todo_index: doc.tasks.len(),
                         range: start..range.end,
@@ -256,7 +282,7 @@ impl Document {
                         item,
                         paragraph: paragraph
                             .clone()
-                            .unwrap_or(range.start..line_end(&source, range.end)),
+                            .unwrap_or_else(|| range.start..line_end(&source, range.end)),
                     });
                 }
                 Event::Start(Tag::CodeBlock(_)) => {
@@ -296,7 +322,7 @@ impl Document {
                         ..
                     }) => {
                         if skip_inline == 0 {
-                            let raw = &source[range.clone()];
+                            let raw = &source[range];
                             if matches!(
                                 link_type,
                                 pulldown_cmark::LinkType::Autolink
@@ -312,15 +338,15 @@ impl Document {
                                 let mut depth = 0;
                                 for e in Parser::new_ext(label, Options::ENABLE_STRIKETHROUGH) {
                                     match e {
-                                        Event::Start(Tag::Paragraph) => {}
-                                        Event::End(TagEnd::Paragraph) => {}
+                                        Event::Start(Tag::Paragraph)
+                                        | Event::End(TagEnd::Paragraph) => {}
                                         Event::Start(_) => depth += 1,
                                         Event::End(_) => depth -= 1,
                                         Event::Text(t) if depth == 0 => direct.push_str(&t),
                                         _ => {}
                                     }
                                 }
-                                text.push_str(&format!("[{direct}]({dest_url})"));
+                                let _ = write!(text, "[{direct}]({dest_url})");
                             }
                         }
                         skip_inline += 1;
@@ -356,10 +382,11 @@ impl Document {
             task.text = task.text.trim().into();
             (task.tags, task.priority, task.due_date) = metadata(&task.text);
         }
+        doc.source = source;
         Ok(doc)
     }
-    pub fn query(&self) -> Result<&[Task], String> {
-        Ok(&self.tasks)
+    pub fn query(&self) -> &[Task] {
+        &self.tasks
     }
     pub fn section_end(&self, index: usize) -> usize {
         self.headings
@@ -396,7 +423,7 @@ impl Document {
         self.tasks
             .get(usize::try_from(index).map_err(|_| "invalid task index")?)
             .map(|t| &self.items[t.item])
-            .ok_or("invalid task index".into())
+            .ok_or_else(|| "invalid task index".into())
     }
     fn insert_text(
         &self,
@@ -415,10 +442,11 @@ impl Document {
             lines.next().unwrap_or("")
         );
         for line in lines {
-            addition.push_str(&format!(
+            let _ = write!(
+                addition,
                 "{prefix}{}{line}{nl}",
                 " ".repeat(marker.len() + 1)
-            ));
+            );
         }
         if at > 0 && !self.source[..at].ends_with('\n') {
             addition.insert_str(0, nl);
@@ -492,6 +520,10 @@ impl Document {
         }
         Ok((next, affected))
     }
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Keep action dispatch and its state transitions together"
+    )]
     fn apply_raw(&self, a: &Action) -> Result<(Self, usize), String> {
         let index = usize::try_from(a.index).unwrap_or(0);
         if a.text.contains('\0') {
@@ -580,7 +612,7 @@ impl Document {
                                 && line.trim().chars().all(|c| fence.starts_with(c))
                         });
                         if !closed {
-                            doc.source.push_str(&format!("{fence}\n\n"));
+                            let _ = write!(doc.source, "{fence}\n\n");
                         }
                     }
                 }
@@ -615,7 +647,11 @@ impl Document {
             "move" | "move-to-position" => {
                 let item = self.task_item(a.index)?;
                 let target = self.task_item(a.target)?;
-                if target.range.start > item.range.start && target.range.start < item.range.end {
+                // A last descendant can end at the parent's end. Membership is
+                // determined by its start, regardless of the insertion side.
+                if (item.range.start..item.range.end).contains(&target.range.start)
+                    && target.range.start != item.range.start
+                {
                     return Err("cannot move a task into its own subtree".into());
                 }
                 if a.index == a.target {
@@ -645,7 +681,7 @@ impl Document {
                     .items
                     .iter()
                     .position(|i| *i == self.tasks[index].item)
-                    .unwrap();
+                    .ok_or("task is missing from its parent list")?;
                 if position == 0 {
                     return Err("cannot indent: no previous sibling".into());
                 }
@@ -782,30 +818,31 @@ impl Document {
             }
             let mut tasks: Vec<_> = blocks
                 .iter()
-                .filter(|(i, _)| doc.items[*i].task.is_some())
-                .cloned()
+                .filter_map(|(i, block)| {
+                    doc.items[*i]
+                        .task
+                        .map(|task| (&doc.tasks[task], block.clone()))
+                })
                 .collect();
-            tasks.sort_by_key(|(i, _)| {
-                let t = &doc.tasks[doc.items[*i].task.unwrap()];
-                match kind {
-                    "sort-done" => (t.checked as i64, String::new()),
-                    "sort-priority" => (
-                        if t.priority == 0 {
-                            i64::MAX
-                        } else {
-                            t.priority
-                        },
-                        String::new(),
-                    ),
-                    _ => (0, t.due_date.clone().unwrap_or("9999-99-99".into())),
-                }
+            tasks.sort_by_key(|(t, _)| match kind {
+                "sort-done" => (i64::from(t.checked), String::new()),
+                "sort-priority" => (
+                    if t.priority == 0 {
+                        i64::MAX
+                    } else {
+                        t.priority
+                    },
+                    String::new(),
+                ),
+                _ => (0, t.due_date.clone().unwrap_or_else(|| "9999-99-99".into())),
             });
-            let mut sorted = tasks.into_iter();
             let mut out = doc.source[list.range.clone()].to_owned();
-            for (i, block) in blocks.iter_mut() {
-                if doc.items[*i].task.is_some() {
-                    *block = sorted.next().unwrap().1;
-                }
+            for ((_, block), (_, replacement)) in blocks
+                .iter_mut()
+                .filter(|(i, _)| doc.items[*i].task.is_some())
+                .zip(tasks)
+            {
+                *block = replacement;
             }
             for (i, block) in blocks.into_iter().rev() {
                 let r = &doc.items[i].range;
@@ -897,6 +934,29 @@ mod tests {
             })
             .is_err()
         );
+    }
+    #[test]
+    fn moving_after_last_descendant_rejects_equal_end_boundary() {
+        let source = "- [ ] parent\n  - [ ] last child\n";
+        let doc = Document::parse(source.into()).unwrap();
+        assert_eq!(
+            doc.items[doc.tasks[0].item].range.end,
+            doc.items[doc.tasks[1].item].range.end
+        );
+        for kind in ["move", "move-to-position"] {
+            let action = Action {
+                kind: kind.into(),
+                index: 0,
+                target: 1,
+                insert_after: true,
+                ..Action::default()
+            };
+            assert_eq!(
+                doc.apply(&action).err().as_deref(),
+                Some("cannot move a task into its own subtree")
+            );
+        }
+        assert_eq!(doc.source, source);
     }
     #[test]
     fn sort_keeps_subtrees_prose_and_metadata() {

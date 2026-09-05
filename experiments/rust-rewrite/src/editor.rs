@@ -89,7 +89,6 @@ impl Editor {
             return Err("read-only: restore is disabled".into());
         }
         let next = Document::parse(self.store.version(id)?)?;
-        next.query()?;
         let saved = self.store.save(&next.source);
         if let Err(error) = &saved
             && !error.committed
@@ -152,7 +151,7 @@ mod tests {
         }
         assert_eq!(editor.past.len(), 1);
         editor.undo().unwrap();
-        assert!(editor.doc.tasks.is_empty());
+        assert_eq!(editor.doc.tasks, Vec::<crate::document::Task>::new());
     }
 }
 

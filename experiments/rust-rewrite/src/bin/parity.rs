@@ -52,9 +52,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
-fn main() {
+fn main() -> std::process::ExitCode {
     if let Err(e) = run() {
         eprintln!("{e}");
-        std::process::exit(1);
+        return std::process::ExitCode::FAILURE;
     }
+    std::process::ExitCode::SUCCESS
 }

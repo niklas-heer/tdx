@@ -33,6 +33,14 @@ struct Args {
     status: String,
     tags: Vec<String>,
 }
+#[expect(
+    clippy::too_many_lines,
+    reason = "CLI dispatch mirrors the Go command contract in one place"
+)]
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "Match Go positional .md argument detection; --file accepts any extension"
+)]
 fn parse_args(args: Vec<String>, config: &Config) -> Result<Args, String> {
     let mut parsed = Args {
         file: config.defaults.file.clone().into(),
@@ -170,6 +178,10 @@ fn version() -> String {
         })
         .unwrap_or_else(|| env!("CARGO_PKG_VERSION").into())
 }
+#[expect(
+    clippy::too_many_lines,
+    reason = "CLI dispatch mirrors the Go command contract in one place"
+)]
 fn run() -> Result<(), String> {
     let config = Config::load();
     let mut args = parse_args(env::args().skip(1).collect(), &config)?;
@@ -227,12 +239,13 @@ fn run() -> Result<(), String> {
             } else {
                 positive(&args.values[0])?
             };
-            args.file = recent
-                .files
-                .get(index)
-                .ok_or("no matching recent file")?
-                .path
-                .clone();
+            args.file.clone_from(
+                &recent
+                    .files
+                    .get(index)
+                    .ok_or("no matching recent file")?
+                    .path,
+            );
             args.command.clear();
             args.values.clear();
         }
@@ -280,7 +293,7 @@ fn run() -> Result<(), String> {
         "list" => {
             let rows: Vec<_> = editor
                 .doc
-                .query()?
+                .query()
                 .iter()
                 .filter(|t| {
                     (args.status != "open" || !t.checked)
@@ -343,15 +356,15 @@ fn run() -> Result<(), String> {
             match op {
                 "add" => println!("✓ Added: {text}"),
                 "edit" => println!("✓ Edited: {text}"),
-                "delete" => println!("✓ Deleted: {}", prior.unwrap().text),
+                "delete" => println!("✓ Deleted: {}", prior.ok_or("task no longer exists")?.text),
                 "toggle" => {
-                    let t = prior.unwrap();
+                    let t = prior.ok_or("task no longer exists")?;
                     println!(
                         "✓ Toggled: [{}] {}",
-                        if !t.checked {
-                            &config.display.check_symbol
-                        } else {
+                        if t.checked {
                             " "
+                        } else {
+                            &config.display.check_symbol
                         },
                         t.text
                     );
@@ -375,7 +388,7 @@ fn positive(value: &str) -> Result<usize, String> {
         .ok()
         .filter(|i| *i > 0)
         .map(|i| i - 1)
-        .ok_or("invalid index: use a positive integer".into())
+        .ok_or_else(|| "invalid index: use a positive integer".into())
 }
 fn main() -> ExitCode {
     match run() {

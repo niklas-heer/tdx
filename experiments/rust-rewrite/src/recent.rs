@@ -3,6 +3,7 @@ use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
+    fmt::Write as _,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -40,6 +41,12 @@ impl Recent {
         data.sort();
         Ok(data)
     }
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::as_conversions,
+        clippy::suboptimal_flops,
+        reason = "Preserve Go frecency arithmetic and rounding for the shared recent-file ordering"
+    )]
     pub fn sort(&mut self) {
         let now = Utc::now();
         let score = |f: &RecentFile| {
@@ -78,7 +85,7 @@ impl Recent {
     pub fn record(dir: &Path, limit: usize, path: &Path, cursor: usize) -> Result<(), String> {
         let path = config::resolve(path)?;
         let metadata = fs::metadata(&path).map_err(|e| e.to_string())?;
-        let mut recent = Self::load(dir, limit).unwrap_or(Self {
+        let mut recent = Self::load(dir, limit).unwrap_or_else(|_| Self {
             files: vec![],
             max_recent: limit.max(1),
         });
@@ -92,8 +99,7 @@ impl Recent {
             last_cursor_pos: cursor,
             last_modified: metadata
                 .modified()
-                .map(DateTime::<Utc>::from)
-                .unwrap_or_else(|_| Utc::now()),
+                .map_or_else(|_| Utc::now(), DateTime::<Utc>::from),
         });
         recent.files.retain(|f| f.path.exists());
         recent.sort();
@@ -114,15 +120,16 @@ impl Recent {
                         .map(|p| format!("~/{}", p.display()))
                 })
                 .unwrap_or_else(|| f.path.display().to_string());
-            text.push_str(&format!(
-                "  {}. {} (accessed {} times, last: {})\n",
+            let _ = writeln!(
+                text,
+                "  {}. {} (accessed {} times, last: {})",
                 i + 1,
                 display,
                 f.access_count,
                 f.last_accessed
                     .with_timezone(&Local)
                     .format("%Y-%m-%d %H:%M")
-            ));
+            );
         }
         text.push_str("\nUse 'tdx recent <number>' to open a file\n");
         text

@@ -152,12 +152,11 @@ impl Store {
             .read(&self.target, id)
     }
     pub fn finish(&mut self) -> Result<(), String> {
-        match self.history.take() {
-            Some(history) => history
+        self.history.take().map_or(Ok(()), |history| {
+            history
                 .close()
-                .map_err(|e| format!("history shutdown failed: {e}")),
-            None => Ok(()),
-        }
+                .map_err(|e| format!("history shutdown failed: {e}"))
+        })
     }
     pub fn changed(&self) -> Result<bool, String> {
         Ok(canonical(&self.path)? != self.target || read(&self.target)? != self.baseline)
@@ -167,9 +166,8 @@ impl Store {
         let baseline = read(&target)?;
         let source = baseline.clone().unwrap_or_default();
         // Validate before replacing the revision known by the editor.
-        // Reload is used by the TUI: reject unsupported task queries before
-        // advancing its revision, so a rejected reload cannot authorize stale edits.
-        crate::document::Document::parse(source.clone())?.query()?;
+        // A rejected parse must not advance the revision used by guarded saves.
+        crate::document::Document::parse(source.clone())?;
         if let (Some(history), Some(content)) = (&mut self.history, &baseline) {
             history
                 .capture(&target, content)
@@ -207,7 +205,10 @@ impl Store {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(e.into()),
         };
-        let parent = self.target.parent().unwrap();
+        let parent = self
+            .target
+            .parent()
+            .ok_or_else(|| "target has no parent directory".to_owned())?;
         let mut temp = tempfile::NamedTempFile::new_in(parent)?;
         if let Some(permissions) = permissions {
             temp.as_file().set_permissions(permissions)?;
@@ -231,7 +232,7 @@ impl Store {
                 Err(std::fs::TryLockError::WouldBlock)
                     if started.elapsed() < Duration::from_secs(2) =>
                 {
-                    thread::sleep(Duration::from_millis(10))
+                    thread::sleep(Duration::from_millis(10));
                 }
                 Err(std::fs::TryLockError::WouldBlock) => {
                     return Err("file is busy in another tdx process".to_owned().into());
@@ -290,6 +291,10 @@ fn sync_directory(path: &Path) -> std::io::Result<()> {
 
 // Go's filepath.EvalSymlinks returns ordinary Windows paths. Rust canonicalize
 // uses extended prefixes; normalize identity before history keys and lock hashes.
+#[allow(
+    clippy::missing_const_for_fn,
+    reason = "Windows path normalization allocates and cannot be const"
+)]
 fn normalize_path(path: PathBuf) -> PathBuf {
     #[cfg(windows)]
     {
@@ -323,7 +328,7 @@ mod tests {
         let mut store = Store::with_lock_root(&path, dir.path().join("locks")).unwrap();
         let error = store
             .save_with_hook("- [x] Old\n", false, || {
-                fs::write(&path, "external").unwrap()
+                fs::write(&path, "external").unwrap();
             })
             .unwrap_err();
         assert!(!error.committed);

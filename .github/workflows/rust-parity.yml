@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
-    paths: ['experiments/rust-rewrite/**', 'internal/**', 'cmd/**', '.github/workflows/rust-parity.yml']
+    paths: ['experiments/rust-rewrite/**', 'internal/**', 'cmd/**', 'rust-toolchain.toml', 'mise.toml', 'mise.lock', '.github/workflows/rust-parity.yml']
 permissions:
   contents: read
 jobs:
@@ -29,8 +29,19 @@ jobs:
           python-version: '3.14'
       - name: Install Rust and Windows terminal test adapter
         run: |
-          rustup toolchain install 1.98.1 --profile minimal --component clippy,rustfmt
-          rustup default 1.98.1
+          channel=$(python -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
+          components=$(python -c 'import tomllib; print(",".join(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["components"]))')
+          rustup toolchain install "$channel" --profile minimal --component "$components"
+          version=$(python -c 'import tomllib; print(tomllib.load(open("mise.toml", "rb"))["tasks"]["rust-rewrite:check"]["tools"]["cargo:cargo-nextest"])')
+          case "$RUNNER_OS" in
+            Linux) platform=linux ;;
+            macOS) platform=mac ;;
+            Windows) platform=windows-tar ;;
+          esac
+          curl --fail --location --silent --show-error "https://get.nexte.st/$version/$platform" --output "$RUNNER_TEMP/nextest.tar.gz"
+          mkdir -p "$HOME/.cargo/bin"
+          tar -xzf "$RUNNER_TEMP/nextest.tar.gz" -C "$HOME/.cargo/bin"
+          cargo nextest --version
           if [ "$RUNNER_OS" = Windows ]; then python -m pip install pywinpty==3.0.2; fi
       - name: Native builds and regression tests
         run: |
@@ -38,11 +49,26 @@ jobs:
           go test ./...
           go build -trimpath -o dist/rust-rewrite/tdx-go.exe ./cmd/tdx
           go build -o dist/rust-rewrite/go-parity.exe ./experiments/rust-rewrite/go-parity
-          cargo fmt --manifest-path experiments/rust-rewrite/Cargo.toml --check
-          cargo clippy --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-targets -- -D warnings
-          cargo test --locked --manifest-path experiments/rust-rewrite/Cargo.toml
+          cargo fmt --all --manifest-path experiments/rust-rewrite/Cargo.toml --check
+          cargo check --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-targets --all-features
+          cargo clippy --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-targets --all-features -- -D warnings
+          cargo nextest run --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-targets --all-features --profile ci
+          RUSTDOCFLAGS='-D warnings' cargo doc --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-features --no-deps --document-private-items
           python -m unittest discover -s experiments/rust-rewrite -p 'test_*.py'
           cargo build --release --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bins
+      - name: Stable compatibility and interpreted core tests
+        if: runner.os == 'Linux'
+        run: |
+          stable=$(python -c 'import tomllib; print(tomllib.load(open("experiments/rust-rewrite/Cargo.toml", "rb"))["package"]["rust-version"])')
+          rustup toolchain install "$stable" --profile minimal
+          rustup run "$stable" cargo check --locked --all-targets --all-features --manifest-path experiments/rust-rewrite/Cargo.toml
+          rustup run "$stable" cargo test --locked --all-features --manifest-path experiments/rust-rewrite/Cargo.toml
+          cargo miri setup
+          for group in actions::tests document::tests input::tests console_input::tests presentation::tests; do
+            filters=()
+            if [ "$group" = input::tests ]; then filters=(--skip console_input::tests); fi
+            MIRIFLAGS='-Zmiri-strict-provenance' cargo miri test --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bin tdx-rust "$group" -- "${filters[@]}"
+          done
       - name: Full executable parity and native terminal
         env:
           PYTHONUTF8: '1'
@@ -55,4 +81,6 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: rust-parity-${{ matrix.os }}
-          path: dist/rust-rewrite/native
+          path: |
+            dist/rust-rewrite/native
+            experiments/rust-rewrite/target/nextest/ci/junit.xml

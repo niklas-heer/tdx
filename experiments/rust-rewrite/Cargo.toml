@@ -2,6 +2,7 @@
 name = "tdx-rust"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.98.1"
 publish = false
 default-run = "tdx-rust"
 
@@ -29,6 +30,24 @@ similar = { version = "=2.7.0", features = ["inline"] }
 lto = "thin"
 codegen-units = 1
 strip = true
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+unreachable = "deny"
+unimplemented = "deny"
+unchecked_time_subtraction = "deny"
+todo = "deny"
+panic_in_result_fn = "deny"
+panic = "deny"
+exit = "deny"
+as_conversions = "deny"
+undocumented_unsafe_blocks = "deny"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }

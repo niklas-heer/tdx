@@ -1,11 +1,19 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 #[derive(Default, Clone, Debug)]
 pub struct Buffer {
-    pub text: String,
-    pub cursor: usize,
+    // Only the editing methods can change these together, so every cursor is
+    // an in-bounds UTF-8 boundary. Callers receive read-only views.
+    text: String,
+    cursor: usize,
 }
 impl Buffer {
-    pub fn new(text: String) -> Self {
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+    pub const fn cursor(&self) -> usize {
+        self.cursor
+    }
+    pub const fn new(text: String) -> Self {
         let cursor = text.len();
         Self { text, cursor }
     }
@@ -20,13 +28,13 @@ impl Buffer {
                 self.cursor = self.text[..self.cursor]
                     .char_indices()
                     .last()
-                    .map_or(0, |(i, _)| i)
+                    .map_or(0, |(i, _)| i);
             }
             KeyCode::Right => {
                 self.cursor += self.text[self.cursor..]
                     .chars()
                     .next()
-                    .map_or(0, char::len_utf8)
+                    .map_or(0, char::len_utf8);
             }
             KeyCode::Home => self.cursor = 0,
             KeyCode::End => self.cursor = self.text.len(),
@@ -48,7 +56,7 @@ impl Buffer {
             }
             KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => self.cursor = 0,
             KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.cursor = self.text.len()
+                self.cursor = self.text.len();
             }
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.text.clear();
@@ -62,7 +70,7 @@ impl Buffer {
                     KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
                 ) =>
             {
-                self.insert(&c.to_string())
+                self.insert(&c.to_string());
             }
             _ => return false,
         }
@@ -121,5 +129,31 @@ mod tests {
         b.insert("🦀\nignored");
         assert_eq!(b.text, "caf🦀Z");
         assert!(b.text.is_char_boundary(b.cursor));
+    }
+
+    #[test]
+    fn mixed_unicode_edit_sequences_preserve_cursor_invariants() {
+        let mut buffer = Buffer::new("café 🦀 界 e\u{301}".into());
+        let keys = [
+            KeyCode::Left,
+            KeyCode::Right,
+            KeyCode::Home,
+            KeyCode::End,
+            KeyCode::Backspace,
+            KeyCode::Delete,
+            KeyCode::Char('界'),
+            KeyCode::Char('🦀'),
+        ];
+        let mut seed = 17_u64;
+        for step in 0..256 {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            let index = usize::try_from(seed % 8).unwrap();
+            buffer.key(KeyEvent::new(keys[index], KeyModifiers::NONE));
+            if step % 11 == 0 {
+                buffer.insert("é\nignored");
+            }
+            assert!(buffer.text().is_char_boundary(buffer.cursor()));
+            assert!(!buffer.text().contains('\n'));
+        }
     }
 }

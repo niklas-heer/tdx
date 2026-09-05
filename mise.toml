@@ -2,11 +2,12 @@
 shell = "bash -e -o pipefail -c"
 
 [tools]
+rust = "nightly-2026-09-05"
 go = "1.27.1"
 
 [tasks.setup]
 description = "Install project tools and download Go modules"
-run = ["mise install --include-task-tools", "go mod download"]
+run = ["mise install --include-task-tools", "rustup show active-toolchain", "go mod download"]
 
 [tasks.build]
 description = "Build tdx with version metadata"
@@ -207,23 +208,57 @@ run = "bash scripts/test_release_notes.sh"
 
 [tasks.rust-rewrite]
 description = "Run the experimental Rust CLI/TUI (isolated from production Go)"
-tools.rust = "1.98.1"
+tools.rust = "nightly-2026-09-05"
 run = 'CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo run --release --locked --manifest-path experiments/rust-rewrite/Cargo.toml -- "$@"'
 
 [tasks."rust-rewrite:check"]
-description = "Check Rust rewrite formatting, lint and application/save regressions"
-tools.rust = "1.98.1"
+description = "Check all Rust targets/features, strict Clippy, nextest, docs and harness regressions"
+tools.rust = "nightly-2026-09-05"
 tools.python = "3.14.7"
+tools."cargo:cargo-nextest" = "0.9.143"
 run = """
-cargo fmt --manifest-path experiments/rust-rewrite/Cargo.toml --check
-CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo clippy --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-targets -- -D warnings
-CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo test --locked --manifest-path experiments/rust-rewrite/Cargo.toml
+export CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target"
+cargo fmt --all --manifest-path experiments/rust-rewrite/Cargo.toml --check
+cargo check --locked --all-targets --all-features --manifest-path experiments/rust-rewrite/Cargo.toml
+cargo clippy --locked --all-targets --all-features --manifest-path experiments/rust-rewrite/Cargo.toml -- -D warnings
+cargo nextest run --locked --all-targets --all-features --manifest-path experiments/rust-rewrite/Cargo.toml
+RUSTDOCFLAGS='-D warnings' cargo doc --locked --all-features --no-deps --document-private-items --manifest-path experiments/rust-rewrite/Cargo.toml
 python3 -m unittest discover -s experiments/rust-rewrite -p 'test_*.py'
+"""
+
+[tasks."rust-rewrite:stable"]
+description = "Compile and test the rewrite on its supported stable Rust floor"
+tools.rust = "1.98.1"
+run = """
+export CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/stable-target"
+cargo check --locked --all-targets --all-features --manifest-path experiments/rust-rewrite/Cargo.toml
+cargo test --locked --all-features --manifest-path experiments/rust-rewrite/Cargo.toml
+"""
+
+[tasks."rust-rewrite:watch"]
+description = "Continuous Rust checks with Bacon; c/check and t/nextest, without running the application"
+tools.rust = "nightly-2026-09-05"
+tools."cargo:bacon" = "3.25.0"
+tools."cargo:cargo-nextest" = "0.9.143"
+run = 'CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" bacon experiments/rust-rewrite "$@"'
+
+[tasks."rust-rewrite:miri"]
+description = "Interpret pure document, input, console decoder and presentation tests with Miri"
+tools.rust = "nightly-2026-09-05"
+run = """
+export CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/miri-target"
+export MIRIFLAGS='-Zmiri-strict-provenance'
+cargo miri setup
+for group in actions::tests document::tests input::tests console_input::tests presentation::tests; do
+  filters=()
+  if [ "$group" = input::tests ]; then filters=(--skip console_input::tests); fi
+  cargo miri test --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bin tdx-rust "$group" -- "${filters[@]}"
+done
 """
 
 [tasks."rust-rewrite:contracts"]
 description = "Compare Go/Rust CLI, replay, history interoperability and real-terminal recovery contracts"
-tools.rust = "1.98.1"
+tools.rust = "nightly-2026-09-05"
 tools.python = "3.14.7"
 run = """
 go build -trimpath -ldflags='-s -w' -o dist/rust-rewrite/tdx-go ./cmd/tdx
@@ -238,13 +273,13 @@ python3 experiments/rust-rewrite/contracts.py
 
 [tasks."rust-rewrite:eval"]
 description = "Measure correctness-gated Rust CLI/TUI rewrite comparison, including fresh builds"
-tools.rust = "1.98.1"
+tools.rust = "nightly-2026-09-05"
 tools.python = "3.14.7"
 run = 'python3 experiments/rust-rewrite/evaluate.py "$@"'
 
 [tasks."rust-rewrite:gallery"]
 description = "Export actual Ratatui screen buffers as a visual review gallery"
-tools.rust = "1.98.1"
+tools.rust = "nightly-2026-09-05"
 tools.python = "3.14.7"
 run = """
 TDX_GALLERY_DIR="$PWD/dist/rust-rewrite/gallery" CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo test --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bin tdx-rust tui::tests::export_ratatui_gallery -- --ignored --exact

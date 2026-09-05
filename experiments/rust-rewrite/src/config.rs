@@ -31,6 +31,10 @@ pub struct Display {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Independent settings and mode state match the documented Go controls"
+)]
 pub struct Defaults {
     pub file: String,
     pub max_visible: isize,
@@ -95,7 +99,7 @@ pub fn directory() -> Result<PathBuf, String> {
         .map(PathBuf::from)
         .or_else(|| home().map(|p| p.join(".config")))
         .map(|p| p.join("tdx"))
-        .ok_or("cannot locate configuration directory".into())
+        .ok_or_else(|| "cannot locate configuration directory".into())
 }
 pub fn resolve(path: &Path) -> Result<PathBuf, String> {
     let path = if let Some(tail) = path.to_str().and_then(|s| s.strip_prefix("~/")) {
@@ -154,6 +158,10 @@ pub struct Overrides {
     pub max_visible: Option<isize>,
 }
 #[derive(Clone, Debug, Serialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Independent settings and mode state match the documented Go controls"
+)]
 pub struct Settings {
     pub read_only: bool,
     pub show_headings: bool,
@@ -167,11 +175,13 @@ impl Settings {
             read_only: flags.read_only || meta.read_only.unwrap_or(config.defaults.read_only),
             show_headings: flags.show_headings
                 || meta.show_headings.unwrap_or(config.defaults.show_headings),
-            max_visible: flags
-                .max_visible
-                .or(meta.max_visible)
-                .unwrap_or(config.defaults.max_visible)
-                .max(0) as usize,
+            max_visible: usize::try_from(
+                flags
+                    .max_visible
+                    .or(meta.max_visible)
+                    .unwrap_or(config.defaults.max_visible),
+            )
+            .unwrap_or(0),
             word_wrap: meta.word_wrap.unwrap_or(config.defaults.word_wrap),
             filter_done: meta.filter_done.unwrap_or(config.defaults.filter_done),
         }
@@ -218,7 +228,7 @@ pub fn save_theme_at(directory: &Path, name: &str) -> Result<(), String> {
     let mut value = match fs::read_to_string(&path) {
         Ok(s) => toml::from_str::<toml::Value>(&s).map_err(|e| e.to_string())?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            toml::Value::Table(Default::default())
+            toml::Value::Table(toml::map::Map::default())
         }
         Err(e) => return Err(e.to_string()),
     };
@@ -227,7 +237,7 @@ pub fn save_theme_at(directory: &Path, name: &str) -> Result<(), String> {
         .ok_or("configuration must be a table")?;
     let theme = table
         .entry("theme")
-        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::default()))
         .as_table_mut()
         .ok_or("theme must be a table")?;
     theme.insert("name".into(), toml::Value::String(name.into()));

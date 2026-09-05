@@ -1,7 +1,15 @@
 //! Windows console input, with independent key-down UTF-16 decoding.
 //! Crossterm 0.29 combines down/up surrogate records, losing non-BMP input
-//! when ConPTY emits high-down, high-up, low-down, low-up.
+//! when `ConPTY` emits high-down, high-up, low-down, low-up.
+#![deny(clippy::as_conversions)]
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+fn wait_millis(timeout: std::time::Duration) -> u32 {
+    // DWORD::MAX means INFINITE to WaitForSingleObject, not a long finite wait.
+    u32::try_from(timeout.as_millis())
+        .unwrap_or(u32::MAX - 1)
+        .min(u32::MAX - 1)
+}
 
 #[derive(Default)]
 pub struct Decoder {
@@ -43,7 +51,7 @@ impl Decoder {
             0x28 => KeyCode::Down,
             0x2d => KeyCode::Insert,
             0x2e => KeyCode::Delete,
-            0x70..=0x87 => KeyCode::F((virtual_key - 0x6f) as u8),
+            0x70..=0x87 => KeyCode::F(u8::try_from(virtual_key - 0x6f).ok()?),
             _ => {
                 let ch = match unit {
                     0xd800..=0xdbff => {
@@ -88,8 +96,9 @@ impl Input {
                 paste.push(ch);
                 if paste.ends_with("\x1b[201~") {
                     paste.truncate(paste.len() - 6);
-                    self.pending
-                        .push_back(Event::Paste(self.paste.take().unwrap()));
+                    if let Some(paste) = self.paste.take() {
+                        self.pending.push_back(Event::Paste(paste));
+                    }
                 }
             }
         } else if !self.escape.is_empty() || key.code == KeyCode::Esc {
@@ -146,7 +155,14 @@ impl Reader {
         if let Some(event) = self.input.pending.pop_front() {
             return Ok(Some(event));
         }
-        let deadline = std::time::Instant::now() + timeout;
+        let deadline = std::time::Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "console timeout exceeds clock range",
+                )
+            })?;
         // SAFETY: STD_INPUT_HANDLE is a documented pseudo-handle selector. The
         // borrowed handle is neither retained beyond this call nor closed.
         let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
@@ -156,9 +172,7 @@ impl Reader {
         loop {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             // SAFETY: handle is the live console input handle; timeout is bounded.
-            match unsafe {
-                WaitForSingleObject(handle, remaining.as_millis().min(u32::MAX as u128) as u32)
-            } {
+            match unsafe { WaitForSingleObject(handle, wait_millis(remaining)) } {
                 WAIT_TIMEOUT => {
                     self.input.flush_escape();
                     return Ok(self.input.pending.pop_front());
@@ -213,6 +227,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn finite_wait_never_becomes_windows_infinite_sentinel() {
+        use std::time::Duration;
+        assert_eq!(wait_millis(Duration::ZERO), 0);
+        assert_eq!(wait_millis(Duration::from_millis(50)), 50);
+        assert_eq!(
+            wait_millis(Duration::from_millis(u64::from(u32::MAX))),
+            u32::MAX - 1
+        );
+        assert_eq!(wait_millis(Duration::MAX), u32::MAX - 1);
+    }
+
+    #[test]
     fn bracketed_paste_is_one_event_and_escape_still_cancels() {
         let mut input = Input::default();
         for ch in "\x1b[200~café 🦀\nsecond line\x1b[201~".chars() {
@@ -243,7 +269,7 @@ mod tests {
         assert!(d.key(false, 0, 0xdd80, 0).is_none());
         assert!(d.key(true, 0, 0xd83e, 0).is_none());
         assert_eq!(
-            d.key(true, 0, b'a' as u16, 0).unwrap().code,
+            d.key(true, 0, u16::from(b'a'), 0).unwrap().code,
             KeyCode::Char('a')
         );
         assert!(d.key(true, 0, 0xdd80, 0).is_none());
@@ -252,10 +278,7 @@ mod tests {
     #[test]
     fn translated_text_controls_navigation_and_altgr() {
         let mut d = Decoder::default();
-        assert_eq!(
-            d.key(true, 0, 'é' as u16, 0).unwrap().code,
-            KeyCode::Char('é')
-        );
+        assert_eq!(d.key(true, 0, 0x00e9, 0).unwrap().code, KeyCode::Char('é'));
         assert_eq!(
             d.key(true, 0x44, 4, 8),
             Some(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL))
@@ -263,7 +286,7 @@ mod tests {
         assert_eq!(d.key(true, 9, 9, 0x10).unwrap().code, KeyCode::BackTab);
         assert_eq!(d.key(true, 0x25, 0, 0).unwrap().code, KeyCode::Left);
         assert_eq!(
-            d.key(true, 0x51, '@' as u16, 9),
+            d.key(true, 0x51, u16::from(b'@'), 9),
             Some(KeyEvent::new(KeyCode::Char('@'), KeyModifiers::empty()))
         );
     }

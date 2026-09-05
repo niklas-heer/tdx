@@ -10,7 +10,7 @@ def fingerprint():
                        + list((ROOT / 'internal').rglob('*.go')) + list(experiment.glob('*.py'))
                        + list((experiment / 'src').rglob('*.rs')) + list((experiment / 'go-history').glob('*.go'))
                        + list((experiment / 'go-parity').glob('*.go'))
-                       + [experiment / 'Cargo.toml', experiment / 'Cargo.lock', ROOT / 'go.mod', ROOT / 'go.sum',
+                       + [experiment / 'Cargo.toml', experiment / 'Cargo.lock', experiment / 'clippy.toml', experiment / 'bacon.toml', experiment / '.config/nextest.toml', ROOT / 'rust-toolchain.toml', ROOT / 'mise.toml', ROOT / 'mise.lock', ROOT / '.github/workflows/rust-parity.yml', ROOT / 'go.mod', ROOT / 'go.sum',
                           ROOT / 'tdx.toml', ROOT / 'scripts/usage-pty.py', ROOT / 'experiments/rust-eval/fixtures.json']))
     # Checkout line-ending conversion must not give identical source different identities.
     return {'sha256': hashlib.sha256(b''.join(p.relative_to(ROOT).as_posix().encode() + b'\0' + p.read_bytes().replace(b'\r\n', b'\n') for p in paths)).hexdigest(),
