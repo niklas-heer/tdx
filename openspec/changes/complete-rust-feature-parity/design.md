@@ -1,0 +1,8 @@
+## Decisions
+Keep Rust standalone: no Go subprocess, FFI or delegated Go implementation in the runtime. Use Go only as a test oracle. Share the existing themes at compile time and use the same on-disk configuration, recent-file and version-history schemas. Build parity around the documented current Go application at the starting revision, with explicit bug corrections where source, tests and documentation disagree.
+
+Extend the source-offset Markdown model to structured task/list/heading edits while retaining untouched source. Compare parsed tasks, heading structure and unrelated content; byte-preservation is mandatory for checkbox-only operations. Parent deletion promotes children, moves preserve subtrees, and editing supports multiline task bodies and inline Markdown. A shared action boundary drives CLI, TUI and development-only test adapters.
+
+Use a deterministic TUI state machine with separate input, filter, section, move, recent, theme, history and conflict modes. All UI actions refer to full-document indexes after filtering. Undo groups input into one edit and cancels without evicting history. Implement configuration precedence, ephemeral checklist editing, explicit save, safe restore, and file switching without carrying per-file settings between files.
+
+Compare equivalent enabled services and release profiles. Gate timing on the full parity matrix, real terminal contracts, deterministic action traces, malformed-input/fault checks and native platform checks. Record remaining unverified platforms honestly; compilation alone cannot prove native behavior. Do not mark this change complete or archive it while a required parity group remains open.
