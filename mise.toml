@@ -213,10 +213,12 @@ run = 'CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo run --release --lo
 [tasks."rust-rewrite:check"]
 description = "Check Rust rewrite formatting, lint and application/save regressions"
 tools.rust = "1.98.1"
+tools.python = "3.14.7"
 run = """
 cargo fmt --manifest-path experiments/rust-rewrite/Cargo.toml --check
 CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo clippy --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-targets -- -D warnings
 CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo test --locked --manifest-path experiments/rust-rewrite/Cargo.toml
+python3 -m unittest discover -s experiments/rust-rewrite -p 'test_*.py'
 """
 
 [tasks."rust-rewrite:contracts"]

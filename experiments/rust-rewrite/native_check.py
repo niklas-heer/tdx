@@ -33,10 +33,16 @@ class WindowsTerminal:
                 except EOFError: break
     def until(self, predicate, label):
         end = time.monotonic() + 15
+        read_error = None
         while time.monotonic() < end:
             self.pump()
-            if predicate(): return
-        raise AssertionError(f'{label}: {self.output[-800:]!r}')
+            try:
+                if predicate(): return
+            except PermissionError as error:
+                # A polling read can overlap Windows atomic replacement. Retry
+                # within the same deadline; persistent access errors still fail.
+                read_error = error
+        raise AssertionError(f'{label}: last read error={read_error!r}; {self.output[-800:]!r}')
     def close(self):
         self.send(b'\x04')
         self.until(lambda: not self.proc.isalive(), 'clean terminal shutdown')

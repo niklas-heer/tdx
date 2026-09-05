@@ -41,6 +41,7 @@ jobs:
           cargo fmt --manifest-path experiments/rust-rewrite/Cargo.toml --check
           cargo clippy --locked --manifest-path experiments/rust-rewrite/Cargo.toml --all-targets -- -D warnings
           cargo test --locked --manifest-path experiments/rust-rewrite/Cargo.toml
+          python -m unittest discover -s experiments/rust-rewrite -p 'test_*.py'
           cargo build --release --locked --manifest-path experiments/rust-rewrite/Cargo.toml --bins
       - name: Full executable parity and native terminal
         env:
