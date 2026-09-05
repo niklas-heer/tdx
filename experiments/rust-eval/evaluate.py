@@ -19,8 +19,8 @@ MANIFEST = EXPERIMENT / "rust-probe" / "Cargo.toml"
 TRIALS = 7
 
 
-def command(args, env=None):
-    return subprocess.check_output(args, cwd=ROOT, env=env, text=True).strip()
+def command(args, env=None, timeout=600):
+    return subprocess.check_output(args, cwd=ROOT, env=env, text=True, timeout=timeout).strip()
 
 
 def build(args, env, label):
@@ -194,12 +194,16 @@ def main():
         print(f"Measured {count} tasks.", flush=True)
     empty = fixture_dir / "empty.md"
     report["startup"] = {name: summarize([invoke(binary, "inspect", empty, 0) for _ in range(9)]) for name, binary in [("go", go), ("rust", rust)]}
+    (OUT / "results.json").write_text(json.dumps(report, indent=2) + "\n")
     profile = ["go", "test", "./internal/editor", "-run=^$", "-bench=BenchmarkDocumentToggle/1000$", "-benchtime=2s", "-benchmem",
                "-cpuprofile=" + str(OUT / "go.cpu"), "-memprofile=" + str(OUT / "go.heap"), "-o", str(OUT / "editor.test")]
     build(profile, os.environ.copy(), "go-profile")
     for mode, profile_path, flags in [("cpu", "go.cpu", []), ("alloc", "go.heap", ["-alloc_space"])]:
         (OUT / f"go-{mode}-top.txt").write_text(command(["go", "tool", "pprof", "-top", *flags, str(OUT / "editor.test"), str(OUT / profile_path)]) + "\n")
-    report["rust_profile"] = profile_rust(report)
+    try:
+        report["rust_profile"] = profile_rust(report)
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        report["rust_profile"] = {"status": "failed", "reason": str(error)}
     report["limitations"] = ["Parser libraries/architectures differ (Go AST, Rust pull events); ratios are not isolated language effects.",
         "Rust only scans task markers and patches one checkbox; it has no TUI, metadata extraction, undo, history, safe-save, or conflict resolution.",
         "Production Go parses metadata and serializes the entire document; compare its timing as context, not feature-equivalent to a Rust rewrite.",
