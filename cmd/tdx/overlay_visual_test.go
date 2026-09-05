@@ -4,8 +4,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/niklas-heer/tdx/internal/tui"
 )
 
 // TestVisualCommandPalette shows what the command palette looks like
@@ -27,7 +25,7 @@ func TestVisualCommandPalette(t *testing.T) {
 	t.Log("\n=== Command Palette Visual Output ===")
 
 	// Simulate opening command palette
-	output := tui.RunPiped(file, []byte(":"), false)
+	output := testRuntime.RunPiped(file, []byte(":"), false)
 
 	t.Logf("\nOutput:\n%s\n", output)
 
@@ -87,7 +85,7 @@ func TestVisualFilterMode(t *testing.T) {
 	// renders correctly during interactive use.
 
 	// Instead, test that filter functionality works by selecting a tag
-	output := tui.RunPiped(file, []byte("f\r"), false) // f to open filter, enter to select first tag
+	output := testRuntime.RunPiped(file, []byte("f\r"), false) // f to open filter, enter to select first tag
 
 	t.Logf("\nOutput after selecting tag:\n%s\n", output)
 

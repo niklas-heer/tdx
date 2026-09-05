@@ -16,54 +16,27 @@ import (
 	"github.com/niklas-heer/tdx/internal/versioning"
 )
 
-// versionStore is the single shared versioning store for all markdown files.
-var versionStore *versioning.Store
-
-// openVersionStore opens the shared versions.sqlite database and returns an error on failure.
-func openVersionStore(maxVersions int) error {
-	s, err := versioning.Open(maxVersions)
-	if err != nil {
-		return err
+// historyStore adapts a version store to the Markdown persistence boundary.
+func historyStore(versions *versioning.Store) markdown.Store {
+	capture := func(filePath, content string) error {
+		return errors.Join(versions.SaveVersion(filePath, content), versions.Prune(filePath, versions.MaxVersions))
 	}
-	versionStore = s
-	return nil
+	return markdown.Store{OnRead: capture, OnWrite: capture}
 }
 
-// closeVersionStore prunes all tracked files then closes the store.
-func closeVersionStore() error {
-	pruneErr := versionStore.PruneAll(versionStore.MaxVersions)
-	return errors.Join(pruneErr, versionStore.Close())
-}
-
-// registerVersioningHooks wires the single shared store into the markdown package hooks.
-func registerVersioningHooks() {
-	markdown.WriteHook = func(filePath, content string) error {
-		saveErr := versionStore.SaveVersion(filePath, content)
-		pruneErr := versionStore.Prune(filePath, versionStore.MaxVersions)
-		return errors.Join(saveErr, pruneErr)
-	}
-	markdown.ReadHook = func(filePath, content string) error {
-		saveErr := versionStore.SaveVersion(filePath, content)
-		pruneErr := versionStore.Prune(filePath, versionStore.MaxVersions)
-		return errors.Join(saveErr, pruneErr)
-	}
-}
-
-func wireVersioningTUI() {
-	tui.Config.ListVersionsFunc = func(filePath string) ([]tui.VersionInfo, error) {
-		versions, err := versionStore.ListVersions(filePath)
+func wireVersioningTUI(cfg *tui.ConfigType, versions *versioning.Store) {
+	cfg.ListVersionsFunc = func(filePath string) ([]tui.VersionInfo, error) {
+		list, err := versions.ListVersions(filePath)
 		if err != nil {
 			return nil, err
 		}
-		out := make([]tui.VersionInfo, len(versions))
-		for i, version := range versions {
-			out[i] = tui.VersionInfo{ID: version.ID, CreatedAt: version.CreatedAt}
+		out := make([]tui.VersionInfo, len(list))
+		for i, v := range list {
+			out[i] = tui.VersionInfo{ID: v.ID, CreatedAt: v.CreatedAt}
 		}
 		return out, nil
 	}
-	tui.Config.ReadVersionFunc = func(filePath string, id int64) (string, error) {
-		return versionStore.ReadVersion(filePath, id)
-	}
+	cfg.ReadVersionFunc = versions.ReadVersion
 }
 
 func commandUsesVersioning(command string, args []string) bool {
@@ -87,25 +60,21 @@ func run() (exitCode int) {
 
 	styles := NewStyles(appConfig)
 
-	// Inject config and styles into packages
-	cmd.GreenStyle = func(s string) string { return styles.Success.Render(s) }
-	cmd.DimStyle = func(s string) string { return styles.Dim.Render(s) }
-	cmd.CheckSymbol = appConfig.Display.CheckSymbol
+	cli := cmd.Service{Out: os.Stdout, GreenStyle: func(s string) string { return styles.Success.Render(s) }, CheckSymbol: appConfig.Display.CheckSymbol}
 
-	// Set recent files config
-	config.MaxRecentFiles = appConfig.Recent.MaxFiles
+	// Assemble this TUI runtime
+	tuiCfg := &tui.ConfigType{}
+	recentDir, _ := config.GetConfigDir()
+	tuiCfg.Recent = config.RecentStore{Dir: recentDir, Limit: appConfig.Recent.MaxFiles}
+	tuiCfg.Display.CheckSymbol = appConfig.Display.CheckSymbol
+	tuiCfg.Display.SelectMarker = appConfig.Display.SelectMarker
+	tuiCfg.Display.MaxVisible = appConfig.Defaults.MaxVisible
+	tuiCfg.Defaults.WordWrap = appConfig.Defaults.WordWrap
+	tuiCfg.Defaults.FilterDone = appConfig.Defaults.FilterDone
+	tuiCfg.Defaults.ShowHeadings = appConfig.Defaults.ShowHeadings
+	tuiCfg.Defaults.ReadOnly = appConfig.Defaults.ReadOnly
 
-	// Setup TUI package globals
-	tui.Config = &tui.ConfigType{}
-	tui.Config.Display.CheckSymbol = appConfig.Display.CheckSymbol
-	tui.Config.Display.SelectMarker = appConfig.Display.SelectMarker
-	tui.Config.Display.MaxVisible = appConfig.Defaults.MaxVisible
-	tui.Config.Defaults.WordWrap = appConfig.Defaults.WordWrap
-	tui.Config.Defaults.FilterDone = appConfig.Defaults.FilterDone
-	tui.Config.Defaults.ShowHeadings = appConfig.Defaults.ShowHeadings
-	tui.Config.Defaults.ReadOnly = appConfig.Defaults.ReadOnly
-
-	tui.StyleFuncs = &tui.StyleFuncsType{
+	tuiStyles := &tui.StyleFuncsType{
 		Magenta:        func(s string) string { return styles.Important.Render(s) },
 		Cyan:           func(s string) string { return styles.Accent.Render(s) },
 		Dim:            func(s string) string { return styles.Dim.Render(s) },
@@ -120,12 +89,11 @@ func run() (exitCode int) {
 		DueSoon:        func(s string) string { return styles.DueSoon.Render(s) },
 		DueFuture:      func(s string) string { return styles.DueFuture.Render(s) },
 	}
-	tui.Version = Version
 
 	// Setup theme picker support
-	tui.AvailableThemes = GetBuiltinThemeNames()
-	tui.CurrentThemeName = appConfig.Theme.Name
-	tui.ThemeApplyFunc = func(themeName string) *tui.StyleFuncsType {
+	tuiCfg.AvailableThemes = GetBuiltinThemeNames()
+	tuiCfg.CurrentThemeName = appConfig.Theme.Name
+	tuiCfg.ThemeApplyFunc = func(themeName string) *tui.StyleFuncsType {
 		colors, ok := GetBuiltinTheme(themeName)
 		if !ok {
 			return nil
@@ -149,8 +117,9 @@ func run() (exitCode int) {
 			DueFuture:      func(s string) string { return newStyles.DueFuture.Render(s) },
 		}
 	}
-	tui.ThemeSaveFunc = SaveTheme
+	tuiCfg.ThemeSaveFunc = SaveTheme
 
+	runtime := tui.Runtime{Config: tuiCfg, Styles: tuiStyles, Version: Version}
 	opts, err := parseArgs(os.Args[1:], appConfig.Defaults)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
@@ -174,18 +143,20 @@ func run() (exitCode int) {
 	filePath = resolveFilePath(filePath)
 
 	if commandUsesVersioning(command, cmdArgs) {
-		if err := openVersionStore(appConfig.Versioning.MaxVersions); err != nil {
+		versions, err := versioning.Open(appConfig.Versioning.MaxVersions)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "tdx: failed to open version store: %v\n", err)
 			return 1
 		}
 		defer func() {
-			if err := closeVersionStore(); err != nil {
+			if err := errors.Join(versions.PruneAll(versions.MaxVersions), versions.Close()); err != nil {
 				fmt.Fprintf(os.Stderr, "tdx: close version store: %v\n", err)
 				exitCode = 1
 			}
 		}()
-		registerVersioningHooks()
-		wireVersioningTUI()
+		cli.Store = historyStore(versions)
+		tuiCfg.Store = cli.Store
+		wireVersioningTUI(tuiCfg, versions)
 	}
 
 	// Handle commands
@@ -208,22 +179,22 @@ func run() (exitCode int) {
 		_, _ = lipgloss.Fprintf(os.Stdout, "Defaults.FilterDone: %v\n", appConfig.Defaults.FilterDone)
 		_, _ = lipgloss.Fprintf(os.Stdout, "Recent.MaxFiles: %d\n", appConfig.Recent.MaxFiles)
 	case "list":
-		if err := cmd.WriteList(os.Stdout, filePath, opts.List); err != nil {
+		if err := cli.WriteList(os.Stdout, filePath, opts.List); err != nil {
 			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
 			return 1
 		}
 	case "add", "toggle", "edit", "delete":
-		if err := cmd.HandleCommand(command, cmdArgs, filePath); err != nil {
+		if err := cli.HandleCommand(command, cmdArgs, filePath); err != nil {
 			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
 			return 1
 		}
 	case "last":
-		handleLastCommand(readOnly, showHeadings, maxVisible)
+		handleLastCommand(runtime, readOnly, showHeadings, maxVisible)
 	case "recent":
-		handleRecentCommand(cmdArgs, readOnly, showHeadings, maxVisible)
+		handleRecentCommand(runtime, cmdArgs, readOnly, showHeadings, maxVisible)
 	case "":
 		// Launch TUI
-		tui.Run(filePath, readOnly, showHeadings, maxVisible)
+		runtime.Run(filePath, readOnly, showHeadings, maxVisible)
 	default:
 		fmt.Fprintf(os.Stderr, "tdx: unknown command: %s (see tdx help)\n", command)
 		return 1
@@ -287,9 +258,9 @@ Errors go to stderr and return a nonzero exit code.`, Description)
 	_, _ = lipgloss.Fprintln(os.Stdout, help)
 }
 
-func handleLastCommand(readOnly bool, showHeadings bool, maxVisible int) {
+func handleLastCommand(runtime tui.Runtime, readOnly bool, showHeadings bool, maxVisible int) {
 	// Load recent files
-	recentFiles, err := config.LoadRecentFiles()
+	recentFiles, err := runtime.Config.Recent.Load()
 	if err != nil {
 		_, _ = lipgloss.Fprintf(os.Stdout, "Error loading recent files: %v\n", err)
 		os.Exit(1)
@@ -303,13 +274,13 @@ func handleLastCommand(readOnly bool, showHeadings bool, maxVisible int) {
 	// Sort by score and open the most recent
 	recentFiles.SortByScore()
 	filePath := recentFiles.Files[0].Path
-	tui.Run(filePath, readOnly, showHeadings, maxVisible)
+	runtime.Run(filePath, readOnly, showHeadings, maxVisible)
 }
 
-func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVisible int) {
+func handleRecentCommand(runtime tui.Runtime, args []string, readOnly bool, showHeadings bool, maxVisible int) {
 	// Handle "clear" subcommand
 	if len(args) > 0 && args[0] == "clear" {
-		if err := config.ClearRecentFiles(); err != nil {
+		if err := runtime.Config.Recent.Clear(); err != nil {
 			_, _ = lipgloss.Fprintf(os.Stdout, "Error clearing recent files: %v\n", err)
 			os.Exit(1)
 		}
@@ -318,7 +289,7 @@ func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVis
 	}
 
 	// Load recent files
-	recentFiles, err := config.LoadRecentFiles()
+	recentFiles, err := runtime.Config.Recent.Load()
 	if err != nil {
 		_, _ = lipgloss.Fprintf(os.Stdout, "Error loading recent files: %v\n", err)
 		os.Exit(1)
@@ -342,7 +313,7 @@ func handleRecentCommand(args []string, readOnly bool, showHeadings bool, maxVis
 
 		// Open the selected file (1-indexed)
 		filePath := recentFiles.Files[index-1].Path
-		tui.Run(filePath, readOnly, showHeadings, maxVisible)
+		runtime.Run(filePath, readOnly, showHeadings, maxVisible)
 		return
 	}
 
