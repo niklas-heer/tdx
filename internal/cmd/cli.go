@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"charm.land/lipgloss/v2"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -17,182 +18,154 @@ var (
 )
 
 // ListTodos lists all todos in a file
-func ListTodos(filePath string) {
-	fm, err := markdown.ReadFile(filePath)
-	if err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if len(fm.Todos) == 0 {
-		_, _ = lipgloss.Fprintln(os.Stdout, "No todos found")
-		return
-	}
-
-	for _, todo := range fm.Todos {
-		checkbox := "[ ]"
-		if todo.Checked {
-			checkbox = "[" + CheckSymbol + "]"
-		}
-		_, _ = lipgloss.Fprintf(os.Stdout, "  %d. %s %s\n", todo.Index, checkbox, todo.Text)
-	}
+func ListTodos(filePath string) error {
+	return WriteList(os.Stdout, filePath, ListOptions{})
 }
 
 // AddTodo adds a new todo to a file
-func AddTodo(filePath string, text string) {
-	// Remove surrounding quotes if present
-	text = strings.Trim(text, "\"")
-
+func AddTodo(filePath string, text string) error {
 	fm, err := markdown.ReadFile(filePath)
 	if err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	fm.AddTodoItem(text, false)
 
 	if err := markdown.WriteFile(filePath, fm); err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
-	_, _ = lipgloss.Fprintf(os.Stdout, "%s Added: %s\n", GreenStyle("✓"), text)
+	_, err = lipgloss.Fprintf(os.Stdout, "%s Added: %s\n", GreenStyle("✓"), text)
+	return err
 }
 
 // ToggleTodo toggles the completion status of a todo
-func ToggleTodo(filePath string, index int) {
+func ToggleTodo(filePath string, index int) error {
 	fm, err := markdown.ReadFile(filePath)
 	if err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	if index < 1 || index > len(fm.Todos) {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: invalid index %d\n", index)
-		os.Exit(1)
+		return fmt.Errorf("invalid index %d", index)
 	}
 
 	todo := fm.Todos[index-1]
 	if err := fm.UpdateTodoItem(index-1, todo.Text, !todo.Checked); err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	if err := markdown.WriteFile(filePath, fm); err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	checkbox := "[ ]"
 	if !todo.Checked {
 		checkbox = "[" + CheckSymbol + "]"
 	}
-	_, _ = lipgloss.Fprintf(os.Stdout, "%s Toggled: %s %s\n", GreenStyle("✓"), checkbox, todo.Text)
+	_, err = lipgloss.Fprintf(os.Stdout, "%s Toggled: %s %s\n", GreenStyle("✓"), checkbox, todo.Text)
+	return err
 }
 
 // EditTodo edits the text of a todo
-func EditTodo(filePath string, index int, text string) {
-	text = strings.Trim(text, "\"")
-
+func EditTodo(filePath string, index int, text string) error {
 	fm, err := markdown.ReadFile(filePath)
 	if err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	if index < 1 || index > len(fm.Todos) {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: invalid index %d\n", index)
-		os.Exit(1)
+		return fmt.Errorf("invalid index %d", index)
 	}
 
 	todo := fm.Todos[index-1]
 	if err := fm.UpdateTodoItem(index-1, text, todo.Checked); err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	if err := markdown.WriteFile(filePath, fm); err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
-	_, _ = lipgloss.Fprintf(os.Stdout, "%s Edited: %s\n", GreenStyle("✓"), text)
+	_, err = lipgloss.Fprintf(os.Stdout, "%s Edited: %s\n", GreenStyle("✓"), text)
+	return err
 }
 
 // DeleteTodo deletes a todo by index
-func DeleteTodo(filePath string, index int) {
+func DeleteTodo(filePath string, index int) error {
 	fm, err := markdown.ReadFile(filePath)
 	if err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	if index < 1 || index > len(fm.Todos) {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: invalid index %d\n", index)
-		os.Exit(1)
+		return fmt.Errorf("invalid index %d", index)
 	}
 
 	todo := fm.Todos[index-1]
 
 	if err := fm.DeleteTodoItem(index - 1); err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	if err := markdown.WriteFile(filePath, fm); err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
-	_, _ = lipgloss.Fprintf(os.Stdout, "%s Deleted: %s\n", GreenStyle("✓"), todo.Text)
+	_, err = lipgloss.Fprintf(os.Stdout, "%s Deleted: %s\n", GreenStyle("✓"), todo.Text)
+	return err
 }
 
-// HandleCommand parses and executes CLI commands
-func HandleCommand(command string, cmdArgs []string, filePath string) {
+// ValidateCommand rejects malformed invocations before opening files or history.
+func ValidateCommand(command string, args []string) error {
 	switch command {
 	case "list":
-		ListTodos(filePath)
+		if len(args) != 0 {
+			return fmt.Errorf("list does not take positional arguments")
+		}
 	case "add":
-		if len(cmdArgs) < 1 {
-			_, _ = lipgloss.Fprintln(os.Stdout, "Error: add requires text argument")
-			os.Exit(1)
+		if len(args) < 1 {
+			return fmt.Errorf("add requires text argument")
 		}
-		AddTodo(filePath, strings.Join(cmdArgs, " "))
-	case "toggle":
-		if len(cmdArgs) < 1 {
-			_, _ = lipgloss.Fprintln(os.Stdout, "Error: toggle requires index argument")
-			os.Exit(1)
+	case "toggle", "delete":
+		if len(args) != 1 {
+			return fmt.Errorf("%s requires exactly one index argument", command)
 		}
-		idx, err := strconv.Atoi(cmdArgs[0])
-		if err != nil {
-			_, _ = lipgloss.Fprintln(os.Stdout, "Error: invalid index")
-			os.Exit(1)
-		}
-		ToggleTodo(filePath, idx)
 	case "edit":
-		if len(cmdArgs) < 2 {
-			_, _ = lipgloss.Fprintln(os.Stdout, "Error: edit requires index and text arguments")
-			os.Exit(1)
+		if len(args) < 2 {
+			return fmt.Errorf("edit requires index and text arguments")
 		}
-		idx, err := strconv.Atoi(cmdArgs[0])
-		if err != nil {
-			_, _ = lipgloss.Fprintln(os.Stdout, "Error: invalid index")
-			os.Exit(1)
-		}
-		EditTodo(filePath, idx, strings.Join(cmdArgs[1:], " "))
-	case "delete":
-		if len(cmdArgs) < 1 {
-			_, _ = lipgloss.Fprintln(os.Stdout, "Error: delete requires index argument")
-			os.Exit(1)
-		}
-		idx, err := strconv.Atoi(cmdArgs[0])
-		if err != nil {
-			_, _ = lipgloss.Fprintln(os.Stdout, "Error: invalid index")
-			os.Exit(1)
-		}
-		DeleteTodo(filePath, idx)
 	default:
-		_, _ = lipgloss.Fprintf(os.Stdout, "Unknown command: %s\n", command)
-		os.Exit(1)
+		return fmt.Errorf("unknown command: %s", command)
 	}
+	if command == "toggle" || command == "delete" || command == "edit" {
+		index, err := strconv.Atoi(args[0])
+		if err != nil || index < 1 {
+			return fmt.Errorf("invalid index: use a positive integer")
+		}
+	}
+	return nil
+}
+
+// HandleCommand returns errors to its caller so deferred cleanup can run.
+func HandleCommand(command string, cmdArgs []string, filePath string) error {
+	if err := ValidateCommand(command, cmdArgs); err != nil {
+		return err
+	}
+	switch command {
+	case "list":
+		return ListTodos(filePath)
+	case "add":
+		return AddTodo(filePath, strings.Join(cmdArgs, " "))
+	case "toggle":
+		idx, _ := strconv.Atoi(cmdArgs[0])
+		return ToggleTodo(filePath, idx)
+	case "edit":
+		idx, _ := strconv.Atoi(cmdArgs[0])
+		return EditTodo(filePath, idx, strings.Join(cmdArgs[1:], " "))
+	case "delete":
+		idx, _ := strconv.Atoi(cmdArgs[0])
+		return DeleteTodo(filePath, idx)
+	}
+	return fmt.Errorf("unknown command: %s", command)
 }
