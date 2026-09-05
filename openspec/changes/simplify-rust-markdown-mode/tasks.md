@@ -1,0 +1,3 @@
+- [ ] Replace preview mode with full-width complete-source editing and update existing checks.
+- [ ] Validate Rust, native editing, compatibility and visual layout; update the guide.
+- [ ] Archive the spec update, commit and publish the branch.
