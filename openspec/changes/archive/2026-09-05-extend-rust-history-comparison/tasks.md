@@ -7,4 +7,4 @@
 - [x] 2.2 Implement version CLI/browser/restore, idle reload and safe parent-label edits.
 - [x] 2.3 Verify interoperability, retention, history faults and actual terminal recovery; attempt Linux checks.
 - [x] 2.4 Run comparable history-enabled benchmarks, retain raw results and update the recommendation.
-- [ ] 2.5 Complete formatting, lint, tests and OpenSpec validation; commit, archive and push the branch.
+- [x] 2.5 Complete formatting, lint, tests and OpenSpec validation; commit, archive and push the branch.
