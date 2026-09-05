@@ -16,3 +16,15 @@ CLI/TUI instances SHALL receive configuration, styles, and history services expl
 #### Scenario: Concurrent independent projects
 - **WHEN** two instances use different styles and history callbacks
 - **THEN** each SHALL produce output and history only through its own dependencies
+
+### Requirement: Preserve task container structure
+Serializing task edits SHALL preserve ordered-list numbering and delimiters, nested-list indentation, and blockquote prefixes on every rendered line.
+#### Scenario: Toggle a nested quoted or numbered task
+- **WHEN** a task inside a blockquote or ordered list is toggled and saved
+- **THEN** reparsing SHALL preserve task count, nesting depths, and untoggled checkbox states
+
+### Requirement: Current query action selection
+Command and search selection SHALL apply any pending query update before executing, completing, or navigating the selection.
+#### Scenario: Enter arrives before the debounce timer
+- **WHEN** a user types a command and immediately presses Enter
+- **THEN** only a command matching the current query SHALL execute, regardless of pending debounce messages
