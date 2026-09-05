@@ -6,7 +6,7 @@ The `tui.ConfigType` SHALL expose two optional function fields that decouple the
 `versioning` package, allowing the version browser to be used without introducing a direct import
 dependency.
 
-- A `tui.VersionInfo` struct SHALL be defined in `internal/tui/model.go`:
+- A `tui.VersionInfo` struct SHALL be defined in `internal/tui/model.go:33`:
   ```go
   type VersionInfo struct {
       ID        int64
@@ -19,7 +19,7 @@ dependency.
   ReadVersionFunc  func(filePath string, id int64) (string, error)
   ```
 - Both fields SHALL default to `nil`. When `nil`, no versioning functionality is active.
-- `cmd/tdx/main.go` SHALL assign these fields after opening the local version store, wrapping
+- `cmd/tdx/main.go:27` SHALL assign these fields after opening the local version store, wrapping
   `versions.ListVersions` and `versions.ReadVersion` with the `tui.VersionInfo` adapter.
 
 #### Scenario: Functions are nil when versioning is unavailable
@@ -30,7 +30,7 @@ dependency.
 
 #### Scenario: Functions are wired at startup when store is open
 
-- **WHEN** the local version store is successfully opened in `cmd/tdx/main.go`
+- **WHEN** the local version store is successfully opened in `cmd/tdx/main.go:27`
 - **THEN** `m.Config().ListVersionsFunc` and `m.Config().ReadVersionFunc` SHALL be non-nil
 - **AND** the `versions` command SHALL appear in the command palette
 

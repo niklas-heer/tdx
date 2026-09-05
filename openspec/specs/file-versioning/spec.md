@@ -53,7 +53,7 @@ tdx in a **single shared** SQLite database located in the tdx config directory (
 - The `Store` SHALL cache the `filePath → file_id` mapping in a `map[string]int64` to avoid
   repeated DB lookups within the same process session.
 - `versioning.DBPath() (string, error)` SHALL return `filepath.Join(getStoreDir(), "versions.sqlite")`.
-- For interactive and file-mutating commands, `cmd/tdx/main.go` SHALL maintain a **single**
+- For interactive and file-mutating commands, `cmd/tdx/main.go:20` SHALL maintain a **single**
   `*versioning.Store` (not a per-file map), opened once before file access with
   `defer store.Close()`.
 
@@ -101,7 +101,7 @@ tdx in a **single shared** SQLite database located in the tdx config directory (
 The system SHALL save a version automatically for every markdown revision successfully committed by the shared safe-save boundary, regardless of whether the write was triggered by the TUI, a CLI command, force-save, or version restore.
 
 - A per-instance `markdown.Store.OnWrite` callback SHALL receive the canonical file path and exact committed content after successful replacement.
-- `cmd/tdx/main.go` SHALL inject the version store's save function into its Markdown store before accessing a markdown file.
+- `cmd/tdx/main.go:20` SHALL inject the version store's save function into its Markdown store before accessing a markdown file.
 - A version-capture failure after replacement SHALL be surfaced as a post-commit failure and SHALL NOT be described as an uncommitted markdown save.
 - An explicit force-save SHALL capture the current disk content before replacement as well as the committed content after replacement.
 
@@ -206,7 +206,7 @@ the oldest rows whenever the limit is exceeded.
 
 - A `[versioning]` section SHALL be added to `config.toml` with a `max_versions` integer key
   (default `100`).
-- The corresponding `VersioningConfig` struct SHALL be added to `UserConfig` in `cmd/tdx/userconfig.go`:
+- The corresponding `VersioningConfig` struct SHALL be added to `UserConfig` in `cmd/tdx/userconfig.go:77`:
 
   ```toml
   [versioning]
@@ -226,7 +226,7 @@ the oldest rows whenever the limit is exceeded.
 
 - When `maxVersions` ≤ 0 the method SHALL be a no-op (unlimited retention).
 - `versioning.Open(maxVersions int) (*Store, error)` SHALL store `maxVersions` on the `Store` struct.
-- Pruning SHALL be performed in `cmd/tdx/main.go`:
+- Pruning SHALL be performed in `cmd/tdx/main.go:20`:
   1. After each `SaveVersion` call in the `OnWrite` and `OnRead` callbacks.
   2. Before `store.Close()` in the deferred shutdown (iterate `store.fileIDCache` for all seen paths).
 - The `maxVersions` value SHALL be read from `appConfig.Versioning.MaxVersions` and passed to
