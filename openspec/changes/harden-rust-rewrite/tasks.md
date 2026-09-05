@@ -1,0 +1,5 @@
+- [ ] Inspect the existing architecture, toolchains, dependencies and test/lint coverage; validate the authorized scope.
+- [ ] Pin nightly and stable compatibility; integrate appropriate developer tools and complete check commands.
+- [ ] Fix lint/audit findings and add focused regressions; enforce production safety restrictions.
+- [ ] Run format, compilation, lint, nextest, doctests, focused Miri, compatibility contracts and native CI.
+- [ ] Record adoption/omission decisions and evidence; archive and publish the completed change.
