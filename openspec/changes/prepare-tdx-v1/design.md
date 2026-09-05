@@ -1,0 +1,7 @@
+## Decisions
+Use a dedicated section browser accessible with `s` and `:sections`, keeping existing task navigation predictable. The browser shows all headings, including empty sections, in document order with indentation. Enter focuses a section and descendants, space folds it, e renames it, n creates a sibling, and N creates a child. A command clears focus and folds. Section identity uses heading indices for the current document revision; reset view state on file reload or structural heading changes to avoid stale references. All mutations use the existing AST and guarded save/history pipeline. Read-only mode permits browsing but rejects section writes.
+
+Mise is the developer entry point; Dagger remains the portable CI/build implementation. Pin tool releases and keep the application and build container Go versions synchronized (Go 1.27.1); Dagger SDK generation requires its isolated module to use Go 1.26.7. Migrate Bubble Tea text input to Text and PasteMsg, and replace the legacy overlay dependency with Lip Gloss v2 layers. Keep inline terminal rendering and existing shortcuts.
+
+## Validation
+Regression tests cover UTF-8 editing through routing, nested/duplicate/empty headings, focus/filter interactions, heading saves and read-only behavior, and preservation of unrelated Markdown. Run full Go tests, race tests, vet, lint, pipeline checks, workflow validation, and release-target builds before integration.
