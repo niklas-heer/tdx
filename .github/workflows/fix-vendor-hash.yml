@@ -3,6 +3,7 @@ name: Update vendorHash
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - "go.mod"
       - "go.sum"
@@ -17,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
 
       - name: Install nix
         uses: DeterminateSystems/nix-installer-action@v22
@@ -29,12 +30,12 @@ jobs:
         id: build
         run: |
           set +e
-          nix build .#tdx 2>&1 | tee build.log
-          BUILD_EXIT=$?
+          nix build .#default 2>&1 | tee build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
           
-          if [ $BUILD_EXIT -eq 0 ]; then
+          if [ "$BUILD_EXIT" -eq 0 ]; then
             echo "✅ Build succeeded, no hash update needed"
-            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
@@ -47,8 +48,8 @@ jobs:
           fi
           
           echo "Extracted hash: $HASH"
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-          echo "needs_update=true" >> $GITHUB_OUTPUT
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "needs_update=true" >> "$GITHUB_OUTPUT"
 
       - name: Update vendorHash in flake.nix
         if: steps.build.outputs.needs_update == 'true'
@@ -58,12 +59,12 @@ jobs:
       - name: Verify build works with new hash
         if: steps.build.outputs.needs_update == 'true'
         run: |
-          nix build .#tdx
+          nix build .#default
           echo "✅ Build successful with updated vendorHash"
 
       - name: Create Pull Request
         if: steps.build.outputs.needs_update == 'true'
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@v8.1.1
         with:
           commit-message: "chore(nix): update vendorHash to ${{ steps.build.outputs.hash }}"
           title: "chore(nix): update vendorHash"

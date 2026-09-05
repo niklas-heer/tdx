@@ -28,6 +28,33 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 - 📂 **Recent Files** - Jump to recently opened files with cursor position restoration
 - 🌍 **Cross-platform** - macOS, Linux, Windows
 
+## Sections and projects
+
+Press **s** to open the section overview. It lists every Markdown heading, including empty sections, with nested headings indented and completion counts beside each project.
+
+| Key in the section overview | Action |
+| --- | --- |
+| ↑ / ↓ or j / k | Select a section |
+| Enter | Focus the section and its subsections |
+| Space | Fold or unfold its tasks |
+| e | Rename the selected heading |
+| n | Create a section after the selected section |
+| N | Create a subsection (up to heading level 6) |
+| a | Show all tasks and clear folds |
+| Esc | Return to the task list |
+
+While focused, **n** adds a task after the selection; in an empty section it creates that section's first task. **N** adds to the focused section's own task list. Press **S** to return to all sections. Tag, priority, due-date, completed-task filters, and search respect the current section. Focus and folds last for the current session and reset when a file is reloaded or headings change. **u** undoes up to 100 edits during the session.
+
+Section editing uses the same guarded saves and version history as task editing. Read-only files support section browsing and focus without permitting heading edits.
+
+### What's new in 1.0
+
+- Manage projects directly through Markdown headings, without opening another editor.
+- Type and paste international text in task, search, command, and recent-file inputs.
+- Use the current Bubble Tea and Lip Gloss v2 terminal renderer and input handling.
+- Use mise for reproducible development tools and tasks. `mise tasks` lists available commands; `mise run check` runs local validation.
+- Installation defaults to `~/.local/bin`; set `TDX_INSTALL_DIR` to choose another directory. Existing todo files and global configuration remain compatible.
+
 ## Installation
 
 ### Homebrew (macOS/Linux)
@@ -54,13 +81,15 @@ Download the latest binary for your platform from [Releases](https://github.com/
 
 ### From Source
 
-Requires Go 1.26.4+ and [Mask](https://github.com/jacobdeichert/mask):
+Requires [mise](https://mise.jdx.dev), which installs the pinned Go toolchain:
 
 ```bash
 git clone https://github.com/niklas-heer/tdx.git
 cd tdx
-mask build
-mask install
+mise trust
+mise install
+mise run build
+mise run install
 ```
 
 ### Nix
@@ -551,7 +580,7 @@ Navigation (visible todo):    8.0ns/op    0 allocs
 ```
 tdx/
 ├── .dagger/             # Portable CI and release pipeline (Go)
-├── maskfile.md          # Documented development tasks
+├── mise.toml          # Documented development tasks
 ├── cmd/tdx/              # Main application
 │   ├── main.go          # Entry point, CLI routing
 │   ├── config.go        # Build-time configuration
@@ -585,40 +614,43 @@ tdx/
 
 ### Prerequisites
 
-- Go 1.26.4+
-- [Mask](https://github.com/jacobdeichert/mask) (command runner)
-- [Dagger 0.21.7](https://docs.dagger.io/install/) and a Docker-compatible container runtime for the portable CI pipeline
+- Go 1.27.1 (installed by mise)
+- [mise](https://mise.jdx.dev) (tool versions and tasks)
+
+After cloning, run `mise trust` and `mise run setup`. Docker is required only for Dagger tasks (`ci` and `release-artifacts`); normal build, test, and lint tasks run locally.
+
+- [Dagger 0.21.9](https://docs.dagger.io/install/) and a Docker-compatible container runtime for the portable CI pipeline
 
 ### Building
 
 ```bash
 # Build binary
-mask build
+mise run build
 
 # Build for all platforms
-mask build-all
+mise run build-all
 
-# Install to /usr/local/bin
-mask install
+# Install to ~/.local/bin
+mise run install
 ```
 
 ### Commands
 
 ```bash
-mask build        # Build binary
-mask build-all    # Build all release targets with Dagger
-mask install      # Install to PATH
-mask tui          # Run TUI
-mask list         # List todos
-mask add "X"      # Add todo
-mask toggle 1     # Toggle todo
-mask check        # Run go vet
-mask fmt          # Format code
-mask ci           # Run the same portable checks used by GitHub CI
-mask ci-lint      # Run the pinned linter through Dagger
-mask ci-test      # Run race-enabled tests through Dagger
-mask ci-workflows # Validate GitHub workflow syntax locally
-mask clean        # Clean artifacts
+mise run build        # Build binary
+mise run build-all    # Build all release targets with Dagger
+mise run install      # Install to ~/.local/bin
+mise run tui          # Run TUI
+mise run list         # List todos
+mise run add "X"      # Add todo
+mise run toggle 1     # Toggle todo
+mise run check        # Run local quality checks
+mise run fmt          # Format code
+mise run ci           # Run the same portable checks used by GitHub CI
+mise run ci-lint      # Run the pinned linter through Dagger
+mise run ci-test      # Run race-enabled tests through Dagger
+mise run ci-workflows # Validate GitHub workflow syntax locally
+mise run clean        # Clean artifacts
 ```
 
 The Dagger pipeline is pinned in `dagger.json` and implements CI in Go. GitHub still runs native macOS and Windows filesystem tests because those platform semantics cannot be reproduced by Linux containers.
@@ -717,3 +749,5 @@ description = "your todos, in markdown, done fast"
 ## License
 
 MIT - see [LICENSE](LICENSE)
+
+The application and build containers use Go 1.27.1. Dagger's SDK module targets Go 1.26.7, the newest toolchain supported by Dagger 0.21.9's generator. Its OpenTelemetry logging packages retain compatibility pins because the current Dagger adapter does not support the newer logging API.

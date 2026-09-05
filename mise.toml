@@ -1,0 +1,145 @@
+[tools]
+go = "1.27.1"
+
+[tasks.setup]
+description = "Install project tools and download Go modules"
+run = ["mise install --include-task-tools", "go mod download"]
+
+[tasks.build]
+description = "Build tdx with version metadata"
+run = "bash scripts/build.sh"
+
+[tasks.install]
+description = "Install tdx to ~/.local/bin (override with TDX_INSTALL_DIR)"
+depends = ["build"]
+run = '''
+install_dir="${TDX_INSTALL_DIR:-$HOME/.local/bin}"
+mkdir -p "$install_dir"
+install -m 755 tdx "$install_dir/tdx"
+printf 'Installed %s/tdx; ensure this directory is on PATH.\n' "$install_dir"
+'''
+
+[tasks.uninstall]
+description = "Remove the user-local tdx installation"
+run = 'rm -f "${TDX_INSTALL_DIR:-$HOME/.local/bin}/tdx"'
+
+[tasks.dev]
+description = "Build and run tdx; arguments follow --"
+alias = ["tui"]
+depends = ["build"]
+run = './tdx "$@"'
+
+[tasks.test]
+description = "Run all application tests"
+run = "go test ./..."
+
+[tasks."test:race"]
+description = "Run tests with the race detector"
+run = "go test -race ./..."
+
+[tasks.fmt]
+description = "Format Go source"
+run = "gofmt -w cmd internal .dagger/main.go .dagger/pipeline"
+
+[tasks."fmt:check"]
+description = "Verify Go formatting"
+run = 'files=$(gofmt -l cmd internal .dagger/main.go .dagger/pipeline); test -z "$files" || { printf "%s\n" "$files"; exit 1; }'
+
+[tasks.vet]
+description = "Run Go static checks"
+run = "go vet ./..."
+
+[tasks.lint]
+description = "Run pinned golangci-lint"
+tools.golangci-lint = "2.13.2"
+run = "golangci-lint run --timeout=5m"
+
+[tasks."ci-workflows"]
+description = "Validate GitHub Actions workflows"
+tools.actionlint = "1.7.12"
+run = "actionlint .github/workflows/*.yml"
+
+[tasks."test:pipeline"]
+description = "Test portable build and release logic"
+dir = ".dagger"
+run = "go test ./pipeline"
+
+[tasks.check]
+description = "Run formatting, vet, lint, tests, and workflow validation"
+run = [{ task = "fmt:check" }, { task = "vet" }, { task = "lint" }, { task = "test" }, { task = "test:pipeline" }, { task = "ci-workflows" }]
+
+[tasks.ci]
+description = "Run full portable CI in Dagger (requires Docker)"
+tools.dagger = "0.21.9"
+run = "dagger call ci --source=."
+
+[tasks."ci-lint"]
+description = "Run portable lint in Dagger"
+tools.dagger = "0.21.9"
+run = "dagger call lint --source=."
+
+[tasks."ci-test"]
+description = "Run portable race tests in Dagger"
+tools.dagger = "0.21.9"
+run = "dagger call test --source=."
+
+[tasks."release-artifacts"]
+description = "Build all five release binaries into dist/"
+alias = ["build-all"]
+tools.dagger = "0.21.9"
+run = "dagger call release-artifacts --source=. export --path=dist --wipe"
+
+[tasks.release]
+description = "Validate and publish the configured release version"
+run = "bash scripts/release.sh"
+
+[tasks.clean]
+description = "Remove local build artifacts"
+run = "rm -f tdx; rm -rf dist"
+
+[tasks.status]
+description = "Show Git worktree status"
+run = "git status --short"
+
+[tasks."update-homebrew"]
+description = "Update the Homebrew formula for a released version"
+run = './scripts/update-homebrew.sh "$@"'
+
+[tasks.help]
+description = "Show tdx CLI help"
+depends = ["build"]
+run = "./tdx help"
+
+[tasks.list]
+description = "List todos in the current directory"
+alias = ["l"]
+depends = ["build"]
+run = './tdx list "$@"'
+
+[tasks.add]
+description = "Add a todo"
+alias = ["a"]
+depends = ["build"]
+run = './tdx add "$@"'
+
+[tasks.toggle]
+description = "Toggle a todo by index"
+alias = ["t"]
+depends = ["build"]
+run = './tdx toggle "$@"'
+
+[tasks.edit]
+description = "Edit a todo by index"
+alias = ["e"]
+depends = ["build"]
+run = './tdx edit "$@"'
+
+[tasks.delete]
+description = "Delete a todo by index"
+alias = ["d"]
+depends = ["build"]
+run = './tdx delete "$@"'
+
+[tasks."show-file"]
+description = "Display todo.md"
+run = "cat todo.md"
