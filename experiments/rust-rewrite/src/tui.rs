@@ -12,7 +12,7 @@ use crate::{
 use chrono::{Local, NaiveDate};
 use crossterm::{
     event::{
-        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
+        DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
         KeyModifiers,
     },
     execute,
@@ -1675,14 +1675,24 @@ pub fn run(editor: &mut Editor, path: &Path, config: Config, flags: Overrides) -
         let _guard = PasteGuard;
         let mut app = App::new(editor, path, config, flags);
         let mut checked = Instant::now();
+        #[cfg(windows)]
+        let mut input = crate::console_input::Reader::default();
         let mut redraw = true;
         loop {
             if redraw {
                 terminal.draw(|f| app.draw(f))?;
             }
             redraw = false;
-            if event::poll(Duration::from_millis(100))? {
-                if app.handle(event::read()?) {
+            #[cfg(windows)]
+            let event = input.next(Duration::from_millis(100))?;
+            #[cfg(not(windows))]
+            let event = if crossterm::event::poll(Duration::from_millis(100))? {
+                Some(crossterm::event::read()?)
+            } else {
+                None
+            };
+            if let Some(event) = event {
+                if app.handle(event) {
                     break;
                 }
                 redraw = true;

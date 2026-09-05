@@ -1,6 +1,8 @@
 mod actions;
 mod clipboard;
 mod config;
+#[cfg(any(windows, test))]
+mod console_input;
 mod document;
 mod editor;
 mod history;

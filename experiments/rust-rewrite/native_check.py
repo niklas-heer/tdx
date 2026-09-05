@@ -73,6 +73,9 @@ def terminal_gate(binaries, output):
                 term.send('e café 🦀\r'.encode())
                 term.until(lambda: 'Alpha café 🦀' in path.read_text(), 'Unicode keyboard edit')
                 term.send(b'u'); term.until(lambda: path.read_bytes() == original, 'Unicode undo')
+                term.send('e \x1b[200~paste 🦀\x1b[201~\r'.encode())
+                term.until(lambda: 'Alpha paste 🦀' in path.read_text(), 'bracketed Unicode paste')
+                term.send(b'u'); term.until(lambda: path.read_bytes() == original, 'paste undo')
                 term.send(b'mj\r')
                 term.until(lambda: path.read_text().index('Beta') < path.read_text().index('Alpha'), 'nested move')
                 term.send(b'u'); term.until(lambda: path.read_bytes() == original, 'nested undo')
@@ -86,7 +89,7 @@ def terminal_gate(binaries, output):
                 term.send(b' ')
                 term.until(lambda: path.read_bytes() == external.replace(b'[ ] External', b'[x] External'), 'reload revision')
                 term.close()
-                results.append({'engine': name, 'resize_unicode_move_undo_conflict_reload_shutdown': 'passed'})
+                results.append({'engine': name, 'resize_unicode_paste_move_undo_conflict_reload_shutdown': 'passed'})
             finally: term.cleanup(output / f'{name}-native.ansi')
     return results
 
