@@ -2,7 +2,9 @@
 
 ## Purpose
 Define the portable Dagger CI pipeline, native platform verification, reproducible release artifacts, GitHub orchestration, and coverage-badge responsibilities.
+
 ## Requirements
+
 ### Requirement: Locally reproducible portable CI
 
 The project SHALL provide a version-pinned Dagger pipeline written in Go that runs the same portable formatting, vet, lint, race-test, coverage, workflow-lint, and build logic locally and in hosted CI.
@@ -10,11 +12,11 @@ The project SHALL provide a version-pinned Dagger pipeline written in Go that ru
 - The Dagger module SHALL be isolated from the application Go module.
 - The Dagger engine, Go toolchain, linter, and workflow linter versions SHALL be pinned.
 - The pipeline SHALL not depend on Dagger Cloud for correctness.
-- A documented `mask ci` command SHALL execute the complete portable pipeline.
+- A documented `mise run ci` command SHALL execute the complete portable pipeline.
 
 #### Scenario: Developer runs CI locally
 
-- **WHEN** a developer with Mask, Dagger, and a compatible container runtime runs `mask ci`
+- **WHEN** a developer with mise, Dagger, and a compatible container runtime runs `mise run ci`
 - **THEN** Dagger SHALL execute all portable checks used by GitHub CI
 - **AND** the command SHALL return a non-zero status if any check fails
 
@@ -90,3 +92,9 @@ The Dagger pipeline SHALL calculate repository test coverage and produce the exi
 - **AND** the calculated badge differs from the tracked badge
 - **THEN** GitHub Actions SHALL commit and push the updated badge
 - **AND** the badge commit SHALL not trigger an endless workflow loop
+
+### Requirement: Current major release validation
+The pipeline SHALL validate tdx 1.0.0 using synchronized current Go and tooling versions, including all supported release targets.
+#### Scenario: Build a release candidate
+- **WHEN** release artifacts are built
+- **THEN** all target binaries SHALL embed the version from tdx.toml
