@@ -1,5 +1,6 @@
 mod document;
 mod editor;
+mod history;
 mod store;
 mod tui;
 
@@ -12,7 +13,7 @@ use std::{
 };
 use store::Store;
 
-const HELP: &str = "tdx-rust — experimental Rust CLI + TUI (no version history)\n\nUsage: tdx-rust [--file PATH] [--read-only] [COMMAND]\n  list [--json] [--status all|open|done] [--tag TAG]\n  add TEXT | edit INDEX TEXT | toggle INDEX | delete INDEX\n  No command: interactive editor. Use -- before literal text starting with '-'.\n\nTUI: j/k or arrows, space toggle, a add, e edit, d delete, u undo, r reload, q quit.\nInput: Enter save, Esc cancel, Ctrl-U clear, Unicode paste; cursor at end.\nPrototype structural edits require single-line tasks without children.\nMultiline task queries, advanced TUI, config/themes and history are unsupported.\n";
+const HELP: &str = "tdx-rust — experimental Rust CLI + TUI with version history\n\nUsage: tdx-rust [--file PATH] [--read-only] [COMMAND]\n  list [--json] [--status all|open|done] [--tag TAG]\n  add TEXT | edit INDEX TEXT | toggle INDEX | delete INDEX\n  versions [--json] | show-version ID | restore ID\n  No command: interactive editor. Use -- before literal text starting with '-'.\n\nTUI: j/k or arrows, space toggle, a add, e edit, d delete, u undo, r reload, v versions, q quit.\nCommands: :versions, :reload, :force-save. History: Enter then y restores; Esc cancels.\nInput: Enter save, Esc cancel, Ctrl-U clear, Unicode paste; cursor at end.\nSingle-line parent labels can be edited; deleting parents and multiline task bodies remain unsupported.\nHistory uses the Go-compatible versions.sqlite in the tdx config directory.\n";
 
 #[derive(Default, Debug)]
 struct Args {
@@ -102,14 +103,20 @@ fn parse_args(args: Vec<String>) -> Result<Args, String> {
             parsed.values.push(arg);
         }
     }
-    if list_flags && parsed.command != "list" {
+    if list_flags
+        && parsed.command != "list"
+        && !(parsed.command == "versions"
+            && parsed.json
+            && parsed.status.is_empty()
+            && parsed.tags.is_empty())
+    {
         return Err("query flags require list".into());
     }
     let valid_count = match parsed.command.as_str() {
-        "" | "list" | "help" | "version" => parsed.values.is_empty(),
+        "" | "list" | "help" | "version" | "versions" => parsed.values.is_empty(),
         "add" => parsed.values.len() == 1,
         "edit" => parsed.values.len() == 2,
-        "toggle" | "delete" => parsed.values.len() == 1,
+        "toggle" | "delete" | "show-version" | "restore" => parsed.values.len() == 1,
         _ => return Err(format!("unsupported command {}", parsed.command)),
     };
     if !valid_count {
@@ -130,6 +137,13 @@ fn run() -> Result<(), String> {
         }
         _ => {}
     }
+    let mutation = ["add", "edit", "toggle", "delete", "restore"].contains(&args.command.as_str());
+    if args.readonly && mutation {
+        return Err("read-only: editing is disabled".into());
+    }
+    if args.command.is_empty() && (!io::stdin().is_terminal() || !io::stdout().is_terminal()) {
+        return Err("interactive editor requires a terminal; use list --json for scripting".into());
+    }
     let index = if ["edit", "toggle", "delete"].contains(&args.command.as_str()) {
         args.values[0]
             .parse::<usize>()
@@ -139,59 +153,98 @@ fn run() -> Result<(), String> {
     } else {
         0
     };
+    let version_id = if ["show-version", "restore"].contains(&args.command.as_str()) {
+        args.values[0]
+            .parse::<i64>()
+            .ok()
+            .filter(|i| *i > 0)
+            .ok_or("version ID must be a positive integer")?
+    } else {
+        0
+    };
     let mut editor = Editor::new(Store::load(&args.file)?, args.readonly)?;
-    match args.command.as_str() {
-        "" => {
-            if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-                return Err(
-                    "interactive editor requires a terminal; use list --json for scripting".into(),
-                );
-            }
-            editor.doc.query()?;
-            tui::run(editor, &args.file).map_err(|e| e.to_string())?;
-        }
-        "list" => {
-            let tasks: Vec<_> = editor
-                .doc
-                .query()?
-                .iter()
-                .filter(|t| {
-                    !(args.status == "open" && t.checked || args.status == "done" && !t.checked)
-                        && args.tags.iter().all(|tag| t.tags.contains(tag))
-                })
-                .collect();
-            let mut out = io::BufWriter::new(io::stdout().lock());
-            if args.json {
-                serde_json::to_writer_pretty(&mut out, &tasks).map_err(|e| e.to_string())?;
-                writeln!(out).map_err(|e| e.to_string())?;
-            } else if tasks.is_empty() {
-                writeln!(out, "No todos found").map_err(|e| e.to_string())?;
-            } else {
-                for task in tasks {
-                    writeln!(
-                        out,
-                        "  {}. [{}] {}",
-                        task.index,
-                        if task.checked { "x" } else { " " },
-                        task.text
-                    )
-                    .map_err(|e| e.to_string())?;
-                }
-            }
-            out.flush().map_err(|e| e.to_string())?;
-        }
-        op => {
-            let text = if op == "edit" {
-                &args.values[1]
-            } else if op == "add" {
-                &args.values[0]
-            } else {
-                ""
-            };
-            editor.apply(op, index, text)?;
-        }
+    if args.command.is_empty() {
+        editor.doc.query()?;
     }
-    Ok(())
+    if mutation && editor.doc.readonly {
+        return Err("read-only frontmatter: editing is disabled".into());
+    }
+    if args.command != "list" {
+        editor
+            .store
+            .enable_history(mutation || args.command.is_empty())?;
+    }
+    let result = (|| {
+        match args.command.as_str() {
+            "" => tui::run(&mut editor, &args.file).map_err(|e| e.to_string())?,
+            "versions" => {
+                let versions = editor.store.versions()?;
+                let mut out = io::BufWriter::new(io::stdout().lock());
+                if args.json {
+                    serde_json::to_writer_pretty(&mut out, &versions).map_err(|e| e.to_string())?;
+                    writeln!(out).map_err(|e| e.to_string())?;
+                } else {
+                    for version in versions {
+                        writeln!(out, "{}  {}", version.id, version.created_at)
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+                out.flush().map_err(|e| e.to_string())?;
+            }
+            "show-version" => {
+                io::stdout()
+                    .write_all(editor.store.version(version_id)?.as_bytes())
+                    .map_err(|e| e.to_string())?;
+            }
+            "restore" => editor.restore(version_id)?,
+            "list" => {
+                let tasks: Vec<_> = editor
+                    .doc
+                    .query()?
+                    .iter()
+                    .filter(|t| {
+                        !(args.status == "open" && t.checked || args.status == "done" && !t.checked)
+                            && args.tags.iter().all(|tag| t.tags.contains(tag))
+                    })
+                    .collect();
+                let mut out = io::BufWriter::new(io::stdout().lock());
+                if args.json {
+                    serde_json::to_writer_pretty(&mut out, &tasks).map_err(|e| e.to_string())?;
+                    writeln!(out).map_err(|e| e.to_string())?;
+                } else if tasks.is_empty() {
+                    writeln!(out, "No todos found").map_err(|e| e.to_string())?;
+                } else {
+                    for task in tasks {
+                        writeln!(
+                            out,
+                            "  {}. [{}] {}",
+                            task.index,
+                            if task.checked { "x" } else { " " },
+                            task.text
+                        )
+                        .map_err(|e| e.to_string())?;
+                    }
+                }
+                out.flush().map_err(|e| e.to_string())?;
+            }
+            op => {
+                let text = if op == "edit" {
+                    &args.values[1]
+                } else if op == "add" {
+                    &args.values[0]
+                } else {
+                    ""
+                };
+                editor.apply(op, index, text)?;
+            }
+        }
+        Ok(())
+    })();
+    match (result, editor.store.finish()) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(e), Ok(())) | (Ok(()), Err(e)) => Err(e),
+        (Err(e), Err(close)) => Err(format!("{e}; {close}")),
+    }
 }
 fn main() -> ExitCode {
     match run() {

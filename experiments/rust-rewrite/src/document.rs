@@ -201,13 +201,19 @@ impl Document {
             "edit" | "delete" => {
                 let task = self.tasks.get(index).ok_or("invalid task index")?;
                 // An item can include paragraphs, children, fences or quotes. Only
-                // edit/remove a complete, single-line item in this prototype.
-                if task.item_end > task.line.end
-                    && !self.source[task.line.end..task.item_end].trim().is_empty()
+                // edit a single-line label; removal also requires no children.
+                let end = if op == "edit" {
+                    task.own_end
+                } else {
+                    task.item_end
+                };
+                if end > task.line.end
+                    && !self.source[task.line.end..end]
+                        .trim_matches(|c: char| c.is_whitespace() || c == '>')
+                        .is_empty()
                 {
                     return Err(
-                        "prototype structural edits require a single-line task without children"
-                            .into(),
+                        "prototype cannot delete parents or edit multiline task bodies".into(),
                     );
                 }
                 if op == "delete" {
@@ -325,7 +331,11 @@ mod tests {
         ] {
             let doc = Document::parse(source.into()).unwrap();
             assert!(doc.change("delete", 0, "").is_err());
-            assert!(doc.change("edit", 0, "new").is_err());
+            if source.contains("continuation") {
+                assert!(doc.change("edit", 0, "new").is_err());
+            } else {
+                assert_eq!(doc.change("edit", 0, "new").unwrap().tasks[1].text, "child");
+            }
         }
         let doc = Document::parse("- [ ] paragraph\n  continuation\n".into()).unwrap();
         assert!(doc.query().is_err());

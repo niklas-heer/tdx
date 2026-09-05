@@ -56,6 +56,41 @@ impl Editor {
         }
         Ok(())
     }
+    pub fn force_save(&mut self) -> Result<(), String> {
+        if self.readonly || self.doc.readonly {
+            return Err("read-only: editing is disabled".into());
+        }
+        match self.store.force_save(&self.doc.source) {
+            Ok(()) => {
+                self.dirty = false;
+                Ok(())
+            }
+            Err(error) => {
+                self.dirty = !error.committed;
+                Err(error.message)
+            }
+        }
+    }
+    pub fn restore(&mut self, id: i64) -> Result<(), String> {
+        if self.readonly || self.doc.readonly {
+            return Err("read-only: restore is disabled".into());
+        }
+        let next = Document::parse(self.store.version(id)?)?;
+        next.query()?;
+        let saved = self.store.save(&next.source);
+        if let Err(error) = &saved
+            && !error.committed
+        {
+            return Err(error.message.clone());
+        }
+        if self.past.len() == 100 {
+            self.past.pop_front();
+        }
+        self.past.push_back(self.doc.source.clone());
+        self.doc = next;
+        self.dirty = false;
+        saved.map_err(|error| error.message)
+    }
     pub fn reload(&mut self) -> Result<(), String> {
         let source = self.store.reload()?;
         self.doc = Document::parse(source)?;
@@ -105,5 +140,72 @@ mod tests {
         assert_eq!(editor.past.len(), 1);
         editor.undo().unwrap();
         assert!(editor.doc.tasks.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+    #[test]
+    fn restore_conflict_preserves_model_and_postcommit_error_advances_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.md");
+        std::fs::write(&path, "- [ ] original\n").unwrap();
+        let mut store = Store::with_lock_root(&path, dir.path().join("locks")).unwrap();
+        store.enable_history(true).unwrap();
+        let id = store.versions().unwrap()[0].id;
+        let mut editor = Editor::new(store, false).unwrap();
+        editor.apply("edit", 0, "local").unwrap();
+        std::fs::write(&path, "- [ ] external\n").unwrap();
+        assert!(editor.restore(id).unwrap_err().contains("externally"));
+        assert_eq!(editor.doc.tasks[0].text, "local");
+        assert!(!editor.dirty);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "- [ ] external\n");
+        editor.reload().unwrap();
+        let db = rusqlite::Connection::open(dir.path().join("versions.sqlite")).unwrap();
+        db.execute_batch("CREATE TRIGGER fail_history BEFORE INSERT ON file_versions BEGIN SELECT RAISE(FAIL, 'injected history failure'); END;").unwrap();
+        assert!(
+            editor
+                .restore(id)
+                .unwrap_err()
+                .starts_with("file saved, but")
+        );
+        assert_eq!(editor.doc.tasks[0].text, "original");
+        assert!(!editor.dirty);
+        assert_eq!(editor.store.baseline.as_deref(), Some("- [ ] original\n"));
+        db.execute_batch("DROP TRIGGER fail_history;").unwrap();
+        editor.store.finish().unwrap();
+    }
+    #[test]
+    fn force_save_captures_overwritten_content_and_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.md");
+        std::fs::write(&path, "- [ ] original\n").unwrap();
+        let mut store = Store::with_lock_root(&path, dir.path().join("locks")).unwrap();
+        store.enable_history(true).unwrap();
+        let mut editor = Editor::new(store, false).unwrap();
+        std::fs::write(&path, "- [ ] external\n").unwrap();
+        assert!(editor.apply("edit", 0, "candidate").is_err());
+        let db = rusqlite::Connection::open(dir.path().join("versions.sqlite")).unwrap();
+        db.execute_batch("CREATE TRIGGER fail_history BEFORE INSERT ON file_versions BEGIN SELECT RAISE(FAIL, 'injected history failure'); END;").unwrap();
+        assert!(
+            editor
+                .force_save()
+                .unwrap_err()
+                .contains("capture overwritten")
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "- [ ] external\n");
+        assert!(editor.dirty);
+        db.execute_batch("DROP TRIGGER fail_history;").unwrap();
+        editor.force_save().unwrap();
+        assert!(!editor.dirty);
+        let ids = editor.store.versions().unwrap();
+        let contents: Vec<_> = ids
+            .iter()
+            .map(|v| editor.store.version(v.id).unwrap())
+            .collect();
+        assert!(contents.contains(&"- [ ] external\n".to_owned()));
+        assert!(contents.contains(&"- [ ] candidate\n".to_owned()));
+        editor.store.finish().unwrap();
     }
 }

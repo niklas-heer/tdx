@@ -1,4 +1,4 @@
-use crate::editor::Editor;
+use crate::{editor::Editor, history::Version};
 use crossterm::{
     event::{
         self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEventKind,
@@ -12,21 +12,33 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{Block, List, ListItem, ListState, Paragraph},
 };
-use std::{io, path::Path};
+use std::{
+    io,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 struct Input {
     op: &'static str,
     text: String,
 }
-struct App {
-    editor: Editor,
+struct Browser {
+    versions: Vec<Version>,
+    selection: ListState,
+    preview: String,
+    scroll: u16,
+    confirm: bool,
+}
+struct App<'a> {
+    editor: &'a mut Editor,
+    browser: Option<Browser>,
     selection: ListState,
     input: Option<Input>,
     status: String,
     confirm_quit: bool,
     confirm_reload: bool,
 }
-impl App {
+impl App<'_> {
     fn selected(&self) -> usize {
         self.selection.selected().unwrap_or(0)
     }
@@ -39,10 +51,179 @@ impl App {
         });
     }
     fn result(&mut self, result: Result<(), String>) {
-        self.status = result.err().unwrap_or_else(|| "Saved".into());
+        self.status = result
+            .err()
+            .map(|e| {
+                if e.contains("externally") {
+                    format!("{e}; :reload or :force-save")
+                } else {
+                    e
+                }
+            })
+            .unwrap_or_else(|| "Saved".into());
         self.clamp();
     }
+    fn open_versions(&mut self) -> Result<(), String> {
+        let versions = self.editor.store.versions()?;
+        let preview = if let Some(version) = versions.first() {
+            self.editor.store.version(version.id)?
+        } else {
+            "No versions available".into()
+        };
+        let mut selection = ListState::default();
+        if !versions.is_empty() {
+            selection.select(Some(0));
+        }
+        self.browser = Some(Browser {
+            versions,
+            selection,
+            preview,
+            scroll: 0,
+            confirm: false,
+        });
+        Ok(())
+    }
+    fn command(&mut self, text: &str) {
+        let result = match text.trim() {
+            "versions" => self.open_versions(),
+            "reload" => self.editor.reload(),
+            "force-save" => self.editor.force_save(),
+            _ => Err("unknown command; use versions, reload or force-save".into()),
+        };
+        self.result(result);
+    }
+    fn check_disk(&mut self) -> bool {
+        if self.input.is_some() || self.browser.is_some() || self.editor.dirty {
+            return false;
+        }
+        match self.editor.store.changed() {
+            Ok(true) => {
+                let result = self.editor.reload();
+                self.result(result);
+                true
+            }
+            Err(error) => {
+                self.status = error;
+                true
+            }
+            Ok(false) => false,
+        }
+    }
+    fn draw_versions(&mut self, frame: &mut Frame) {
+        let browser = self.browser.as_mut().unwrap();
+        let areas = Layout::vertical([
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(3),
+        ])
+        .split(frame.area());
+        frame.render_widget(
+            Paragraph::new("FILE VERSION HISTORY").style(Style::default().fg(Color::Cyan)),
+            areas[0],
+        );
+        let panes = Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
+            .split(areas[1]);
+        let rows: Vec<_> = browser
+            .versions
+            .iter()
+            .map(|v| ListItem::new(format!("#{} {}", v.id, v.created_at)))
+            .collect();
+        let list = List::new(rows)
+            .block(Block::bordered().title("Versions"))
+            .highlight_symbol("› ")
+            .highlight_style(Style::default().fg(Color::Cyan));
+        frame.render_stateful_widget(list, panes[0], &mut browser.selection);
+        let preview = browser
+            .preview
+            .lines()
+            .map(display_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        frame.render_widget(
+            Paragraph::new(preview)
+                .block(Block::bordered().title("Saved snapshot"))
+                .scroll((browser.scroll, 0)),
+            panes[1],
+        );
+        let footer = if browser.confirm {
+            format!(
+                "Restore version #{}? [y/N]\n{}",
+                browser.versions[browser.selection.selected().unwrap()].id,
+                self.status
+            )
+        } else {
+            format!(
+                "[↑/↓] Navigate  [PgUp/PgDn] Scroll  [Enter] Restore  [Esc] Close\n{}",
+                self.status
+            )
+        };
+        frame.render_widget(Paragraph::new(footer), areas[2]);
+    }
+    fn browser_key(&mut self, key: KeyCode) {
+        let browser = self.browser.as_mut().unwrap();
+        if browser.confirm {
+            browser.confirm = false;
+            if matches!(key, KeyCode::Char('y' | 'Y')) {
+                let id = browser.versions[browser.selection.selected().unwrap()].id;
+                let result = self.editor.restore(id);
+                if result.is_ok()
+                    || result
+                        .as_ref()
+                        .is_err_and(|e| e.starts_with("file saved, but"))
+                {
+                    self.browser = None;
+                }
+                self.result(result);
+            }
+            return;
+        }
+        let current = browser.selection.selected().unwrap_or(0);
+        let next = match key {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.browser = None;
+                return;
+            }
+            KeyCode::Enter if !browser.versions.is_empty() => {
+                browser.confirm = true;
+                return;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                (current + 1).min(browser.versions.len().saturating_sub(1))
+            }
+            KeyCode::Up | KeyCode::Char('k') => current.saturating_sub(1),
+            KeyCode::PageDown => {
+                browser.scroll = browser.scroll.saturating_add(10).min(
+                    browser
+                        .preview
+                        .lines()
+                        .count()
+                        .saturating_sub(1)
+                        .min(u16::MAX as usize) as u16,
+                );
+                return;
+            }
+            KeyCode::PageUp => {
+                browser.scroll = browser.scroll.saturating_sub(10);
+                return;
+            }
+            _ => return,
+        };
+        if let Some(version) = browser.versions.get(next) {
+            match self.editor.store.version(version.id) {
+                Ok(preview) => {
+                    browser.preview = preview;
+                    browser.selection.select(Some(next));
+                    browser.scroll = 0;
+                }
+                Err(error) => self.status = error,
+            }
+        }
+    }
     fn draw(&mut self, frame: &mut Frame, path: &Path) {
+        if self.browser.is_some() {
+            self.draw_versions(frame);
+            return;
+        }
         let areas = Layout::vertical([
             Constraint::Length(2),
             Constraint::Min(1),
@@ -51,10 +232,10 @@ impl App {
         .split(frame.area());
         let readonly = self.editor.readonly || self.editor.doc.readonly;
         let title = format!(
-            "tdx · Rust prototype   {}{}{}",
-            path.display(),
+            "tdx · Rust prototype{}{}   {}",
             if readonly { "  READ ONLY" } else { "" },
-            if self.editor.dirty { "  UNSAVED" } else { "" }
+            if self.editor.dirty { "  UNSAVED" } else { "" },
+            path.display()
         );
         frame.render_widget(
             Paragraph::new(title).style(Style::default().fg(Color::Cyan)),
@@ -91,7 +272,7 @@ impl App {
             )
         } else {
             format!(
-                "j/k move · space toggle · a/e/d edit · u undo · r reload · q quit\n{}",
+                "j/k move · space toggle · a/e/d edit · u undo · r reload · v history · q quit\n{}",
                 self.status
             )
         };
@@ -120,6 +301,10 @@ impl App {
             }
             return true;
         }
+        if self.browser.is_some() {
+            self.browser_key(key.code);
+            return false;
+        }
         if let Some(input) = &mut self.input {
             match key.code {
                 KeyCode::Esc => {
@@ -128,7 +313,9 @@ impl App {
                 }
                 KeyCode::Enter => {
                     let input = self.input.take().unwrap();
-                    if input.text.trim().is_empty() {
+                    if input.op == "command" {
+                        self.command(&input.text);
+                    } else if input.text.trim().is_empty() {
                         self.status = "Cancelled empty input".into();
                     } else {
                         let result = self.editor.apply(input.op, self.selected(), &input.text);
@@ -165,6 +352,16 @@ impl App {
             self.confirm_reload = false;
         }
         match key.code {
+            KeyCode::Char(':') => {
+                self.input = Some(Input {
+                    op: "command",
+                    text: String::new(),
+                });
+            }
+            KeyCode::Char('v') => {
+                let result = self.open_versions();
+                self.result(result);
+            }
             KeyCode::Down | KeyCode::Char('j') => {
                 self.selection.select(Some(self.selected() + 1));
                 self.clamp();
@@ -232,24 +429,37 @@ impl Drop for PasteGuard {
     }
 }
 
-pub fn run(editor: Editor, path: &Path) -> io::Result<()> {
+pub fn run(editor: &mut Editor, path: &Path) -> io::Result<()> {
     // Ratatui's run restores raw mode/alternate screen on return and panic.
     ratatui::run(|terminal| {
         execute!(io::stdout(), EnableBracketedPaste)?;
         let _paste = PasteGuard;
         let mut app = App {
             editor,
+            browser: None,
             selection: ListState::default(),
             input: None,
-            status: "Prototype · no version history · r reloads external changes".into(),
+            status: "Version history enabled · v browse · :force-save resolves conflicts".into(),
             confirm_quit: false,
             confirm_reload: false,
         };
         app.clamp();
+        let mut checked = Instant::now();
+        let mut redraw = true;
         loop {
-            terminal.draw(|frame| app.draw(frame, path))?;
-            if app.handle(event::read()?) {
-                return Ok(());
+            if redraw {
+                terminal.draw(|frame| app.draw(frame, path))?;
+            }
+            redraw = false;
+            if event::poll(Duration::from_millis(100))? {
+                if app.handle(event::read()?) {
+                    return Ok(());
+                }
+                redraw = true;
+            }
+            if checked.elapsed() >= Duration::from_millis(500) {
+                redraw |= app.check_disk();
+                checked = Instant::now();
             }
         }
     })

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from history_contracts import history_contracts, recovery_terminal, snapshots
 import subprocess
 import tempfile
 import time
@@ -87,8 +88,10 @@ def cli_contracts(binaries):
             path = base / "guard.md"; path.write_text(source)
             for op in ("edit", "delete"):
                 args = [op, "1"] + (["new"] if op == "edit" else [])
-                invoke(binaries["rust"], path, base / "rust", *args, success=False)
-                assert path.read_text() == source
+                supported = op == "edit" and "child" in source
+                invoke(binaries["rust"], path, base / "rust", *args, success=supported)
+                assert path.read_text() == (source.replace("parent", "new", 1) if supported else source)
+                path.write_text(source)
     return results
 
 
@@ -141,8 +144,13 @@ def terminal_contracts(binaries, output):
                         if name == "rust":
                             terminal.send(b"rr")
                         else:
-                            terminal.send(b"\x1b:reload\r")
-                        terminal.until(lambda: b"External" in terminal.output, "reload")
+                            terminal.send(b"\x1b"); terminal.pump(0.65)
+                            terminal.send(b":reload\r")
+                        terminal.until(lambda: hashlib.sha256(external).hexdigest() in {h for _, h in snapshots(base / "config", path)}, "reload captured external revision")
+                        terminal.send(b" ")
+                        terminal.until(lambda: path.read_bytes() == external.replace(b"[ ] External", b"[x] External"), "toggle reloaded revision")
+                        terminal.send(b"u")
+                        terminal.until(lambda: path.read_bytes() == external, "undo reloaded revision")
                         assert path.read_bytes() == external
                     assert alias.is_symlink()
                     terminal.close()
@@ -169,14 +177,20 @@ def main():
     parser.add_argument("--go", type=Path, default=ROOT / "dist/rust-rewrite/tdx-go")
     parser.add_argument("--rust", type=Path, default=ROOT / "dist/rust-rewrite/target/release/tdx-rust")
     parser.add_argument("--harness", type=Path, default=ROOT / "dist/rust-rewrite/tdx-usage")
+    parser.add_argument("--history-adapter", type=Path, default=ROOT / "dist/rust-rewrite/go-history")
     parser.add_argument("--output", type=Path, default=ROOT / "dist/rust-rewrite/contracts")
     args = parser.parse_args()
     binaries = {"go": args.go.resolve(), "rust": args.rust.resolve()}
     args.output.mkdir(parents=True, exist_ok=True)
     result = {"cli": cli_contracts(binaries), "replays": replay_contracts(binaries, args.harness.resolve(), args.output / "replay"),
-              "terminal": terminal_contracts(binaries, args.output / "terminal")}
+              "terminal": terminal_contracts(binaries, args.output / "terminal"),
+              "history": history_contracts(binaries, args.history_adapter.resolve()),
+              "recovery": recovery_terminal(binaries["rust"], args.output / "recovery")}
+    for name, binary in binaries.items():
+        dest = args.output / "full-terminal" / name; dest.mkdir(parents=True, exist_ok=True)
+        result[f"full_terminal_{name}"] = pty_module.run(binary, dest)
     (args.output / "report.json").write_text(json.dumps(result, indent=2) + "\n")
-    print("CLI, replay and basic terminal contracts passed.")
+    print("CLI, replay, history interoperability and terminal recovery contracts passed.")
 
 
 if __name__ == "__main__":

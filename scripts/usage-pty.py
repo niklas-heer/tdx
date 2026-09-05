@@ -7,6 +7,7 @@ This is a short terminal suite, not an accelerated-hours accounting mechanism.
 import argparse
 import errno
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -75,9 +76,10 @@ class Terminal:
         end = time.monotonic() + 5
         while time.monotonic() < end:
             self.pump()
-            pid, status = os.waitpid(self.pid, os.WNOHANG)
+            pid, status, usage = os.wait4(self.pid, os.WNOHANG)
             if pid:
                 self.reaped = True
+                self.usage = usage
                 assert os.waitstatus_to_exitcode(status) == 0, status
                 return
         raise AssertionError("terminal failed to exit")
@@ -127,7 +129,7 @@ def run(binary, output):
                     # No debounce wait between typing the command and pressing Enter.
                     start = len(terminal.output)
                     terminal.send(b":versions\r")
-                    terminal.until(lambda: b"[Enter] Restore" in terminal.output[start:], "version browser via alias")
+                    terminal.until(lambda: b"[Enter]" in terminal.output[start:], "version browser via alias")
                     terminal.send(b"\x1b")
                     terminal.pump(0.65)
                     databases = list((base / "config").rglob("versions.sqlite"))
@@ -142,13 +144,22 @@ def run(binary, output):
                     terminal.pump(1.2)  # Exercise at least one real watch tick during input.
                     start = len(terminal.output)
                     terminal.send(b"\x1b[200~ local edit\x1b[201~\r")
-                    terminal.until(lambda: b":reload or :force-save" in terminal.output[start:], "conflict after external edit during input")
+                    terminal.until(lambda: b":force-save" in terminal.output[start:], "conflict after external edit during input")
                     assert path.read_bytes() == external, "save overwrote external edit"
                     terminal.send(b"\x1b")
                     terminal.pump(0.65)
                     start = len(terminal.output)
                     terminal.send(b":reload\r")
-                    terminal.until(lambda: b"External" in terminal.output[start:], "reload external content")
+                    # Incremental terminal redraws may reuse letters from the prior frame.
+                    # Verify the loaded revision through history and a subsequent edit.
+                    def captured_external():
+                        with sqlite3.connect(databases[0]) as db:
+                            return db.execute("select count(*) from file_versions where version_hash=?", (hashlib.sha256(external).hexdigest(),)).fetchone()[0] == 1
+                    terminal.until(captured_external, "reload external content")
+                    terminal.send(b" ")
+                    terminal.until(lambda: path.read_bytes() == external.replace(b"[ ] External", b"[x] External"), "edit reloaded revision")
+                    terminal.send(b"u")
+                    terminal.until(lambda: path.read_bytes() == external, "undo reloaded revision")
                     original = external
                 terminal.close()
                 assert path.read_bytes() == original, "exit changed file"

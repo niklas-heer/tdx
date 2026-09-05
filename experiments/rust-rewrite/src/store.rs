@@ -1,3 +1,4 @@
+use crate::history::{self, History, Version};
 use sha2::{Digest, Sha256};
 use std::{
     env,
@@ -59,6 +60,7 @@ pub struct Store {
     target: PathBuf,
     pub baseline: Option<String>,
     lock_root: PathBuf,
+    history: Option<History>,
 }
 impl Store {
     pub fn load(path: &Path) -> Result<Self, String> {
@@ -77,7 +79,47 @@ impl Store {
             target,
             baseline,
             lock_root,
+            history: None,
         })
+    }
+    pub fn enable_history(&mut self, capture_loaded: bool) -> Result<(), String> {
+        let dir = self
+            .lock_root
+            .parent()
+            .ok_or("history directory unavailable")?;
+        let mut history = History::open(dir, history::max_versions(dir)?)?;
+        if capture_loaded
+            && let Some(source) = &self.baseline
+            && let Err(error) = history.capture(&self.target, source)
+        {
+            let _ = history.close();
+            return Err(format!("capture opened version: {error}"));
+        }
+        self.history = Some(history);
+        Ok(())
+    }
+    pub fn versions(&mut self) -> Result<Vec<Version>, String> {
+        self.history
+            .as_mut()
+            .ok_or("history is disabled")?
+            .list(&self.target)
+    }
+    pub fn version(&mut self, id: i64) -> Result<String, String> {
+        self.history
+            .as_mut()
+            .ok_or("history is disabled")?
+            .read(&self.target, id)
+    }
+    pub fn finish(&mut self) -> Result<(), String> {
+        match self.history.take() {
+            Some(history) => history
+                .close()
+                .map_err(|e| format!("history shutdown failed: {e}")),
+            None => Ok(()),
+        }
+    }
+    pub fn changed(&self) -> Result<bool, String> {
+        Ok(canonical(&self.path)? != self.target || read(&self.target)? != self.baseline)
     }
     pub fn reload(&mut self) -> Result<String, String> {
         let target = canonical(&self.path)?;
@@ -87,16 +129,25 @@ impl Store {
         // Reload is used by the TUI: reject unsupported task queries before
         // advancing its revision, so a rejected reload cannot authorize stale edits.
         crate::document::Document::parse(source.clone())?.query()?;
+        if let (Some(history), Some(content)) = (&mut self.history, &baseline) {
+            history
+                .capture(&target, content)
+                .map_err(|e| format!("capture reloaded version: {e}"))?;
+        }
         self.target = target;
         self.baseline = baseline;
         Ok(source)
     }
     pub fn save(&mut self, source: &str) -> Result<(), SaveError> {
-        self.save_with_hook(source, || {})
+        self.save_with_hook(source, false, || {})
+    }
+    pub fn force_save(&mut self, source: &str) -> Result<(), SaveError> {
+        self.save_with_hook(source, true, || {})
     }
     fn save_with_hook(
         &mut self,
         source: &str,
+        force: bool,
         before_validation: impl FnOnce(),
     ) -> Result<(), SaveError> {
         if !cfg!(unix) {
@@ -153,26 +204,46 @@ impl Store {
             }
         }
         before_validation();
-        if canonical(&self.path)? != self.target || read(&self.target)? != self.baseline {
+        let current = read(&self.target)?;
+        if canonical(&self.path)? != self.target || (!force && current != self.baseline) {
             return Err("file changed externally; reload before saving"
                 .to_owned()
                 .into());
+        }
+        if force {
+            let history = self
+                .history
+                .as_mut()
+                .ok_or_else(|| "force-save requires version history".to_owned())?;
+            if let Some(content) = &current {
+                history
+                    .capture(&self.target, content)
+                    .map_err(|e| format!("capture overwritten version: {e}"))?;
+            }
         }
         // The tempfile stays on the same filesystem. persist atomically replaces
         // the target on Unix; dropping the lock releases it on every return path.
         temp.persist(&self.target)
             .map_err(|e| SaveError::from(e.error))?;
         self.baseline = Some(source.to_owned());
-        File::open(parent)
-            .and_then(|dir| dir.sync_all())
-            .map_err(|e| SaveError {
-                message: format!("file saved, but directory sync failed: {e}"),
+        let mut errors = Vec::new();
+        if let Err(error) = File::open(parent).and_then(|dir| dir.sync_all()) {
+            errors.push(format!("directory sync: {error}"));
+        }
+        if let Some(history) = &mut self.history
+            && let Err(error) = history.capture(&self.target, source)
+        {
+            errors.push(format!("version capture: {error}"));
+        }
+        if let Err(error) = lock.unlock() {
+            errors.push(format!("unlock: {error}"));
+        }
+        if !errors.is_empty() {
+            return Err(SaveError {
+                message: format!("file saved, but {}", errors.join("; ")),
                 committed: true,
-            })?;
-        lock.unlock().map_err(|e| SaveError {
-            message: format!("file saved, but unlock failed: {e}"),
-            committed: true,
-        })?;
+            });
+        }
         Ok(())
     }
 }
@@ -187,7 +258,9 @@ mod tests {
         fs::write(&path, "- [ ] Old\n").unwrap();
         let mut store = Store::with_lock_root(&path, dir.path().join("locks")).unwrap();
         let error = store
-            .save_with_hook("- [x] Old\n", || fs::write(&path, "external").unwrap())
+            .save_with_hook("- [x] Old\n", false, || {
+                fs::write(&path, "external").unwrap()
+            })
             .unwrap_err();
         assert!(!error.committed);
         assert!(error.message.contains("changed externally"));

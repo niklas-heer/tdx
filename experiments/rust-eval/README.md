@@ -1,6 +1,6 @@
 # Go / Rust evaluation
 
-A runnable [Rust CLI/TUI prototype](#runnable-rust-prototype) now extends this historical parser evaluation. The original measurements below remain unchanged.
+A runnable [Rust CLI/TUI prototype](#runnable-rust-prototype) and a [history-enabled comparison](#history-enabled-comparison) extend this historical parser evaluation. Earlier measurements remain unchanged.
 
 **Recommendation: keep tdx in Go for now.** Rust wins this parser experiment, but the measured Go editor operation is about 3 ms for 1,000 tasks. A rewrite would still need to reproduce the TUI, metadata, undo, version history, and safe-save behavior. The application remains Go and pre-1.0.
 
@@ -85,27 +85,27 @@ mise run rust-rewrite:contracts   # Go/Rust executable, replay and basic PTY che
 mise run rust-rewrite:eval        # full comparison, including fresh build caches
 ```
 
-A missing file opens as an empty document and is created on the first edit. In the TUI, use `j/k` or arrows to navigate, space to toggle, `a` to append, `e` to edit, `d` to delete, `u` to undo, `r` to reload and `q` to quit. Enter saves input; Escape cancels; Ctrl-U clears it. Unicode typing, backspace and bracketed paste work at the end of the input. Quitting or reloading with unsaved changes requires a second keypress. This prototype has no version history.
+A missing file opens as an empty document and is created on the first edit. In the TUI, use `j/k` or arrows to navigate, space to toggle, `a` to append, `e` to edit, `d` to delete, `u` to undo, `r` to reload and `q` to quit. Enter saves input; Escape cancels; Ctrl-U clears it. Unicode typing, backspace and bracketed paste work at the end of the input. Quitting or reloading with unsaved changes requires a second keypress. Use `v` or `:versions` to browse saved snapshots; Enter then `y` restores the selected version. `:reload` discards local changes explicitly; `:force-save` captures the overwritten disk revision before saving a conflicting local edit. Idle external changes reload every 500 ms, deferred while input, the version browser or unsaved changes are active.
 
-CLI commands support `--file`, `--read-only`, `list --json`, `--status all|open|done`, repeated `--tag`, `add TEXT`, `edit INDEX TEXT`, `toggle INDEX` and `delete INDEX`. Indexes are one-based. Use `--` before literal text beginning with a dash. Only the documented options are implemented; user TOML settings and theme preferences are not loaded.
+CLI commands support `--file`, `--read-only`, `list --json`, `--status all|open|done`, repeated `--tag`, `add TEXT`, `edit INDEX TEXT`, `toggle INDEX` and `delete INDEX`. History commands are `versions [--json]`, `show-version ID` (exact saved source), and `restore ID`. Indexes are one-based. Use `--` before literal text beginning with a dash. The prototype reads only `[versioning].max_versions` from `config.toml` (default 100, nonpositive values unlimited); other TOML settings and theme preferences are not applied. Invalid configuration produces an error. History shares Go’s `versions.sqlite` under `$XDG_CONFIG_HOME/tdx` or `~/.config/tdx`; ordinary list/help/version do not open history. For isolated experiments, set `XDG_CONFIG_HOME` to a disposable directory.
 
-Checkbox changes preserve source bytes, including ordered and quoted nesting, CRLF, HTML and unknown frontmatter. Structural edits require single-line task items without children or additional blocks; unsupported changes fail before disk writes. Multiline task queries and TUI documents containing them fail explicitly. JSON query compatibility is established by the corpus, not for every possible inline Markdown construction.
+Checkbox changes preserve source bytes, including ordered and quoted nesting, CRLF, HTML and unknown frontmatter. Single-line task labels, including parents with children, can be edited. Deletion requires an item without children or additional blocks; unsupported changes fail before disk writes. Multiline task queries and TUI documents containing them fail explicitly. JSON query compatibility is established by the corpus, not for every possible inline Markdown construction.
 
-Saves preserve Unix permissions, resolve symlinks, synchronize a same-directory replacement and its parent directory, and use the same canonical-path advisory lock as Go. The loaded contents and canonical target are checked under that lock. Conflicts preserve external disk bytes and retain the TUI's unsaved local candidate until explicit reload or quit. Non-cooperating writes after final validation remain outside the guarantee. Windows writes are explicitly disabled in the prototype; Linux behavior still needs its own native run. No crash/power-loss guarantee follows from these tests.
+Saves preserve Unix permissions, resolve symlinks, synchronize a same-directory replacement and its parent directory, and use the same canonical-path advisory lock as Go. The loaded contents and canonical target are checked under that lock. Conflicts preserve external disk bytes and retain the TUI's unsaved local candidate until explicit reload or quit. Non-cooperating writes after final validation remain outside the guarantee. Windows writes are explicitly disabled in the prototype; the history milestone adds native Linux checks described below. No crash/power-loss guarantee follows from these tests.
 
 ### Correctness and implementation scope
 
 The final run checks the existing 17-fixture parser corpus and exact checkbox patches. Full CLI JSON matches Go on the 16 supported query fixtures; multiline task bodies are explicitly rejected. Two identical seeded CLI traces pass 200 actions per executable, checking persisted content and the full JSON task metadata against the existing independent oracle. Shared-lock tests make both binaries reject a held Go-compatible lock without changing the file.
 
-The basic PTY contract covers Unicode edit, cancellation, append/delete/undo, symlinks, read-only mode, external edits during pending input, explicit reload and terminal restoration. Each executable also performs 30 immediate resize/toggle/undo cycles. These checks use semantic actions with each interface's keys: Go `N` and Rust `a` append; Go `:reload` and Rust `r` reload. They do not claim keyboard compatibility or passage of Go's advanced history/restore terminal suite.
+The basic PTY contract covers Unicode edit, cancellation, append/delete/undo, symlinks, read-only mode, external edits during pending input, explicit reload and terminal restoration. Each executable also performs 30 immediate resize/toggle/undo cycles. These checks use semantic actions with each interface's keys: Go `N` and Rust `a` append; Go `:reload` and Rust `r` reload. The history milestone also passes the shared terminal suite for ordered parent edits, Unicode, history browsing, deferred external changes and edits after reload; it adds Rust restore/force-save checks. This does not establish keyboard or full UI parity.
 
 The experiment exposed two compatibility differences retained deliberately: Go currently accepts empty CLI edits as a no-op while Rust rejects them; Rust enforces frontmatter `read-only: true` for CLI writes while Go's current CLI toggle does not. Command-line `--read-only` is enforced by both. Production behavior is unchanged in this branch.
 
 An intermittent simultaneous resize/input stall appeared with Crossterm's default Mio backend on this host. The prototype uses its poll-based `use-dev-tty` backend and retains the repeated PTY regression. JSON output is buffered so serialization does not issue a stream of tiny writes. These findings are reasons to test complete executables, not evidence that language choice alone determines performance.
 
-The prototype contains approximately 1,200 Rust lines including tests, plus roughly 400 Python lines for comparison. It uses 100 bounded source snapshots for undo and reparses after mutations. This establishes feasibility for a subset; it is not an estimate of the effort to reach full parity. The substantial remaining work includes multiline/structural Markdown, task moves, sections, search/filter pickers, Unicode cursor movement, configuration/themes, file watching, version history/recovery, cross-platform save-fault/race testing and release packaging.
+It uses 100 bounded source snapshots for undo and reparses after mutations. This establishes feasibility for a subset; it is not an estimate of the effort to reach full parity. The substantial remaining work includes multiline/structural Markdown, task moves, sections, search/filter pickers, Unicode cursor movement, configuration/themes, character-level history diffs, Windows behavior, broader save-fault/race testing and release packaging.
 
-### Application measurements
+### Application measurements (initial milestone without Rust history)
 
 The [raw runnable-prototype baseline](../rust-rewrite/baseline.json) records every trial, process CPU/RSS, toolchains, build observations, binary hashes, source fingerprint and correctness reports. The Git parent alone does not identify the measured uncommitted source. Generated binaries, full traces and terminal transcripts live under ignored `dist/rust-rewrite/`.
 
@@ -139,10 +139,65 @@ Writes and persistent TUI sessions are **not equivalent service workloads**: Go 
 
 Fresh-cache builds exclude downloads. Go builds its standard library while Rust ships a precompiled one. Build timings are single observations. Results are local macOS observations rather than cross-platform claims or CI performance thresholds. The existing parser and loaded-Go-checkbox benchmarks measure different operations and must not be divided into these timings.
 
-### Decision
+### Initial decision
 
 Keep Go as the production implementation. The runnable Rust prototype is useful for experiments and shows substantial resource savings, but everyday interactive saves are already quick in Go and the prototype omits important services. At 10,000 tasks, the memory difference deserves investigation; profile Go's retained undo/document state and compare an equivalent bounded source-snapshot approach before attributing the gap to the language.
 
 Pursue another Rust milestone only if lower memory or large-document responsiveness is a concrete product goal. That milestone should cover history/recovery, representative structural edits, search/moves/sections and native Linux/Windows behavior, then repeat the same contracts with equivalent services enabled. The current evidence supports keeping a runnable experiment; it does not yet justify committing to a full rewrite.
 
 Library references: [Ratatui application lifecycle](https://docs.rs/ratatui/0.30.2/), [Crossterm event handling](https://docs.rs/crossterm/0.29.0/crossterm/event/index.html), and [Rust file synchronization and locking](https://doc.rust-lang.org/std/fs/struct.File.html).
+
+
+## History-enabled comparison
+
+This milestone adds Go-compatible SQLite/zstd history, snapshot browsing and conditional restore, force-save recovery, idle external reload, and single-line parent-label edits. It keeps the basic terminal interface and standalone experimental executable. The production Go application is unchanged.
+
+The [history baseline](../rust-rewrite/history-baseline.json) preserves individual measurements, binary hashes and the measured source fingerprint. The [Linux correctness report](../rust-rewrite/history-linux-check.json) records the additional native execution checks. Reproduce the macOS/Linux comparison with `mise run rust-rewrite:eval`; generated measurements are in `dist/rust-rewrite/history-results.json`. The earlier baseline above remains historical.
+
+Both writers now capture opened and committed content, identify files by canonical path, hash uncompressed bytes with SHA-256, compress with zstd, deduplicate content, retain 100 versions by default, and use SQLite WAL/NORMAL with a five-second busy timeout and a shutdown checkpoint. Rust uses bundled native SQLite and zstd C libraries; Go uses pure-Go implementations. This tests matching history behavior, not identical libraries or full application parity. Snapshot recovery in Rust is limited to 64 MiB of decompressed UTF-8 content; larger or corrupt snapshots fail without replacing the active document.
+
+The correctness gates pass 19 Rust tests, the supported CLI corpus, 200 identical replay actions per executable, shared advisory locking, Go-to-Rust and Rust-to-Go snapshot reads, configurable retention and deduplication, and real terminal recovery. Failure tests cover bounded SQLite contention, a busy shutdown checkpoint, corrupt snapshots, conflicting restore, post-commit history failure and refusal to force-save when the overwritten revision cannot be captured. PTY checks cover confirmed/cancelled restore, read-only restore refusal, conflict preservation, deferred input, idle reload and recovery of overwritten disk content. The shared Go terminal suite also passes against Rust, including parent-label edits that preserve children. Test assertions use saved revisions and subsequent edits when incremental terminal redraws reuse text from an earlier frame.
+
+Native Linux aarch64 checks passed in Docker using Rust 1.97.1, Go 1.27.1 Linux binaries and Python 3.11.2. The exact Rust 1.98.1 Docker image was unavailable, so this is explicitly a different compiler from the macOS measurements. The Linux run checks correctness, not performance. Windows remains unvalidated and Rust writes there remain disabled.
+
+### Measurements with history on both sides
+
+September 5, 2026; Apple M2 Pro, macOS 15.7.9 arm64; Go 1.27.1, Rust 1.98.1 and Python 3.14.7. Nine alternating CLI trials follow two warmups. Terminal results are medians of three independent sessions per engine, operation and document size, with 20 actions in each session.
+
+| Tasks | Go JSON (ms) | Rust JSON (ms) | Go CLI edit/save (ms) | Rust CLI edit/save (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 8.71 | 4.02 | 21.70 | 15.22 |
+| 1,000 | 11.78 | 5.49 | 23.51 | 17.72 |
+| 10,000 | 41.12 | 19.74 | 56.76 | 43.21 |
+
+| Tasks | Go TUI toggle/save (ms) | Rust TUI toggle/save (ms) | Go TUI distinct edit/save (ms) | Rust TUI distinct edit/save (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 6.78 | 6.51 | 8.00 | 7.71 |
+| 1,000 | 9.34 | 9.19 | 11.15 | 10.83 |
+| 10,000 | 31.77 | 21.88 | 44.32 | 33.84 |
+
+| Tasks, after 20 distinct edits | Go RSS (MiB) | Rust RSS (MiB) | Go session CPU (ms) | Rust session CPU (ms) | Go history DB (KiB) | Rust history DB (KiB) |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 34.19 | 7.47 | 130.15 | 67.54 | 36.00 | 36.00 |
+| 1,000 | 67.45 | 16.22 | 206.11 | 154.05 | 56.00 | 56.00 |
+| 10,000 | 431.38 | 74.83 | 1134.91 | 770.79 | 156.00 | 188.00 |
+
+| Measurement | Go | Rust |
+| --- | ---: | ---: |
+| Stripped executable (MiB) | 10.39 | 4.53 |
+| Fresh-cache build (s) | 7.93 | 35.01 |
+| No-op build (s) | 0.441 | 0.144 |
+
+Each toggle session must retain exactly two content hashes; each distinct-edit session must retain 21. Both implementations pass those gates. CLI edits also use distinct text for every trial. Database sizes are measured after shutdown/checkpoint, and raw results include compressed snapshot byte counts. At 10,000 tasks, Rust's compressed snapshots are about 5% larger and its database is about 21% larger, reflecting codec output and database page allocation.
+
+Observed TUI save time ends when the parent sees the expected atomic file replacement. It includes input processing and parent polling/read overhead, but excludes some post-replacement history capture, synchronization and rendering. Whole-session child CPU includes startup, all actions, history work and shutdown; it excludes the parent harness. CLI wall time includes process completion and history shutdown. Neither metric measures key-to-frame latency. RSS is whole-process resident memory with retained undo state, not a heap or leak measurement.
+
+These are application comparisons with matching tested history behavior. Go still has a richer document/TUI model, themes and other services; Rust reparses into a simpler model and retains source snapshots for undo. The workload uses repetitive generated documents and 20 actions per session, not hours of real use. Builds exclude downloads and are single observations; Rust includes native SQLite/zstd compilation and a precompiled standard library, while Go's fresh cache includes standard-library compilation. Timing and memory ranges are retained in the raw baseline. The earlier run used different code and conditions, so changes between baselines are not a controlled measurement of history overhead alone.
+
+### Updated recommendation
+
+Continue the Rust prototype if lower memory use or large-document responsiveness is a product goal. The resource advantage remains after adding history: about **76% less resident memory after 20 distinct edits at 1,000 tasks**, and **83% less at 10,000 tasks**, with a **56% smaller executable**. JSON queries are about twice as fast. Interactive saves at 1,000 tasks are effectively similar on this measurement; at 10,000 tasks Rust's distinct edits are about 24% faster and consume about 32% less whole-session CPU.
+
+Keep Go as the production implementation while pursuing a bounded next milestone. A full rewrite still lacks evidence for complete structural Markdown, search/moves/sections, input cursor movement, settings/themes, history diffs and Windows behavior. The fresh Rust build took about 4.4 times as long, and native C dependencies add cross-compilation work. Before choosing a migration, compare a bounded source-snapshot undo strategy in Go against the same workloads and run representative user documents through both editors. The current result supports further Rust development for resource savings; it does not establish that a complete rewrite will preserve these ratios.
+
+Implementation references: [rusqlite connection and checkpoint APIs](https://docs.rs/rusqlite/0.40.2/rusqlite/struct.Connection.html), [zstd reusable compressor](https://docs.rs/zstd/0.13.3/zstd/bulk/struct.Compressor.html), and [TOML configuration parsing](https://docs.rs/toml/1.1.4/toml/).
