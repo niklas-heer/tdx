@@ -34,6 +34,7 @@ func (m *TdxCi) Ci(ctx context.Context, source *dagger.Directory) (string, error
 		name string
 		run  func() error
 	}{
+		{name: "usage-executable", run: func() error { _, err := m.usageCheck(ctx, source); return err }},
 		{name: "rust-experiment", run: func() error { _, err := m.rustCheck(ctx, source); return err }},
 		{name: "format", run: func() error { _, err := m.Format(ctx, source); return err }},
 		{name: "vet", run: func() error { _, err := m.Vet(ctx, source); return err }},
@@ -272,5 +273,16 @@ chmod +x /tmp/rustup-init
 		WithExec([]string{"cargo", "fmt", "--check"}).
 		WithExec([]string{"cargo", "clippy", "--locked", "--", "-D", "warnings"}).
 		WithExec([]string{"cargo", "test", "--locked"}).
+		Stdout(ctx)
+}
+
+// usageCheck validates the language-neutral CLI and terminal contracts in Linux.
+// The 100-hour accelerated campaign remains an explicit developer task.
+func (m *TdxCi) usageCheck(ctx context.Context, source *dagger.Directory) (string, error) {
+	return m.goBase(source).
+		WithExec([]string{"go", "build", "-o", "/tmp/tdx-usage-binary", "./cmd/tdx"}).
+		WithExec([]string{"go", "run", "./cmd/tdx-usage", "-driver", "cli", "-binary", "/tmp/tdx-usage-binary", "-sessions", "1", "-steps", "40"}).
+		WithExec([]string{"sh", "-ec", "apt-get update -qq && apt-get install -y --no-install-recommends python3"}).
+		WithExec([]string{"python3", "scripts/usage-pty.py", "--binary", "/tmp/tdx-usage-binary"}).
 		Stdout(ctx)
 }
