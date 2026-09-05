@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/niklas-heer/tdx/internal/cmd"
 	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/tui"
 )
 
 var testBinary string
+var testRuntime tui.Runtime
 
 func TestMain(m *testing.M) {
 	os.Exit(testMain(m))
@@ -41,21 +41,16 @@ func testMain(m *testing.M) int {
 	appConfig := LoadConfig()
 	styles := NewStyles(appConfig)
 
-	// Inject config and styles into packages for testing
-	cmd.GreenStyle = func(s string) string { return styles.Success.Render(s) }
-	cmd.DimStyle = func(s string) string { return styles.Dim.Render(s) }
-	cmd.CheckSymbol = appConfig.Display.CheckSymbol
+	tuiCfg := &tui.ConfigType{}
+	tuiCfg.Display.CheckSymbol = appConfig.Display.CheckSymbol
+	tuiCfg.Display.SelectMarker = appConfig.Display.SelectMarker
+	tuiCfg.Display.MaxVisible = appConfig.Defaults.MaxVisible
+	tuiCfg.Defaults.WordWrap = appConfig.Defaults.WordWrap
+	tuiCfg.Defaults.FilterDone = appConfig.Defaults.FilterDone
+	tuiCfg.Defaults.ShowHeadings = appConfig.Defaults.ShowHeadings
+	tuiCfg.Defaults.ReadOnly = appConfig.Defaults.ReadOnly
 
-	tui.Config = &tui.ConfigType{}
-	tui.Config.Display.CheckSymbol = appConfig.Display.CheckSymbol
-	tui.Config.Display.SelectMarker = appConfig.Display.SelectMarker
-	tui.Config.Display.MaxVisible = appConfig.Defaults.MaxVisible
-	tui.Config.Defaults.WordWrap = appConfig.Defaults.WordWrap
-	tui.Config.Defaults.FilterDone = appConfig.Defaults.FilterDone
-	tui.Config.Defaults.ShowHeadings = appConfig.Defaults.ShowHeadings
-	tui.Config.Defaults.ReadOnly = appConfig.Defaults.ReadOnly
-
-	tui.StyleFuncs = &tui.StyleFuncsType{
+	tuiStyles := &tui.StyleFuncsType{
 		Magenta:        func(s string) string { return styles.Important.Render(s) },
 		Cyan:           func(s string) string { return styles.Accent.Render(s) },
 		Dim:            func(s string) string { return styles.Dim.Render(s) },
@@ -70,12 +65,11 @@ func testMain(m *testing.M) int {
 		DueSoon:        func(s string) string { return styles.DueSoon.Render(s) },
 		DueFuture:      func(s string) string { return styles.DueFuture.Render(s) },
 	}
-	tui.Version = Version
 
-	// Setup theme picker globals for testing
-	tui.AvailableThemes = GetBuiltinThemeNames()
-	tui.CurrentThemeName = appConfig.Theme.Name
-	tui.ThemeApplyFunc = func(themeName string) *tui.StyleFuncsType {
+	// Configure the test runtime theme picker
+	tuiCfg.AvailableThemes = GetBuiltinThemeNames()
+	tuiCfg.CurrentThemeName = appConfig.Theme.Name
+	tuiCfg.ThemeApplyFunc = func(themeName string) *tui.StyleFuncsType {
 		colors, ok := GetBuiltinTheme(themeName)
 		if !ok {
 			return nil
@@ -98,10 +92,12 @@ func testMain(m *testing.M) int {
 			DueFuture:      func(s string) string { return newStyles.DueFuture.Render(s) },
 		}
 	}
-	tui.ThemeSaveFunc = func(themeName string) error {
+	tuiCfg.ThemeSaveFunc = func(themeName string) error {
 		// For testing, don't actually save to disk
 		return nil
 	}
+
+	testRuntime = tui.Runtime{Config: tuiCfg, Styles: tuiStyles, Version: Version}
 
 	// Build the binary for testing
 	tmpDir, err := os.MkdirTemp("", "tdx-test")
@@ -172,7 +168,7 @@ func TestCommandUsesVersioning(t *testing.T) {
 
 // Helper to run piped input to TUI
 func runPiped(t *testing.T, file string, input string) string {
-	output := tui.RunPiped(file, []byte(input), false)
+	output := testRuntime.RunPiped(file, []byte(input), false)
 	return strings.TrimSpace(output)
 }
 
@@ -499,7 +495,7 @@ func TestTUI_ReadOnlyMode(t *testing.T) {
 
 	// Simulate: :read-only command, then space to toggle
 	// The toggle should not persist because read-only mode is on
-	output := tui.RunPiped(file, []byte(":read-only\r "), false)
+	output := testRuntime.RunPiped(file, []byte(":read-only\r "), false)
 
 	// Check that output shows READ ONLY indicator
 	if !strings.Contains(output, "READ ONLY") {

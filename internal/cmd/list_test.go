@@ -37,7 +37,6 @@ func TestListJSON(t *testing.T) {
 }
 
 func TestListFormatsAndFilters(t *testing.T) {
-	setupCLIStyles(t)
 	path := writeTodoFile(t, "- [x] Done #backend\n- [ ] Plain\n- [ ] Other #backend-extra\n")
 	for _, tt := range []struct {
 		opts ListOptions
@@ -101,7 +100,7 @@ func TestCommandErrorsReturn(t *testing.T) {
 		{"add", nil}, {"edit", []string{"1"}}, {"toggle", []string{"abc"}}, {"delete", []string{"-1"}},
 		{"toggle", []string{"1", "2"}}, {"list", []string{"extra"}}, {"unknown", nil}, {"delete", []string{"9"}},
 	} {
-		if err := HandleCommand(tt.command, tt.args, path); err == nil {
+		if err := (Service{}).HandleCommand(tt.command, tt.args, path); err == nil {
 			t.Fatalf("accepted %s %q", tt.command, tt.args)
 		}
 	}

@@ -34,3 +34,7 @@ _*.md
 # Test files
 /tmp/
 presentations/example.todo.md
+
+# Optional Rust experiment and Python bytecode
+/experiments/rust-eval/rust-probe/target/
+__pycache__/

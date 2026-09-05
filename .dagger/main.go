@@ -34,6 +34,7 @@ func (m *TdxCi) Ci(ctx context.Context, source *dagger.Directory) (string, error
 		name string
 		run  func() error
 	}{
+		{name: "rust-experiment", run: func() error { _, err := m.rustCheck(ctx, source); return err }},
 		{name: "format", run: func() error { _, err := m.Format(ctx, source); return err }},
 		{name: "vet", run: func() error { _, err := m.Vet(ctx, source); return err }},
 		{name: "test", run: func() error { _, err := m.Test(ctx, source); return err }},
@@ -247,4 +248,29 @@ func readMetadata(ctx context.Context, source *dagger.Directory) (pipeline.Metad
 	}
 	metadata.Description = strings.TrimSpace(metadata.Description)
 	return metadata, nil
+}
+
+// rustCheck validates the optional parser experiment without running machine-dependent timings.
+func (m *TdxCi) rustCheck(ctx context.Context, source *dagger.Directory) (string, error) {
+	return dag.Container().
+		From(goImage).
+		WithEnvVariable("PATH", "/root/.cargo/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
+		WithExec([]string{"bash", "-euc", `set -o pipefail
+case "$(uname -m)" in
+  x86_64) rust_target=x86_64-unknown-linux-gnu; rustup_sha=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71 ;;
+  aarch64) rust_target=aarch64-unknown-linux-gnu; rustup_sha=15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433 ;;
+  *) echo "Unsupported Rust CI architecture" >&2; exit 1 ;;
+esac
+curl -fsSL --max-time 120 "https://static.rust-lang.org/rustup/archive/1.29.1/$rust_target/rustup-init" -o /tmp/rustup-init
+printf '%s  /tmp/rustup-init\n' "$rustup_sha" | sha256sum -c -
+chmod +x /tmp/rustup-init
+/tmp/rustup-init -y --profile minimal --default-toolchain 1.98.1 --component rustfmt --component clippy`}).
+		WithDirectory("/src", cleanSource(source)).
+		WithWorkdir("/src/experiments/rust-eval/rust-probe").
+		WithEnvVariable("CARGO_TARGET_DIR", "/tmp/rust-target").
+		WithMountedCache("/root/.cargo/registry", dag.CacheVolume("tdx-rust-registry")).
+		WithExec([]string{"cargo", "fmt", "--check"}).
+		WithExec([]string{"cargo", "clippy", "--locked", "--", "-D", "warnings"}).
+		WithExec([]string{"cargo", "test", "--locked"}).
+		Stdout(ctx)
 }

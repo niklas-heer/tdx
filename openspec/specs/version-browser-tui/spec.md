@@ -2,14 +2,16 @@
 
 ## Purpose
 Provide an interactive TUI for browsing, comparing, and restoring captured file versions.
+
 ## Requirements
+
 ### Requirement: Versioning function injection into ConfigType
 
 The `tui.ConfigType` SHALL expose two optional function fields that decouple the TUI from the
 `versioning` package, allowing the version browser to be used without introducing a direct import
 dependency.
 
-- A `tui.VersionInfo` struct SHALL be defined in `internal/tui/model.go`:
+- A `tui.VersionInfo` struct SHALL be defined in `internal/tui/model.go:33`:
   ```go
   type VersionInfo struct {
       ID        int64
@@ -22,22 +24,20 @@ dependency.
   ReadVersionFunc  func(filePath string, id int64) (string, error)
   ```
 - Both fields SHALL default to `nil`. When `nil`, no versioning functionality is active.
-- `cmd/tdx/main.go` SHALL assign these fields after opening `versionStore`, wrapping
-  `versionStore.ListVersions` and `versionStore.ReadVersion` with the `tui.VersionInfo` adapter.
+- `cmd/tdx/main.go:27` SHALL assign these fields after opening the local version store, wrapping
+  `versions.ListVersions` and `versions.ReadVersion` with the `tui.VersionInfo` adapter.
 
 #### Scenario: Functions are nil when versioning is unavailable
 
-- **WHEN** `tui.Config.ListVersionsFunc` is `nil`
+- **WHEN** `m.Config().ListVersionsFunc` is `nil`
 - **THEN** the `versions` command SHALL NOT appear in the command palette
 - **AND** `VersionsMode` SHALL NOT be settable via normal key handling
 
 #### Scenario: Functions are wired at startup when store is open
 
-- **WHEN** `versionStore` is successfully opened in `cmd/tdx/main.go`
-- **THEN** `tui.Config.ListVersionsFunc` and `tui.Config.ReadVersionFunc` SHALL be non-nil
+- **WHEN** the local version store is successfully opened in `cmd/tdx/main.go:27`
+- **THEN** `m.Config().ListVersionsFunc` and `m.Config().ReadVersionFunc` SHALL be non-nil
 - **AND** the `versions` command SHALL appear in the command palette
-
----
 
 ### Requirement: versions command in the colon-command palette
 
@@ -47,9 +47,9 @@ SHALL open the version browser modal for the currently open file.
 - The command name SHALL be `versions` and the description SHALL be
   `"Browse and restore file version history"`.
 - The command SHALL only be included in `InitCommands()` when
-  `tui.Config.ListVersionsFunc != nil`.
+  `m.Config().ListVersionsFunc != nil`.
 - The command handler SHALL:
-  1. Call `tui.Config.ListVersionsFunc(m.FilePath)` to load the version list.
+  1. Call `m.Config().ListVersionsFunc(m.FilePath)` to load the version list.
   2. Store the result in `m.VersionsList`.
   3. Set `m.VersionsCursor = 0`, `m.VersionsDiffScroll = 0`, `m.VersionsConfirmMode = false`.
   4. Set `m.VersionsMode = true`.
@@ -62,11 +62,9 @@ SHALL open the version browser modal for the currently open file.
 
 #### Scenario: Command absent when no store configured
 
-- **WHEN** `tui.Config.ListVersionsFunc` is `nil`
+- **WHEN** `m.Config().ListVersionsFunc` is `nil`
 - **AND** the user opens the command palette
 - **THEN** `versions` SHALL NOT appear in the command list
-
----
 
 ### Requirement: Full-screen version browser modal
 
@@ -174,7 +172,7 @@ The system SHALL allow the user to restore the current file to any historic vers
 
 - Pressing `Enter` when `VersionsMode` is `true` and `VersionsConfirmMode` is `false` SHALL set `VersionsConfirmMode = true` and display an inline confirmation prompt: `"Restore version #NNN (YYYY-MM-DD HH:MM)? [y/N]"`.
 - In confirmation mode, pressing `y` or `Y` SHALL:
-  1. Call `tui.Config.ReadVersionFunc(m.FilePath, selectedVersion.ID)` to get the historic content.
+  1. Call `m.Config().ReadVersionFunc(m.FilePath, selectedVersion.ID)` to get the historic content.
   2. Conditionally write it byte-for-byte through the safe-save boundary using the active file revision.
   3. Reload `m.FileModel` from the committed file and apply restored frontmatter settings.
   4. Close confirmation and version browser modes after success.
@@ -204,3 +202,10 @@ The system SHALL allow the user to restore the current file to any historic vers
 - **AND** then presses `Esc` or `n`
 - **THEN** `VersionsConfirmMode` SHALL be `false`
 - **AND** `VersionsMode` SHALL remain `true`
+
+### Requirement: Canonical history lookup
+The version browser SHALL resolve file aliases to the same canonical identity used by persistence callbacks before listing or reading a saved revision.
+
+#### Scenario: Open through a symlink
+- **WHEN** a file is opened through a symlink or a symlinked parent directory
+- **THEN** its captured versions SHALL be visible and restorable through that path and the canonical path

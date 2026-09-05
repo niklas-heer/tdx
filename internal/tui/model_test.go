@@ -103,34 +103,13 @@ func TestNew_ExtractsAvailableTags(t *testing.T) {
 	}
 }
 
-func TestConfig_FallsBackToGlobal(t *testing.T) {
-	// Set global config
-	oldConfig := Config
-	Config = testConfig()
-	Config.Display.CheckSymbol = "global"
-	defer func() { Config = oldConfig }()
-
-	// Create model without injected config
-	fm := &markdown.FileModel{}
-	m := New("/tmp/test.md", fm, false, false, -1, nil, nil, "")
-
-	if m.Config().Display.CheckSymbol != "global" {
-		t.Errorf("Should fall back to global Config")
-	}
-}
-
-func TestStyles_FallsBackToGlobal(t *testing.T) {
-	// Set global styles
-	oldStyles := StyleFuncs
-	StyleFuncs = testStyles()
-	defer func() { StyleFuncs = oldStyles }()
-
-	// Create model without injected styles
-	fm := &markdown.FileModel{}
-	m := New("/tmp/test.md", fm, false, false, -1, nil, nil, "")
-
-	if m.Styles() == nil {
-		t.Error("Should fall back to global StyleFuncs")
+func TestIndependentDefaults(t *testing.T) {
+	fm := markdown.ParseMarkdown("- [ ] hello\n")
+	a := New("a.md", fm, false, false, -1, nil, nil, "")
+	b := New("b.md", fm, false, false, -1, nil, nil, "")
+	a.Config().Display.CheckSymbol = "custom"
+	if b.Config().Display.CheckSymbol != "x" || b.Styles().Cyan("hello") != "hello" {
+		t.Fatal("models share default configuration or styles")
 	}
 }
 

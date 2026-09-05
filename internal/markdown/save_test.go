@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"sync"
@@ -251,7 +252,7 @@ func TestCloneRetainsLoadedRevisionForConditionalSave(t *testing.T) {
 	if err := WriteFile(path, clone); err != nil {
 		t.Fatalf("WriteFile(clone) error = %v", err)
 	}
-	if clone.FilePath != fm.FilePath || clone.Metadata != fm.Metadata {
+	if clone.FilePath != fm.FilePath || !reflect.DeepEqual(clone.Metadata, fm.Metadata) {
 		t.Fatal("Clone() did not retain file identity and metadata")
 	}
 }
@@ -627,17 +628,18 @@ func TestDirectorySyncFailureIsPostCommit(t *testing.T) {
 }
 
 func TestForcePreimageCaptureFailureLeavesOriginal(t *testing.T) {
+	store := Store{}
 	isolateSaveLocks(t)
 	path := filepath.Join(t.TempDir(), "todo.md")
 	original := "# external\n"
 	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	originalReadHook := ReadHook
-	ReadHook = func(string, string) error { return errors.New("capture failed") }
-	t.Cleanup(func() { ReadHook = originalReadHook })
-	if err := WriteContentUnchecked(path, "# local\n"); err == nil {
-		t.Fatal("WriteContentUnchecked() succeeded despite failed preimage capture")
+	originalReadHook := store.OnRead
+	store.OnRead = func(string, string) error { return errors.New("capture failed") }
+	t.Cleanup(func() { store.OnRead = originalReadHook })
+	if err := store.WriteContentUnchecked(path, "# local\n"); err == nil {
+		t.Fatal("store.WriteContentUnchecked() succeeded despite failed preimage capture")
 	}
 	got, _ := os.ReadFile(path)
 	if string(got) != original {
@@ -706,22 +708,23 @@ func TestCrashBoundariesNeverExposePartialTarget(t *testing.T) {
 }
 
 func TestPostCommitHookErrorReportsCommittedSave(t *testing.T) {
+	store := Store{}
 	isolateSaveLocks(t)
-	originalHook := WriteHook
-	defer func() { WriteHook = originalHook }()
+	originalHook := store.OnWrite
+	defer func() { store.OnWrite = originalHook }()
 	hookErr := errors.New("version store unavailable")
-	WriteHook = func(string, string) error { return hookErr }
+	store.OnWrite = func(string, string) error { return hookErr }
 
 	path := filepath.Join(t.TempDir(), "todo.md")
-	fm, err := ReadFile(path)
+	fm, err := store.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fm.AddTodoItem("saved", false)
-	err = WriteFile(path, fm)
+	err = store.WriteFile(path, fm)
 	var postCommit *PostCommitError
 	if !errors.As(err, &postCommit) || !errors.Is(err, hookErr) {
-		t.Fatalf("WriteFile() error = %v, want PostCommitError wrapping hook error", err)
+		t.Fatalf("store.WriteFile() error = %v, want PostCommitError wrapping hook error", err)
 	}
 	modified, checkErr := fm.CheckFileModified()
 	if checkErr != nil || modified {
@@ -734,19 +737,20 @@ func TestPostCommitHookErrorReportsCommittedSave(t *testing.T) {
 }
 
 func TestForceSaveCapturesOverwrittenContent(t *testing.T) {
+	store := Store{}
 	isolateSaveLocks(t)
-	originalReadHook := ReadHook
-	originalWriteHook := WriteHook
+	originalReadHook := store.OnRead
+	originalWriteHook := store.OnWrite
 	defer func() {
-		ReadHook = originalReadHook
-		WriteHook = originalWriteHook
+		store.OnRead = originalReadHook
+		store.OnWrite = originalWriteHook
 	}()
 	var before, after string
-	ReadHook = func(_ string, content string) error {
+	store.OnRead = func(_ string, content string) error {
 		before = content
 		return nil
 	}
-	WriteHook = func(_ string, content string) error {
+	store.OnWrite = func(_ string, content string) error {
 		after = content
 		return nil
 	}
@@ -758,7 +762,7 @@ func TestForceSaveCapturesOverwrittenContent(t *testing.T) {
 	}
 	fm := ParseMarkdown("# local\n")
 	fm.FilePath = path
-	if err := WriteFileUnchecked(path, fm); err != nil {
+	if err := store.WriteFileUnchecked(path, fm); err != nil {
 		t.Fatal(err)
 	}
 	if before != external || after != SerializeMarkdown(fm) {

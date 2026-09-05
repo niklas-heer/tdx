@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/niklas-heer/tdx/internal/editor"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -157,7 +158,7 @@ func (m Model) handleHeadingInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		headings := m.GetHeadings()
 		index := m.SectionCursor
 		if m.HeadingInput == "rename" {
-			m.Err = m.FileModel.RenameHeading(index, m.InputBuffer)
+			m.Err = m.applyAction(editor.Action{Kind: editor.RenameHeading, Index: index, Text: m.InputBuffer})
 		} else {
 			level := 1
 			if len(headings) > 0 {
@@ -168,7 +169,7 @@ func (m Model) handleHeadingInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			} else {
 				index = -1
 			}
-			m.SectionCursor, m.Err = m.FileModel.CreateHeading(index, level, m.InputBuffer)
+			m.SectionCursor, m.Err = editor.Apply(&m.FileModel, editor.Action{Kind: editor.CreateHeading, Index: index, Level: level, Text: m.InputBuffer})
 		}
 		if m.Err != nil {
 			return m, nil

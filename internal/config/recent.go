@@ -49,9 +49,19 @@ func ResetConfigDirForTesting() {
 // DefaultMaxRecent is the default maximum number of recent files to track
 const DefaultMaxRecent = 20
 
-// MaxRecentFiles can be set by main.go to override the default
-// This allows the config to be loaded from config.toml instead of config.yaml
-var MaxRecentFiles = DefaultMaxRecent
+// RecentStore owns the destination and retention limit for one application.
+// A zero limit preserves the persisted limit; an empty directory uses the default.
+type RecentStore struct {
+	Dir   string
+	Limit int
+}
+
+func (s RecentStore) path() (string, error) {
+	if s.Dir != "" {
+		return filepath.Join(s.Dir, "recent.json"), nil
+	}
+	return GetRecentFilesPath()
+}
 
 // computeFileHash computes SHA256 hash of file content
 func computeFileHash(filePath string) (string, error) {
@@ -70,7 +80,7 @@ func computeFileHash(filePath string) (string, error) {
 }
 
 // SaveRecentFile adds or updates a file in the recent files list
-func SaveRecentFile(filePath string, cursorPos int) error {
+func (s RecentStore) SaveFile(filePath string, cursorPos int) error {
 	// Get absolute path
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
@@ -91,12 +101,12 @@ func SaveRecentFile(filePath string, cursorPos int) error {
 	}
 
 	// Load existing recent files
-	recent, err := LoadRecentFiles()
+	recent, err := s.Load()
 	if err != nil {
 		// If file doesn't exist, create new
 		recent = &RecentFiles{
 			Files:     []RecentFile{},
-			MaxRecent: DefaultMaxRecent,
+			MaxRecent: s.limit(),
 		}
 	}
 
@@ -136,12 +146,12 @@ func SaveRecentFile(filePath string, cursorPos int) error {
 		recent.Files = recent.Files[:recent.MaxRecent]
 	}
 
-	return recent.Save()
+	return s.save(recent)
 }
 
 // LoadRecentFiles loads the recent files list from disk
-func LoadRecentFiles() (*RecentFiles, error) {
-	path, err := GetRecentFilesPath()
+func (s RecentStore) Load() (*RecentFiles, error) {
+	path, err := s.path()
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +161,7 @@ func LoadRecentFiles() (*RecentFiles, error) {
 		if os.IsNotExist(err) {
 			return &RecentFiles{
 				Files:     []RecentFile{},
-				MaxRecent: getMaxRecentFromConfig(),
+				MaxRecent: s.limit(),
 			}, nil
 		}
 		return nil, err
@@ -163,25 +173,23 @@ func LoadRecentFiles() (*RecentFiles, error) {
 	}
 
 	// Set from config or default if not specified
-	if recent.MaxRecent == 0 {
-		recent.MaxRecent = getMaxRecentFromConfig()
+	if recent.MaxRecent <= 0 || s.Limit > 0 {
+		recent.MaxRecent = s.limit()
 	}
 
 	return &recent, nil
 }
 
-// getMaxRecentFromConfig gets the max recent files value from config or returns default
-func getMaxRecentFromConfig() int {
-	// Use the global MaxRecentFiles which is set by main.go from config.toml
-	if MaxRecentFiles > 0 {
-		return MaxRecentFiles
+func (s RecentStore) limit() int {
+	if s.Limit > 0 {
+		return s.Limit
 	}
 	return DefaultMaxRecent
 }
 
 // Save writes the recent files list to disk
-func (r *RecentFiles) Save() error {
-	path, err := GetRecentFilesPath()
+func (s RecentStore) save(r *RecentFiles) error {
+	path, err := s.path()
 	if err != nil {
 		return err
 	}
@@ -305,10 +313,15 @@ func GetRecentFilePath(index int) (string, error) {
 }
 
 // ClearRecentFiles removes all recent files from the list
-func ClearRecentFiles() error {
+func (s RecentStore) Clear() error {
 	recent := &RecentFiles{
 		Files:     []RecentFile{},
-		MaxRecent: DefaultMaxRecent,
+		MaxRecent: s.limit(),
 	}
-	return recent.Save()
+	return s.save(recent)
 }
+
+func SaveRecentFile(path string, cursor int) error { return (RecentStore{}).SaveFile(path, cursor) }
+func LoadRecentFiles() (*RecentFiles, error)       { return (RecentStore{}).Load() }
+func ClearRecentFiles() error                      { return (RecentStore{}).Clear() }
+func (r *RecentFiles) Save() error                 { return (RecentStore{}).save(r) }

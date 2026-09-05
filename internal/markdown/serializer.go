@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
@@ -31,7 +32,7 @@ func writeInlineNodeText(buf *bytes.Buffer, doc *ASTDocument, node ast.Node) boo
 	}
 }
 
-func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int) {
+func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int, ordinal ...int) {
 	if writeInlineNodeText(buf, doc, node) {
 		return
 	}
@@ -83,9 +84,11 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 		}
 
 	case *ast.List:
-		// Serialize all list items
+		// Carry the ordinal forward in one pass, including lists starting above one.
+		number := n.Start
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			serializeNode(doc, child, buf, depth)
+			serializeNode(doc, child, buf, depth, number)
+			number++
 		}
 		// Add blank line after list
 		if n.NextSibling() != nil {
@@ -98,6 +101,13 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 		marker := "-"
 		if list, ok := n.Parent().(*ast.List); ok {
 			marker = string(list.Marker)
+			if list.IsOrdered() {
+				number := list.Start
+				if len(ordinal) > 0 {
+					number = ordinal[0]
+				}
+				marker = strconv.Itoa(number) + marker
+			}
 		}
 		buf.WriteString(indent)
 		buf.WriteString(marker)
@@ -118,7 +128,15 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 		if hasNestedList {
 			for child := n.FirstChild(); child != nil; child = child.NextSibling() {
 				if _, isList := child.(*ast.List); isList {
-					serializeNode(doc, child, buf, depth+1)
+					var nested bytes.Buffer
+					serializeNode(doc, child, &nested, 0)
+					padding := indent + strings.Repeat(" ", len(marker)+1)
+					for _, line := range strings.SplitAfter(nested.String(), "\n") {
+						if line != "" {
+							buf.WriteString(padding)
+							buf.WriteString(line)
+						}
+					}
 				}
 			}
 		}
@@ -171,10 +189,16 @@ func serializeNode(doc *ASTDocument, node ast.Node, buf *bytes.Buffer, depth int
 		buf.WriteString("```\n\n")
 
 	case *ast.Blockquote:
-		// Serialize blockquote
+		// Prefix every rendered line, including nested lists and paragraph breaks.
+		var quoted bytes.Buffer
 		for child := n.FirstChild(); child != nil; child = child.NextSibling() {
-			buf.WriteString("> ")
-			serializeNode(doc, child, buf, depth)
+			serializeNode(doc, child, &quoted, depth)
+		}
+		for _, line := range strings.SplitAfter(quoted.String(), "\n") {
+			if line != "" {
+				buf.WriteString("> ")
+				buf.WriteString(line)
+			}
 		}
 		if n.NextSibling() != nil {
 			buf.WriteString("\n")

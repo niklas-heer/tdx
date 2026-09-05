@@ -10,21 +10,9 @@ import (
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
-func setupCLIStyles(t *testing.T) {
+func setupCLIStyles(t *testing.T) Service {
 	t.Helper()
-
-	originalGreenStyle := GreenStyle
-	originalDimStyle := DimStyle
-	originalCheckSymbol := CheckSymbol
-	GreenStyle = func(value string) string { return value }
-	DimStyle = func(value string) string { return value }
-	CheckSymbol = "x"
-
-	t.Cleanup(func() {
-		GreenStyle = originalGreenStyle
-		DimStyle = originalDimStyle
-		CheckSymbol = originalCheckSymbol
-	})
+	return Service{CheckSymbol: "x", GreenStyle: func(s string) string { return s }}
 }
 
 func writeTodoFile(t *testing.T, content string) string {
@@ -77,11 +65,11 @@ func captureStdout(t *testing.T, run func()) string {
 }
 
 func TestTodoCommandsRoundTrip(t *testing.T) {
-	setupCLIStyles(t)
+	service := setupCLIStyles(t)
 	path := writeTodoFile(t, "# Todos\n\n- [ ] First\n")
 
 	output := captureStdout(t, func() {
-		if err := ListTodos(path); err != nil {
+		if err := service.ListTodos(path); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -90,7 +78,7 @@ func TestTodoCommandsRoundTrip(t *testing.T) {
 	}
 
 	output = captureStdout(t, func() {
-		if err := AddTodo(path, "Second"); err != nil {
+		if err := service.AddTodo(path, "Second"); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -99,7 +87,7 @@ func TestTodoCommandsRoundTrip(t *testing.T) {
 	}
 
 	output = captureStdout(t, func() {
-		if err := ToggleTodo(path, 1); err != nil {
+		if err := service.ToggleTodo(path, 1); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -108,7 +96,7 @@ func TestTodoCommandsRoundTrip(t *testing.T) {
 	}
 
 	output = captureStdout(t, func() {
-		if err := EditTodo(path, 2, "Changed"); err != nil {
+		if err := service.EditTodo(path, 2, "Changed"); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -117,7 +105,7 @@ func TestTodoCommandsRoundTrip(t *testing.T) {
 	}
 
 	output = captureStdout(t, func() {
-		if err := DeleteTodo(path, 1); err != nil {
+		if err := service.DeleteTodo(path, 1); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -135,11 +123,11 @@ func TestTodoCommandsRoundTrip(t *testing.T) {
 }
 
 func TestListTodosEmpty(t *testing.T) {
-	setupCLIStyles(t)
+	service := setupCLIStyles(t)
 	path := writeTodoFile(t, "# Todos\n")
 
 	output := captureStdout(t, func() {
-		if err := ListTodos(path); err != nil {
+		if err := service.ListTodos(path); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -149,7 +137,7 @@ func TestListTodosEmpty(t *testing.T) {
 }
 
 func TestHandleCommand(t *testing.T) {
-	setupCLIStyles(t)
+	service := setupCLIStyles(t)
 
 	tests := []struct {
 		name    string
@@ -204,7 +192,7 @@ func TestHandleCommand(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			path := writeTodoFile(t, "# Todos\n\n- [ ] First\n")
 			captureStdout(t, func() {
-				if err := HandleCommand(test.command, test.args, path); err != nil {
+				if err := service.HandleCommand(test.command, test.args, path); err != nil {
 					t.Fatal(err)
 				}
 			})

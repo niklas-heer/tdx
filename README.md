@@ -627,6 +627,7 @@ tdx/
 │   │   ├── commands.go  # Command palette
 │   │   ├── render.go    # Display logic
 │   │   └── *_test.go    # Unit & benchmark tests
+│   ├── editor/          # Shared editing actions and bounded undo
 │   ├── cmd/             # CLI command handlers
 │   │   └── cli.go       # List, add, toggle, etc.
 │   ├── config/          # Configuration handling
@@ -650,6 +651,10 @@ tdx/
 After cloning, run `mise trust` and `mise run setup`. Docker is required only for Dagger tasks (`ci` and `release-artifacts`); normal build, test, and lint tasks run locally.
 
 - [Dagger 0.21.9](https://docs.dagger.io/install/) and a Docker-compatible container runtime for the portable CI pipeline
+
+The CLI and TUI share document actions in `internal/editor`. Configuration, styles, recent files, and Markdown history callbacks belong to each application instance, making isolated integration tests straightforward.
+
+For the optional Rust parser experiment, run `mise run rust:check` and `mise run rust-eval`. See the [measured comparison and limitations](experiments/rust-eval/README.md); Rust is not part of the shipped application.
 
 ### Building
 

@@ -3,9 +3,9 @@ package tui
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
+	"github.com/niklas-heer/tdx/internal/editor"
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/niklas-heer/tdx/internal/util"
 )
@@ -15,74 +15,6 @@ type Command struct {
 	Name        string
 	Description string
 	Handler     func(m *Model)
-}
-
-// todoSection represents a group of todos under a heading (or before any heading)
-type todoSection struct {
-	startIndex int // Index of first todo in this section
-	endIndex   int // Index after last todo in this section (exclusive)
-}
-
-// getTodoSections divides todos into sections based on headings
-// Each section contains todos that belong under a particular heading
-func getTodoSections(todos []markdown.Todo, headings []markdown.Heading) []todoSection {
-	if len(todos) == 0 {
-		return nil
-	}
-
-	// Sort headings by BeforeTodoIndex to process in order
-	sortedHeadings := make([]markdown.Heading, len(headings))
-	copy(sortedHeadings, headings)
-	sort.Slice(sortedHeadings, func(i, j int) bool {
-		return sortedHeadings[i].BeforeTodoIndex < sortedHeadings[j].BeforeTodoIndex
-	})
-
-	var sections []todoSection
-
-	// Find section boundaries from headings
-	prevBoundary := 0
-	for _, h := range sortedHeadings {
-		// BeforeTodoIndex tells us which todo this heading appears before
-		if h.BeforeTodoIndex > prevBoundary && h.BeforeTodoIndex <= len(todos) {
-			// There are todos before this heading that form a section
-			sections = append(sections, todoSection{
-				startIndex: prevBoundary,
-				endIndex:   h.BeforeTodoIndex,
-			})
-			prevBoundary = h.BeforeTodoIndex
-		}
-	}
-
-	// Add final section for remaining todos
-	if prevBoundary < len(todos) {
-		sections = append(sections, todoSection{
-			startIndex: prevBoundary,
-			endIndex:   len(todos),
-		})
-	}
-
-	// If no sections were created (no headings), treat all todos as one section
-	if len(sections) == 0 {
-		sections = append(sections, todoSection{
-			startIndex: 0,
-			endIndex:   len(todos),
-		})
-	}
-
-	return sections
-}
-
-// sortTodosInSections sorts todos within each section using the provided sort function
-// sortFn should sort the slice in place
-func sortTodosInSections(todos []markdown.Todo, headings []markdown.Heading, sortFn func([]markdown.Todo)) {
-	sections := getTodoSections(todos, headings)
-
-	for _, section := range sections {
-		if section.endIndex > section.startIndex {
-			sectionTodos := todos[section.startIndex:section.endIndex]
-			sortFn(sectionTodos)
-		}
-	}
 }
 
 // InitCommands initializes the command palette with all available commands.
@@ -99,16 +31,9 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Mark all todos as complete",
 			Handler: func(m *Model) {
 				m.saveHistory()
-				// Use index-based loop with bounds check since UpdateTodoItem
-				// can re-extract todos from AST, potentially changing slice
-				for i := 0; i < len(m.FileModel.Todos); i++ {
-					if i >= len(m.FileModel.Todos) {
-						break // Safety check if slice shrinks
-					}
-					todo := m.FileModel.Todos[i]
-					if !todo.Checked {
-						_ = m.FileModel.UpdateTodoItem(i, todo.Text, true)
-					}
+				if err := m.applyAction(editor.Action{Kind: editor.SetAllChecked, Checked: true}); err != nil {
+					m.Err = err
+					return
 				}
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
@@ -119,16 +44,9 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Mark all todos as incomplete",
 			Handler: func(m *Model) {
 				m.saveHistory()
-				// Use index-based loop with bounds check since UpdateTodoItem
-				// can re-extract todos from AST, potentially changing slice
-				for i := 0; i < len(m.FileModel.Todos); i++ {
-					if i >= len(m.FileModel.Todos) {
-						break // Safety check if slice shrinks
-					}
-					todo := m.FileModel.Todos[i]
-					if todo.Checked {
-						_ = m.FileModel.UpdateTodoItem(i, todo.Text, false)
-					}
+				if err := m.applyAction(editor.Action{Kind: editor.SetAllChecked, Checked: false}); err != nil {
+					m.Err = err
+					return
 				}
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
@@ -139,22 +57,10 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Sort todos by completion (incomplete first)",
 			Handler: func(m *Model) {
 				m.saveHistory()
-				// Get headings to sort within sections
-				headings := m.FileModel.GetHeadings()
-
-				// Sort function: incomplete first, then complete (stable)
-				sortByDone := func(todos []markdown.Todo) {
-					sort.SliceStable(todos, func(i, j int) bool {
-						// Incomplete (false) comes before complete (true)
-						return !todos[i].Checked && todos[j].Checked
-					})
+				if err := m.applyAction(editor.Action{Kind: editor.SortDone}); err != nil {
+					m.Err = err
+					return
 				}
-
-				// Sort within each heading section
-				sortTodosInSections(m.FileModel.Todos, headings, sortByDone)
-
-				// Update indices and rebuild line structure
-				markdown.RebuildFileStructure(&m.FileModel)
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 				// Adjust selection if needed
@@ -168,34 +74,10 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Sort todos by due date (earliest first)",
 			Handler: func(m *Model) {
 				m.saveHistory()
-				// Get headings to sort within sections
-				headings := m.FileModel.GetHeadings()
-
-				// Sort function: by due date (earliest first), no due date at end (stable)
-				sortByDueDate := func(todos []markdown.Todo) {
-					sort.SliceStable(todos, func(i, j int) bool {
-						di, dj := todos[i].DueDate, todos[j].DueDate
-						// Both have no due date - maintain order
-						if di == nil && dj == nil {
-							return false
-						}
-						// No due date goes after those with due date
-						if di == nil {
-							return false
-						}
-						if dj == nil {
-							return true
-						}
-						// Both have due dates - earlier date first
-						return di.Before(*dj)
-					})
+				if err := m.applyAction(editor.Action{Kind: editor.SortDue}); err != nil {
+					m.Err = err
+					return
 				}
-
-				// Sort within each heading section
-				sortTodosInSections(m.FileModel.Todos, headings, sortByDueDate)
-
-				// Update indices and rebuild line structure
-				markdown.RebuildFileStructure(&m.FileModel)
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 				// Adjust selection if needed
@@ -209,34 +91,10 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Sort todos by priority (p1 first, then p2, etc.)",
 			Handler: func(m *Model) {
 				m.saveHistory()
-				// Get headings to sort within sections
-				headings := m.FileModel.GetHeadings()
-
-				// Sort function: by priority (p1 first), unprioritized at end (stable)
-				sortByPriority := func(todos []markdown.Todo) {
-					sort.SliceStable(todos, func(i, j int) bool {
-						pi, pj := todos[i].Priority, todos[j].Priority
-						// Both unprioritized - maintain order
-						if pi == 0 && pj == 0 {
-							return false
-						}
-						// Unprioritized goes after prioritized
-						if pi == 0 {
-							return false
-						}
-						if pj == 0 {
-							return true
-						}
-						// Both prioritized - lower number = higher priority
-						return pi < pj
-					})
+				if err := m.applyAction(editor.Action{Kind: editor.SortPriority}); err != nil {
+					m.Err = err
+					return
 				}
-
-				// Sort within each heading section
-				sortTodosInSections(m.FileModel.Todos, headings, sortByPriority)
-
-				// Update indices and rebuild line structure
-				markdown.RebuildFileStructure(&m.FileModel)
 				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 				// Adjust selection if needed
@@ -326,12 +184,12 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Delete all completed todos",
 			Handler: func(m *Model) {
 				m.saveHistory()
-				// Delete completed todos from the end backwards to preserve indices
-				for i := len(m.FileModel.Todos) - 1; i >= 0; i-- {
-					if m.FileModel.Todos[i].Checked {
-						_ = m.FileModel.DeleteTodoItem(i)
-					}
+				if err := m.applyAction(editor.Action{Kind: editor.ClearDone}); err != nil {
+					m.Err = err
+					return
 				}
+				m.InvalidateHeadingsCache()
+				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 				// Adjust selection
 				if m.SelectedIndex >= len(m.FileModel.Todos) {
@@ -351,7 +209,7 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Save current state to file",
 			Handler: func(m *Model) {
 				local := markdown.SerializeMarkdown(&m.FileModel)
-				if err := markdown.WriteFile(m.FilePath, &m.FileModel); err != nil {
+				if err := m.Config().Store.WriteFile(m.FilePath, &m.FileModel); err != nil {
 					m.recordSaveError(err, local)
 					return
 				}
@@ -398,14 +256,13 @@ func InitCommands(cfg ...*ConfigType) []Command {
 			Description: "Reload file from disk (discards unsaved changes)",
 			Handler: func(m *Model) {
 				// Reload file from disk
-				fm, err := markdown.ReadFile(m.FilePath)
+				fm, err := m.Config().Store.ReadFile(m.FilePath)
 				if err != nil {
 					m.Err = err
 					return
 				}
 				m.FileModel = *fm
-				m.History = nil // Clear history
-				m.UndoStack = nil
+				m.history.Clear()
 				m.InvalidateHeadingsCache()
 				m.clearSections()
 				m.clearConflict()
@@ -422,13 +279,13 @@ func InitCommands(cfg ...*ConfigType) []Command {
 				if !m.ConflictPending {
 					content = markdown.SerializeMarkdown(&m.FileModel)
 				}
-				saveErr := markdown.WriteContentUnchecked(m.FilePath, content)
+				saveErr := m.Config().Store.WriteContentUnchecked(m.FilePath, content)
 				var postCommit *markdown.PostCommitError
 				if saveErr != nil && !errors.As(saveErr, &postCommit) {
 					m.Err = saveErr
 					return
 				}
-				fm, readErr := markdown.ReadFile(m.FilePath)
+				fm, readErr := m.Config().Store.ReadFile(m.FilePath)
 				if fm != nil {
 					m.FileModel = *fm
 					m.clearConflict()

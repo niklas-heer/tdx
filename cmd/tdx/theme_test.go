@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
-	"github.com/niklas-heer/tdx/internal/tui"
 )
 
 // TestTUI_ThemeCommand_OpensOverlay tests that :theme command opens the theme picker
@@ -225,19 +224,19 @@ func TestTUI_ThemePicker_LivePreview(t *testing.T) {
 // TestTUI_ThemePickerAvailableThemes tests that the model has themes populated
 func TestTUI_ThemePickerAvailableThemes(t *testing.T) {
 	// Verify the global is set up correctly
-	if len(tui.AvailableThemes) == 0 {
+	if len(testRuntime.Config.AvailableThemes) == 0 {
 		t.Error("Expected AvailableThemes to be populated in TestMain")
 	}
 
-	if tui.CurrentThemeName == "" {
+	if testRuntime.Config.CurrentThemeName == "" {
 		t.Error("Expected CurrentThemeName to be set in TestMain")
 	}
 
-	if tui.ThemeApplyFunc == nil {
+	if testRuntime.Config.ThemeApplyFunc == nil {
 		t.Error("Expected ThemeApplyFunc to be set in TestMain")
 	}
 
-	if tui.ThemeSaveFunc == nil {
+	if testRuntime.Config.ThemeSaveFunc == nil {
 		t.Error("Expected ThemeSaveFunc to be set in TestMain")
 	}
 }
