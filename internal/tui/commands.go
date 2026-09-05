@@ -262,6 +262,7 @@ func InitCommands(cfg ...*ConfigType) []Command {
 					return
 				}
 				m.FileModel = *fm
+				m.RefreshAvailableTags()
 				m.history.Clear()
 				m.InvalidateHeadingsCache()
 				m.clearSections()

@@ -226,7 +226,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "n":
 		// Insert new todo after cursor position (like vim's 'o')
-		m.saveHistory()
+		m.history.Begin(&m.FileModel)
 		m.InputMode = true
 		m.InsertAfterCursor = true
 		m.InputBuffer = ""
@@ -234,7 +234,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "N":
 		// Append new todo at end of file (like vim's 'O' but at end)
-		m.saveHistory()
+		m.history.Begin(&m.FileModel)
 		m.InputMode = true
 		m.InsertAfterCursor = false
 		m.InputBuffer = ""
@@ -242,7 +242,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "e":
 		if len(m.FileModel.Todos) > 0 {
-			m.saveHistory()
+			m.history.Begin(&m.FileModel)
 			m.EditMode = true
 			m.InputBuffer = m.FileModel.Todos[m.SelectedIndex].Text
 			m.CursorPos = len(m.InputBuffer)
@@ -265,13 +265,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "m":
 		if len(m.FileModel.Todos) > 0 {
-			m.saveHistory()
+			m.history.Begin(&m.FileModel)
 			m.SavedCursorIndex = m.SelectedIndex // Save cursor position for cancel
 			m.MoveMode = true
 		}
 
 	case "u":
 		if m.history.Undo(&m.FileModel) {
+			m.RefreshAvailableTags()
 			m.clearSections()
 			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
@@ -431,6 +432,11 @@ func (m Model) handleInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	switch key {
 	case "enter", "ctrl+m":
+		if m.InputBuffer == "" {
+			m.history.Cancel(&m.FileModel)
+		} else {
+			m.history.Commit()
+		}
 		if m.InputMode {
 			if m.InputBuffer != "" {
 				m.addNewTodo()
@@ -449,7 +455,7 @@ func (m Model) handleInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.InputMode = false
 		m.EditMode = false
-		if m.history.Undo(&m.FileModel) {
+		if m.history.Cancel(&m.FileModel) {
 			m.InvalidateHeadingsCache()
 		}
 
@@ -621,11 +627,12 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "enter":
+		m.history.Commit()
 		m.writeIfPersist()
 		m.MoveMode = false
 
 	case "esc":
-		if m.history.Undo(&m.FileModel) {
+		if m.history.Cancel(&m.FileModel) {
 			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 			m.InvalidateHeadingsCache()
@@ -1324,7 +1331,9 @@ func (m *Model) writeIfPersist() {
 
 // checkAndReloadFile checks if the file changed and reloads if safe
 func (m Model) checkAndReloadFile() tea.Cmd {
-	if m.ConflictPending {
+	if m.ConflictPending || m.InputMode || m.EditMode || m.MoveMode || m.HeadingInput != "" {
+		// Keep the revision captured before interactive input. Refreshing it here
+		// would let a later Enter overwrite external changes without a conflict.
 		return watchFileChanges() // Continue watching
 	}
 
@@ -1340,6 +1349,7 @@ func (m Model) checkAndReloadFile() tea.Cmd {
 		return watchFileChanges()
 	}
 	m.FileModel = *diskFM
+	m.RefreshAvailableTags()
 	m.history.Clear()
 	m.Err = err
 	return func() tea.Msg { return reloadedMsg{model: m} }

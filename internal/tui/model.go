@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -343,8 +344,11 @@ func (m *Model) InvalidateDocumentTree() {
 }
 
 // RefreshAvailableTags updates AvailableTags from the current todos and cleans up
-// FilteredTags to remove any tags that no longer exist.
+// FilteredTags to remove any tags that no longer exist. It also refreshes the
+// priority picker and removes priority filters absent from the document.
 func (m *Model) RefreshAvailableTags() {
+	m.AvailablePriorities = markdown.GetAllPriorities(m.FileModel.Todos)
+	m.FilteredPriorities = slices.DeleteFunc(m.FilteredPriorities, func(p int) bool { return !slices.Contains(m.AvailablePriorities, p) })
 	m.AvailableTags = markdown.GetAllTags(m.FileModel.Todos)
 
 	// Clean up FilteredTags - remove any tags that no longer exist

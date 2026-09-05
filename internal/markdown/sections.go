@@ -34,6 +34,7 @@ func validHeading(title string, level int) error {
 }
 
 func (fm *FileModel) setHeadingText(h *ast.Heading, title string) {
+	fm.ast.invalidateSource()
 	h.RemoveChildren(h)
 	start := len(fm.ast.Source)
 	fm.ast.Source = append(fm.ast.Source, title...)
@@ -100,6 +101,7 @@ func (fm *FileModel) AddTodoInSection(index int, title string) (int, error) {
 	if index < 0 || index >= len(headings) {
 		return -1, fmt.Errorf("section no longer exists")
 	}
+	fm.ast.invalidateSource()
 	h := headings[index]
 	list, ok := h.NextSibling().(*ast.List)
 	if !ok || list.IsOrdered() {

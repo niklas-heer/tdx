@@ -656,6 +656,10 @@ The CLI and TUI share document actions in `internal/editor`. Configuration, styl
 
 For the optional Rust parser experiment, run `mise run rust:check` and `mise run rust-eval`. See the [measured comparison and limitations](experiments/rust-eval/README.md); Rust is not part of the shipped application.
 
+### Sustained-use testing
+
+`mise run test:usage` replays 100 simulated hours (36,000 actions) against an independent task oracle, real TUI updates and disk saves. Use `mise run test:usage-cli` for the executable contract and `mise run test:terminal` for actual terminal sessions. See the [harness, measured improvements and rewrite limitations](experiments/usage/README.md) for replay instructions and the distinction between simulated time and wall-clock endurance.
+
 ### Building
 
 ```bash
