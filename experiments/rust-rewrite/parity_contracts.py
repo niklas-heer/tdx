@@ -1,7 +1,8 @@
 """Differential action contracts against both production document implementations.
 
 Formatting normalization is permitted for structural edits. Task metadata,
-hierarchy, headings, rejection state and unrelated document content are compared.
+hierarchy, headings and rejection state are compared. Sentinel prose, tables and
+HTML outside edited tasks must survive in both implementations.
 Neither application uses this driver at runtime.
 """
 import argparse
@@ -69,6 +70,15 @@ def compare(go, rust, output):
             differing = [key for key in ('tasks', 'headings') if x[key] != y[key]]
             if bool(x.get('error')) != bool(y.get('error')):
                 differing.append('rejection')
+            sentinels = []
+            if case['name'].startswith('nested-blocks/'):
+                sentinels = ['| a | b |', '| c | d |', '<div>retained</div>']
+            elif case['name'].startswith(('sections/', 'trace/')):
+                sentinels = ['Text']
+            for sentinel in sentinels:
+                for engine, state in [('go', x), ('rust', y)]:
+                    if state['source'].count(sentinel) != case['source'].count(sentinel):
+                        differing.append(f'{engine} lost or duplicated unrelated content: {sentinel}')
             if differing:
                 failures.append({'case': case['name'], 'step': i, 'differences': differing, 'action': case['actions'][i-1] if i else None, 'go': x, 'rust': y})
                 break
