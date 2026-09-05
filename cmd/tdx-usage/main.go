@@ -12,20 +12,26 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
-func run() error {
-	sessions := flag.Int("sessions", 20, "number of independent sessions")
-	steps := flag.Int("steps", 1800, "actions per session; each represents 10 simulated seconds")
-	seed := flag.Uint64("seed", 100, "first deterministic seed")
-	driver := flag.String("driver", "tui", "tui or cli")
-	binary := flag.String("binary", "", "CLI executable under test (Go or alternative implementation)")
-	replay := flag.String("replay", "", "replay a saved JSON trace instead of generating")
-	output := flag.String("output", "dist/usage", "trace and report directory")
-	flag.Parse()
+func run(args []string) error {
+	flags := flag.NewFlagSet("tdx-usage", flag.ContinueOnError)
+	sessions := flags.Int("sessions", 20, "number of independent sessions")
+	steps := flags.Int("steps", 1800, "actions per session; each represents 10 simulated seconds")
+	seed := flags.Uint64("seed", 100, "first deterministic seed")
+	driver := flags.String("driver", "tui", "tui or cli")
+	binary := flags.String("binary", "", "CLI executable under test (Go or alternative implementation)")
+	replay := flags.String("replay", "", "replay a saved JSON trace instead of generating")
+	output := flags.String("output", "dist/usage", "trace and report directory")
+	if err := flags.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return err
+	}
 	if *sessions < 1 || *steps < 1 {
 		return fmt.Errorf("sessions and steps must be positive")
 	}
@@ -52,6 +58,9 @@ func run() error {
 			}
 		} else {
 			trace = usage.Generate(*seed+uint64(n), *steps, *driver)
+		}
+		if trace.Driver != "tui" && trace.Driver != "cli" {
+			return fmt.Errorf("unsupported driver %q", trace.Driver)
 		}
 		name := fmt.Sprintf("%s-%d", trace.Driver, trace.Seed)
 		if err := writeJSON(filepath.Join(*output, name+".json"), trace); err != nil {
