@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-
-	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
 // ListOptions applies equally to human-readable and JSON task queries.
@@ -30,11 +28,11 @@ type Task struct {
 }
 
 // WriteList writes a query result without formatting JSON with terminal styles.
-func WriteList(out io.Writer, filePath string, opts ListOptions) error {
+func (s Service) WriteList(out io.Writer, filePath string, opts ListOptions) error {
 	if opts.Status != "" && opts.Status != "all" && opts.Status != "open" && opts.Status != "done" {
 		return fmt.Errorf("status must be all, open, or done")
 	}
-	fm, err := markdown.ReadFile(filePath)
+	fm, err := s.Store.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
@@ -77,11 +75,16 @@ func WriteList(out io.Writer, filePath string, opts ListOptions) error {
 	for _, task := range tasks {
 		checkbox := "[ ]"
 		if task.Checked {
-			checkbox = "[" + CheckSymbol + "]"
+			checkbox = "[" + s.checkSymbol() + "]"
 		}
 		if _, err := fmt.Fprintf(out, "  %d. %s %s\n", task.Index, checkbox, task.Text); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// WriteList is a hook-free query convenience for callers without a service.
+func WriteList(out io.Writer, filePath string, opts ListOptions) error {
+	return (Service{}).WriteList(out, filePath, opts)
 }
