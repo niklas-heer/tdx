@@ -188,6 +188,8 @@ func InitCommands(cfg ...*ConfigType) []Command {
 					m.Err = err
 					return
 				}
+				m.InvalidateHeadingsCache()
+				m.InvalidateDocumentTree()
 				m.writeIfPersist()
 				// Adjust selection
 				if m.SelectedIndex >= len(m.FileModel.Todos) {
