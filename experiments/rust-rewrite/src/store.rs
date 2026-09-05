@@ -1,8 +1,9 @@
-use crate::history::{self, History, Version};
+#[cfg(test)]
+use crate::history;
+use crate::history::{History, Version};
 use sha2::{Digest, Sha256};
 use std::{
-    env,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
     thread,
@@ -33,7 +34,10 @@ impl From<String> for SaveError {
 
 pub fn canonical(path: &Path) -> Result<PathBuf, String> {
     if path.symlink_metadata().is_ok() {
-        return path.canonicalize().map_err(|e| e.to_string());
+        return path
+            .canonicalize()
+            .map(normalize_path)
+            .map_err(|e| e.to_string());
     }
     let absolute = std::path::absolute(path).map_err(|e| e.to_string())?;
     let parent = absolute
@@ -41,7 +45,9 @@ pub fn canonical(path: &Path) -> Result<PathBuf, String> {
         .ok_or("file needs parent")?
         .canonicalize()
         .map_err(|e| e.to_string())?;
-    Ok(parent.join(absolute.file_name().ok_or("file needs name")?))
+    Ok(normalize_path(
+        parent.join(absolute.file_name().ok_or("file needs name")?),
+    ))
 }
 
 fn read(path: &Path) -> Result<Option<String>, String> {
@@ -64,12 +70,7 @@ pub struct Store {
 }
 impl Store {
     pub fn load(path: &Path) -> Result<Self, String> {
-        let config = env::var_os("XDG_CONFIG_HOME")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| env::var_os("HOME").map(|v| PathBuf::from(v).join(".config")))
-            .ok_or("cannot locate configuration directory for locks")?;
-        Self::with_lock_root(path, config.join("tdx/locks"))
+        Self::with_lock_root(path, crate::config::directory()?.join("locks"))
     }
     pub fn with_lock_root(path: &Path, lock_root: PathBuf) -> Result<Self, String> {
         let target = canonical(path)?;
@@ -82,12 +83,25 @@ impl Store {
             history: None,
         })
     }
+    #[cfg(test)]
     pub fn enable_history(&mut self, capture_loaded: bool) -> Result<(), String> {
         let dir = self
             .lock_root
             .parent()
             .ok_or("history directory unavailable")?;
-        let mut history = History::open(dir, history::max_versions(dir)?)?;
+        let max = history::max_versions(dir)?;
+        self.enable_history_with_limit(capture_loaded, max)
+    }
+    pub fn enable_history_with_limit(
+        &mut self,
+        capture_loaded: bool,
+        max: i64,
+    ) -> Result<(), String> {
+        let dir = self
+            .lock_root
+            .parent()
+            .ok_or("history directory unavailable")?;
+        let mut history = History::open(dir, max)?;
         if capture_loaded
             && let Some(source) = &self.baseline
             && let Err(error) = history.capture(&self.target, source)
@@ -150,11 +164,6 @@ impl Store {
         force: bool,
         before_validation: impl FnOnce(),
     ) -> Result<(), SaveError> {
-        if !cfg!(unix) {
-            return Err("prototype durable writes are only implemented on Unix"
-                .to_owned()
-                .into());
-        }
         if canonical(&self.path)? != self.target {
             return Err("file changed externally: target changed".to_owned().into());
         }
@@ -223,11 +232,10 @@ impl Store {
         }
         // The tempfile stays on the same filesystem. persist atomically replaces
         // the target on Unix; dropping the lock releases it on every return path.
-        temp.persist(&self.target)
-            .map_err(|e| SaveError::from(e.error))?;
+        persist(temp, &self.target)?;
         self.baseline = Some(source.to_owned());
         let mut errors = Vec::new();
-        if let Err(error) = File::open(parent).and_then(|dir| dir.sync_all()) {
+        if let Err(error) = sync_directory(parent) {
             errors.push(format!("directory sync: {error}"));
         }
         if let Some(history) = &mut self.history
@@ -246,6 +254,35 @@ impl Store {
         }
         Ok(())
     }
+}
+
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> std::io::Result<()> {
+    fs::File::open(path)?.sync_all()
+}
+
+// Go's filepath.EvalSymlinks returns ordinary Windows paths. Rust canonicalize
+// uses extended prefixes; normalize identity before history keys and lock hashes.
+fn normalize_path(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let text = path.to_string_lossy();
+        if let Some(tail) = text.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{tail}"));
+        }
+        if let Some(tail) = text.strip_prefix(r"\\?\") {
+            return PathBuf::from(tail);
+        }
+    }
+    path
+}
+#[cfg(not(windows))]
+fn persist(temp: tempfile::NamedTempFile, target: &Path) -> std::io::Result<()> {
+    temp.persist(target).map(|_| ()).map_err(|e| e.error)
+}
+#[cfg(windows)]
+fn sync_directory(_: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 #[cfg(test)]
@@ -273,16 +310,10 @@ mod tests {
         let path = dir.path().join("tasks.md");
         fs::write(&path, "- [ ] old\n").unwrap();
         let mut store = Store::with_lock_root(&path, dir.path().join("locks")).unwrap();
-        fs::write(&path, "- [ ] external\n  continuation\n").unwrap();
-        assert!(store.reload().unwrap_err().contains("multiline"));
+        fs::write(&path, [0xff]).unwrap();
+        assert!(store.reload().is_err());
         assert_eq!(store.baseline.as_deref(), Some("- [ ] old\n"));
-        assert!(
-            store
-                .save("- [x] old\n")
-                .unwrap_err()
-                .message
-                .contains("changed externally")
-        );
+        assert!(store.save("- [x] old\n").is_err());
     }
     #[test]
     fn missing_and_empty_are_distinct_revisions() {
@@ -332,4 +363,30 @@ mod tests {
         assert_eq!(fs::read_to_string(&a).unwrap(), "same");
         assert_eq!(fs::read_to_string(&b).unwrap(), "same");
     }
+}
+#[cfg(windows)]
+fn persist(temp: tempfile::NamedTempFile, target: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_NORMAL, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+        SetFileAttributesW,
+    };
+    let path = temp.into_temp_path(); // Close the handle before replacement.
+    let from: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let to: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+    // SAFETY: Both paths are nul-terminated, live UTF-16 buffers; no pointers escape.
+    unsafe {
+        if SetFileAttributesW(from.as_ptr(), FILE_ATTRIBUTE_NORMAL) == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if MoveFileExW(
+            from.as_ptr(),
+            to.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        ) == 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
 }

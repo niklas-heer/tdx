@@ -11,6 +11,9 @@ permissions:
   contents: read
 
 jobs:
+  rust-parity:
+    uses: ./.github/workflows/rust-parity.yml
+
   portable:
     name: Portable
     runs-on: ubuntu-latest

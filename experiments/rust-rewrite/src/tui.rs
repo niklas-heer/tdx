@@ -1,426 +1,1658 @@
-use crate::{editor::Editor, history::Version};
+use crate::{
+    actions::Action,
+    clipboard,
+    config::{self, Config, Overrides, Settings},
+    document::Document,
+    editor::Editor,
+    history::Version,
+    input::{self, Buffer},
+    recent::{Recent, RecentFile},
+    store::Store,
+};
+use chrono::{Local, NaiveDate};
 use crossterm::{
     event::{
-        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEventKind,
+        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
         KeyModifiers,
     },
     execute,
 };
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    text::{Line, Span},
+    widgets::{Block, List, ListItem, ListState, Paragraph, Wrap},
 };
+use similar::{ChangeTag, TextDiff};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     io,
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
+use unicode_width::UnicodeWidthChar;
 
-struct Input {
-    op: &'static str,
-    text: String,
-}
-struct Browser {
-    versions: Vec<Version>,
-    selection: ListState,
-    preview: String,
-    scroll: u16,
-    confirm: bool,
+const COMMANDS: &[(&str, &str)] = &[
+    ("check-all", "Mark all tasks complete"),
+    ("uncheck-all", "Mark all tasks incomplete"),
+    ("sort-done", "Sort incomplete tasks first"),
+    ("sort-due", "Sort by earliest due date"),
+    ("sort-priority", "Sort highest priority first"),
+    ("filter-done", "Toggle completed task filter"),
+    ("filter-due", "Toggle tasks with due dates"),
+    ("filter-overdue", "Toggle overdue tasks"),
+    ("filter-today", "Toggle tasks due today"),
+    ("filter-week", "Toggle tasks due within seven days"),
+    ("clear-done", "Delete completed tasks"),
+    ("read-only", "Toggle automatic saves"),
+    ("save", "Save current document"),
+    ("wrap", "Toggle word wrap"),
+    ("line-numbers", "Toggle relative line numbers"),
+    ("set-max-visible", "Set visible item limit"),
+    ("sections", "Browse and edit sections"),
+    ("all-sections", "Clear section focus and folds"),
+    ("show-headings", "Toggle heading display"),
+    ("reload", "Reload and discard local changes"),
+    ("force-save", "Capture disk revision and overwrite"),
+    ("diff", "Compare local and disk changes"),
+    ("theme", "Choose theme with live preview"),
+    ("versions", "Browse and restore saved versions"),
+];
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Mode {
+    Normal,
+    Input,
+    Search,
+    Commands,
+    Tags,
+    Priorities,
+    Due,
+    Sections,
+    Heading,
+    Recent,
+    Theme,
+    Versions,
+    Diff,
+    Help,
+    MaxVisible,
+    Move,
 }
 struct App<'a> {
     editor: &'a mut Editor,
-    browser: Option<Browser>,
-    selection: ListState,
-    input: Option<Input>,
+    path: PathBuf,
+    config: Config,
+    flags: Overrides,
+    settings: Settings,
+    mode: Mode,
+    selected: usize,
+    cursor: usize,
+    input: Buffer,
+    action: Action,
     status: String,
-    confirm_quit: bool,
-    confirm_reload: bool,
+    tags: BTreeSet<String>,
+    priorities: BTreeSet<i64>,
+    due: String,
+    section: Option<usize>,
+    folded: BTreeSet<usize>,
+    line_numbers: bool,
+    number: String,
+    g: bool,
+    versions: Vec<Version>,
+    preview: String,
+    diff: Vec<Line<'static>>,
+    scroll: usize,
+    confirm: bool,
+    recent: Vec<RecentFile>,
+    themes: BTreeMap<String, config::Colors>,
+    theme: String,
+    original_theme: String,
+    moving: Option<(Document, usize, bool)>,
+    quit_confirm: bool,
 }
-impl App<'_> {
-    fn selected(&self) -> usize {
-        self.selection.selected().unwrap_or(0)
+impl<'a> App<'a> {
+    fn new(editor: &'a mut Editor, path: &Path, config: Config, flags: Overrides) -> Self {
+        let settings = Settings::new(&config, &editor.doc.metadata, &flags);
+        editor.readonly = settings.read_only;
+        let selected = config::directory()
+            .ok()
+            .and_then(|dir| Recent::load(&dir, config.recent.max_files).ok())
+            .and_then(|r| r.cursor(path))
+            .unwrap_or(0);
+        let theme = config.theme.name.clone();
+        let themes = config::themes();
+        let mut app = Self {
+            editor,
+            path: path.into(),
+            config,
+            flags,
+            settings,
+            mode: Mode::Normal,
+            selected,
+            cursor: 0,
+            input: Buffer::default(),
+            action: Action::default(),
+            status: String::new(),
+            tags: BTreeSet::new(),
+            priorities: BTreeSet::new(),
+            due: String::new(),
+            section: None,
+            folded: BTreeSet::new(),
+            line_numbers: true,
+            number: String::new(),
+            g: false,
+            versions: vec![],
+            preview: String::new(),
+            diff: vec![],
+            scroll: 0,
+            confirm: false,
+            recent: vec![],
+            themes,
+            theme,
+            original_theme: String::new(),
+            moving: None,
+            quit_confirm: false,
+        };
+        app.clamp();
+        app
+    }
+    fn color(&self, name: &str) -> Color {
+        self.themes
+            .get(&self.theme)
+            .and_then(|c| c.get(name))
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(match name {
+                "Accent" => Color::Cyan,
+                "AlertError" => Color::Red,
+                "Success" => Color::Green,
+                "Important" => Color::Magenta,
+                "Dim" => Color::DarkGray,
+                _ => Color::Reset,
+            })
+    }
+    fn visible(&self) -> Vec<usize> {
+        let today = Local::now().date_naive();
+        self.editor
+            .doc
+            .tasks
+            .iter()
+            .enumerate()
+            .filter(|(i, t)| {
+                (!self.settings.filter_done || !t.checked)
+                    && (self.tags.is_empty()
+                        || self
+                            .tags
+                            .iter()
+                            .any(|tag| t.tags.iter().any(|s| s.eq_ignore_ascii_case(tag))))
+                    && (self.priorities.is_empty() || self.priorities.contains(&t.priority))
+                    && match self.due.as_str() {
+                        "" => true,
+                        "all" => t.due_date.is_some(),
+                        kind => t
+                            .due_date
+                            .as_ref()
+                            .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+                            .is_some_and(|d| match kind {
+                                "overdue" => d < today,
+                                "today" => d == today,
+                                "week" => d >= today && (d - today).num_days() <= 7,
+                                _ => true,
+                            }),
+                    }
+                    && self
+                        .section
+                        .is_none_or(|h| self.editor.doc.section_bounds(h).contains(i))
+                    && !self
+                        .folded
+                        .iter()
+                        .any(|h| self.editor.doc.section_bounds(*h).contains(i))
+            })
+            .map(|(i, _)| i)
+            .collect()
     }
     fn clamp(&mut self) {
-        let len = self.editor.doc.tasks.len();
-        self.selection.select(if len == 0 {
-            None
-        } else {
-            Some(self.selected().min(len - 1))
-        });
+        let tags = self.tags_available();
+        self.tags.retain(|tag| tags.contains(tag));
+        let priorities = self.priorities_available();
+        self.priorities.retain(|p| priorities.contains(p));
+        let visible = self.visible();
+        if !visible.contains(&self.selected) {
+            self.selected = visible
+                .iter()
+                .copied()
+                .find(|i| *i >= self.selected)
+                .or_else(|| visible.last().copied())
+                .unwrap_or(0);
+        }
+    }
+    fn selection_after_delete(&self) -> usize {
+        let index = self.selected;
+        let tasks = &self.editor.doc.tasks;
+        let Some(task) = tasks.get(index) else {
+            return 0;
+        };
+        let visible = self.visible();
+        for (i, candidate) in tasks.iter().enumerate().skip(index + 1) {
+            if candidate.depth < task.depth {
+                break;
+            }
+            if candidate.depth == task.depth
+                && candidate.parent_index == task.parent_index
+                && visible.contains(&i)
+            {
+                return i - 1;
+            }
+        }
+        for i in (0..index).rev() {
+            if tasks[i].depth < task.depth {
+                break;
+            }
+            if tasks[i].depth == task.depth
+                && tasks[i].parent_index == task.parent_index
+                && visible.contains(&i)
+            {
+                return i;
+            }
+        }
+        if let Some(parent) = task.parent_index
+            && visible.contains(&(parent - 1))
+        {
+            return parent - 1;
+        }
+        visible
+            .iter()
+            .copied()
+            .find(|i| *i > index)
+            .map(|i| i - 1)
+            .or_else(|| visible.iter().copied().rfind(|i| *i < index))
+            .unwrap_or(0)
+    }
+    fn clear_sections(&mut self) {
+        self.section = None;
+        self.folded.clear();
+        self.clamp();
     }
     fn result(&mut self, result: Result<(), String>) {
-        self.status = result
-            .err()
-            .map(|e| {
+        self.status = match result {
+            Ok(()) => if self.editor.dirty {
+                "Unsaved checklist changes"
+            } else {
+                "Saved"
+            }
+            .into(),
+            Err(e) => {
                 if e.contains("externally") {
+                    self.mode = Mode::Diff;
+                    self.scroll = 0;
+                    self.diff = diff_lines(
+                        &std::fs::read_to_string(&self.path).unwrap_or_default(),
+                        &self.editor.doc.source,
+                    );
                     format!("{e}; :reload or :force-save")
                 } else {
                     e
                 }
-            })
-            .unwrap_or_else(|| "Saved".into());
+            }
+        };
         self.clamp();
     }
-    fn open_versions(&mut self) -> Result<(), String> {
-        let versions = self.editor.store.versions()?;
-        let preview = if let Some(version) = versions.first() {
-            self.editor.store.version(version.id)?
-        } else {
-            "No versions available".into()
-        };
-        let mut selection = ListState::default();
-        if !versions.is_empty() {
-            selection.select(Some(0));
+    fn apply(&mut self, action: Action) {
+        self.editor.readonly = self.settings.read_only;
+        let result = self.editor.action(&action);
+        if let Ok(index) = &result {
+            self.selected = *index;
         }
-        self.browser = Some(Browser {
-            versions,
-            selection,
-            preview,
-            scroll: 0,
-            confirm: false,
-        });
+        self.result(result.map(|_| ()));
+    }
+    fn input(&mut self, action: Action) {
+        self.input = Buffer::new(action.text.clone());
+        self.action = action;
+        self.mode = Mode::Input;
+    }
+    fn matches(&self) -> Vec<usize> {
+        let rows: Vec<(usize, String)> = match self.mode {
+            Mode::Commands => COMMANDS
+                .iter()
+                .enumerate()
+                .map(|(i, c)| (i, c.0.into()))
+                .collect(),
+            Mode::Search => self
+                .visible()
+                .into_iter()
+                .map(|i| (i, self.editor.doc.tasks[i].text.clone()))
+                .collect(),
+            Mode::Recent => self
+                .recent
+                .iter()
+                .enumerate()
+                .map(|(i, f)| (i, f.path.display().to_string()))
+                .collect(),
+            _ => vec![],
+        };
+        let mut matches: Vec<_> = rows
+            .iter()
+            .filter_map(|(i, s)| {
+                let score = input::fuzzy(&self.input.text, s);
+                (score > 0).then_some((*i, score))
+            })
+            .collect();
+        matches.sort_by_key(|(_, score)| std::cmp::Reverse(*score));
+        matches.into_iter().map(|(i, _)| i).collect()
+    }
+    fn tags_available(&self) -> Vec<String> {
+        self.editor
+            .doc
+            .tasks
+            .iter()
+            .flat_map(|t| t.tags.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+    fn priorities_available(&self) -> Vec<i64> {
+        self.editor
+            .doc
+            .tasks
+            .iter()
+            .map(|t| t.priority)
+            .filter(|p| *p > 0)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+    fn open_versions(&mut self) -> Result<(), String> {
+        self.versions = self.editor.store.versions()?;
+        self.cursor = 0;
+        self.scroll = 0;
+        self.confirm = false;
+        self.mode = Mode::Versions;
+        self.preview_version()
+    }
+    fn preview_version(&mut self) -> Result<(), String> {
+        self.preview = if let Some(v) = self.versions.get(self.cursor) {
+            self.editor.store.version(v.id)?
+        } else {
+            String::new()
+        };
+        self.diff = diff_lines(&self.editor.doc.source, &self.preview);
+        self.scroll = 0;
         Ok(())
     }
-    fn command(&mut self, text: &str) {
-        let result = match text.trim() {
-            "versions" => self.open_versions(),
-            "reload" => self.editor.reload(),
-            "force-save" => self.editor.force_save(),
-            _ => Err("unknown command; use versions, reload or force-save".into()),
-        };
-        self.result(result);
+    fn command(&mut self, name: &str) {
+        self.mode = Mode::Normal;
+        self.cursor = 0;
+        self.input = Buffer::default();
+        match name {
+            "check-all" | "uncheck-all" | "sort-done" | "sort-due" | "sort-priority"
+            | "clear-done" => {
+                self.apply(Action::new(name, self.selected, ""));
+                if name == "clear-done" {
+                    self.clear_sections();
+                }
+            }
+            "filter-done" => {
+                self.settings.filter_done = !self.settings.filter_done;
+                self.clamp();
+            }
+            "filter-due" | "filter-overdue" | "filter-today" | "filter-week" => {
+                let value = if name == "filter-due" {
+                    "all"
+                } else {
+                    name.trim_start_matches("filter-")
+                };
+                self.due = if self.due == value {
+                    String::new()
+                } else {
+                    value.into()
+                };
+                self.clamp();
+            }
+            "read-only" => {
+                self.settings.read_only = !self.settings.read_only;
+                self.editor.readonly = self.settings.read_only;
+            }
+            "save" => {
+                let result = self.editor.manual_save();
+                self.result(result);
+            }
+            "force-save" => {
+                let result = self.editor.force_save();
+                self.result(result);
+            }
+            "reload" => {
+                let result = self.editor.reload();
+                if result.is_ok() {
+                    self.settings =
+                        Settings::new(&self.config, &self.editor.doc.metadata, &self.flags);
+                    self.editor.readonly = self.settings.read_only;
+                    self.clear_sections();
+                }
+                self.result(result);
+            }
+            "versions" => {
+                if let Err(e) = self.open_versions() {
+                    self.status = e;
+                }
+            }
+            "diff" => {
+                if self.editor.dirty {
+                    self.diff = diff_lines(
+                        &std::fs::read_to_string(&self.path).unwrap_or_default(),
+                        &self.editor.doc.source,
+                    );
+                    self.scroll = 0;
+                    self.mode = Mode::Diff;
+                } else {
+                    self.status = "No unresolved file conflict".into();
+                }
+            }
+            "wrap" => self.settings.word_wrap = !self.settings.word_wrap,
+            "line-numbers" => self.line_numbers = !self.line_numbers,
+            "show-headings" => self.settings.show_headings = !self.settings.show_headings,
+            "set-max-visible" => self.mode = Mode::MaxVisible,
+            "sections" => self.open_sections(),
+            "all-sections" => self.clear_sections(),
+            "theme" => {
+                self.original_theme = self.theme.clone();
+                self.cursor = self
+                    .themes
+                    .keys()
+                    .position(|n| *n == self.theme)
+                    .unwrap_or(0);
+                self.mode = Mode::Theme;
+            }
+            _ => self.status = format!("Unknown command {name}"),
+        }
     }
-    fn check_disk(&mut self) -> bool {
-        if self.input.is_some() || self.browser.is_some() || self.editor.dirty {
+    fn open_sections(&mut self) {
+        self.mode = Mode::Sections;
+        self.cursor = self.section.unwrap_or_else(|| {
+            self.editor
+                .doc
+                .headings
+                .iter()
+                .rposition(|h| h.before_todo_index <= self.selected)
+                .unwrap_or(0)
+        });
+    }
+    fn reload_if_idle(&mut self) -> bool {
+        if self.mode != Mode::Normal || self.editor.dirty {
             return false;
         }
         match self.editor.store.changed() {
             Ok(true) => {
-                let result = self.editor.reload();
-                self.result(result);
+                self.command("reload");
                 true
             }
-            Err(error) => {
-                self.status = error;
+            Err(e) => {
+                self.status = e;
                 true
             }
-            Ok(false) => false,
+            _ => false,
         }
     }
-    fn draw_versions(&mut self, frame: &mut Frame) {
-        let browser = self.browser.as_mut().unwrap();
-        let areas = Layout::vertical([
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(3),
-        ])
-        .split(frame.area());
-        frame.render_widget(
-            Paragraph::new("FILE VERSION HISTORY").style(Style::default().fg(Color::Cyan)),
-            areas[0],
+    fn switch(&mut self, path: PathBuf) -> Result<(), String> {
+        if self.editor.dirty && !self.settings.read_only {
+            return Err(
+                "Unsaved changes: :save, :reload or :force-save before switching files".into(),
+            );
+        }
+        let dir = config::directory()?;
+        let mut store = Store::load(&path)?;
+        store.enable_history_with_limit(true, self.config.versioning.max_versions)?;
+        let next = Editor::new(store, false)?;
+        let _ = Recent::record(
+            &dir,
+            self.config.recent.max_files,
+            &self.path,
+            self.selected,
         );
-        let panes = Layout::horizontal([Constraint::Percentage(25), Constraint::Percentage(75)])
-            .split(areas[1]);
-        let rows: Vec<_> = browser
-            .versions
-            .iter()
-            .map(|v| ListItem::new(format!("#{} {}", v.id, v.created_at)))
-            .collect();
-        let list = List::new(rows)
-            .block(Block::bordered().title("Versions"))
-            .highlight_symbol("› ")
-            .highlight_style(Style::default().fg(Color::Cyan));
-        frame.render_stateful_widget(list, panes[0], &mut browser.selection);
-        let preview = browser
-            .preview
-            .lines()
-            .map(display_text)
-            .collect::<Vec<_>>()
-            .join("\n");
-        frame.render_widget(
-            Paragraph::new(preview)
-                .block(Block::bordered().title("Saved snapshot"))
-                .scroll((browser.scroll, 0)),
-            panes[1],
-        );
-        let footer = if browser.confirm {
-            format!(
-                "Restore version #{}? [y/N]\n{}",
-                browser.versions[browser.selection.selected().unwrap()].id,
-                self.status
-            )
-        } else {
-            format!(
-                "[↑/↓] Navigate  [PgUp/PgDn] Scroll  [Enter] Restore  [Esc] Close\n{}",
-                self.status
-            )
-        };
-        frame.render_widget(Paragraph::new(footer), areas[2]);
+        self.editor.store.finish()?;
+        *self.editor = next;
+        self.path = path;
+        self.settings = Settings::new(&self.config, &self.editor.doc.metadata, &self.flags);
+        self.editor.readonly = self.settings.read_only;
+        self.tags.clear();
+        self.priorities.clear();
+        self.due.clear();
+        self.section = None;
+        self.folded.clear();
+        self.selected = Recent::load(&dir, self.config.recent.max_files)?
+            .cursor(&self.path)
+            .unwrap_or(0);
+        self.clamp();
+        self.mode = Mode::Normal;
+        self.status.clear();
+        Ok(())
     }
-    fn browser_key(&mut self, key: KeyCode) {
-        let browser = self.browser.as_mut().unwrap();
-        if browser.confirm {
-            browser.confirm = false;
-            if matches!(key, KeyCode::Char('y' | 'Y')) {
-                let id = browser.versions[browser.selection.selected().unwrap()].id;
-                let result = self.editor.restore(id);
-                if result.is_ok()
-                    || result
-                        .as_ref()
-                        .is_err_and(|e| e.starts_with("file saved, but"))
-                {
-                    self.browser = None;
-                }
-                self.result(result);
-            }
+    fn input_key(&mut self, key: KeyEvent) {
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER)
+            && matches!(key.code, KeyCode::Char('v' | 'y'))
+        {
+            match clipboard::paste() {
+                Ok(s) => self.input.insert(&s),
+                Err(e) => self.status = e,
+            };
             return;
         }
-        let current = browser.selection.selected().unwrap_or(0);
-        let next = match key {
-            KeyCode::Esc | KeyCode::Char('q') => {
-                self.browser = None;
-                return;
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = if self.mode == Mode::Heading {
+                    Mode::Sections
+                } else {
+                    Mode::Normal
+                };
+                self.input = Buffer::default();
+                self.status = "Cancelled".into();
             }
-            KeyCode::Enter if !browser.versions.is_empty() => {
-                browser.confirm = true;
-                return;
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                (current + 1).min(browser.versions.len().saturating_sub(1))
-            }
-            KeyCode::Up | KeyCode::Char('k') => current.saturating_sub(1),
-            KeyCode::PageDown => {
-                browser.scroll = browser.scroll.saturating_add(10).min(
-                    browser
-                        .preview
-                        .lines()
-                        .count()
+            KeyCode::Enter => {
+                if self.input.text.trim().is_empty() {
+                    self.mode = Mode::Normal;
+                    return;
+                }
+                if self.mode == Mode::MaxVisible {
+                    match self.input.text.parse::<usize>() {
+                        Ok(n) => {
+                            self.settings.max_visible = n;
+                            self.mode = Mode::Normal;
+                        }
+                        Err(_) => self.status = "Enter a non-negative number".into(),
+                    };
+                    return;
+                }
+                let mut action = self.action.clone();
+                action.text = self.input.text.clone();
+                let heading = self.mode == Mode::Heading;
+                if heading && self.settings.read_only {
+                    self.status = "read-only file: section editing disabled".into();
+                    return;
+                }
+                self.mode = Mode::Normal;
+                self.apply(action);
+                if heading {
+                    self.clear_sections();
+                    self.mode = Mode::Sections;
+                    self.cursor = self
+                        .editor
+                        .doc
+                        .headings
+                        .len()
                         .saturating_sub(1)
-                        .min(u16::MAX as usize) as u16,
-                );
-                return;
-            }
-            KeyCode::PageUp => {
-                browser.scroll = browser.scroll.saturating_sub(10);
-                return;
-            }
-            _ => return,
-        };
-        if let Some(version) = browser.versions.get(next) {
-            match self.editor.store.version(version.id) {
-                Ok(preview) => {
-                    browser.preview = preview;
-                    browser.selection.select(Some(next));
-                    browser.scroll = 0;
+                        .min(self.cursor);
                 }
-                Err(error) => self.status = error,
+                self.input = Buffer::default();
+            }
+            _ => {
+                self.input.key(key);
             }
         }
     }
-    fn draw(&mut self, frame: &mut Frame, path: &Path) {
-        if self.browser.is_some() {
-            self.draw_versions(frame);
+    fn picker_key(&mut self, key: KeyEvent) {
+        let rows = self.matches();
+        let down = key.code == KeyCode::Down
+            || (key.modifiers.contains(KeyModifiers::CONTROL)
+                && matches!(key.code, KeyCode::Char('n' | 'j')));
+        let up = key.code == KeyCode::Up
+            || (key.modifiers.contains(KeyModifiers::CONTROL)
+                && matches!(key.code, KeyCode::Char('p' | 'k')));
+        if down {
+            self.cursor = (self.cursor + 1).min(rows.len().saturating_sub(1));
             return;
         }
-        let areas = Layout::vertical([
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(3),
-        ])
-        .split(frame.area());
-        let readonly = self.editor.readonly || self.editor.doc.readonly;
-        let title = format!(
-            "tdx · Rust prototype{}{}   {}",
-            if readonly { "  READ ONLY" } else { "" },
-            if self.editor.dirty { "  UNSAVED" } else { "" },
-            path.display()
-        );
-        frame.render_widget(
-            Paragraph::new(title).style(Style::default().fg(Color::Cyan)),
-            areas[0],
-        );
-        let items: Vec<_> = self
-            .editor
-            .doc
-            .tasks
-            .iter()
-            .map(|task| {
-                ListItem::new(format!(
-                    "{}[{}] {}",
-                    "  ".repeat(task.depth),
-                    if task.checked { "x" } else { " " },
-                    display_text(&task.text)
-                ))
-            })
-            .collect();
-        let list = List::new(items)
-            .block(Block::bordered().title(format!(" {} tasks ", self.editor.doc.tasks.len())))
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("› ");
-        frame.render_stateful_widget(list, areas[1], &mut self.selection);
-        let footer = if let Some(input) = &self.input {
-            format!(
-                "{}: {}▏\nEnter save · Esc cancel · Ctrl-U clear",
-                input.op.to_uppercase(),
-                display_text(&input.text)
-            )
-        } else {
-            format!(
-                "j/k move · space toggle · a/e/d edit · u undo · r reload · v history · q quit\n{}",
-                self.status
-            )
+        if up {
+            self.cursor = self.cursor.saturating_sub(1);
+            return;
+        }
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = Mode::Normal;
+                self.input = Buffer::default();
+            }
+            KeyCode::Enter => {
+                if let Some(i) = rows.get(self.cursor).copied() {
+                    match self.mode {
+                        Mode::Commands => self.command(COMMANDS[i].0),
+                        Mode::Search => {
+                            self.selected = i;
+                            self.mode = Mode::Normal;
+                            self.input = Buffer::default();
+                        }
+                        Mode::Recent => {
+                            let result = self.switch(self.recent[i].path.clone());
+                            if let Err(e) = result {
+                                self.status = e;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            KeyCode::Tab if self.mode == Mode::Commands => {
+                if let Some(i) = rows.get(self.cursor) {
+                    self.input = Buffer::new(COMMANDS[*i].0.into());
+                    self.cursor = 0;
+                }
+            }
+            _ => {
+                if key.modifiers.contains(KeyModifiers::CONTROL)
+                    && matches!(key.code, KeyCode::Char('y' | 'v'))
+                {
+                    if let Ok(s) = clipboard::paste() {
+                        self.input.insert(&s);
+                    }
+                } else if self.input.key(key) {
+                    self.cursor = 0;
+                }
+                if self.mode == Mode::Recent && self.input.text.starts_with(' ') {
+                    self.input = Buffer::new(self.input.text.trim_start().into());
+                }
+            }
+        }
+    }
+    fn overlay_key(&mut self, mut key: KeyEvent) {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            key.code = match key.code {
+                KeyCode::Char('n' | 'j') => KeyCode::Down,
+                KeyCode::Char('p' | 'k') => KeyCode::Up,
+                KeyCode::Char('d') if self.mode == Mode::Versions => KeyCode::PageDown,
+                KeyCode::Char('u') if self.mode == Mode::Versions => KeyCode::PageUp,
+                _ => key.code,
+            };
+        }
+
+        let len = match self.mode {
+            Mode::Tags => self.tags_available().len(),
+            Mode::Priorities => self.priorities_available().len(),
+            Mode::Due => 4,
+            Mode::Sections => self.editor.doc.headings.len(),
+            Mode::Theme => self.themes.len(),
+            Mode::Versions => self.versions.len(),
+            _ => 0,
         };
-        frame.render_widget(Paragraph::new(footer), areas[2]);
+        if matches!(key.code, KeyCode::Down | KeyCode::Char('j')) {
+            self.cursor = (self.cursor + 1).min(len.saturating_sub(1));
+            self.preview_overlay();
+            return;
+        }
+        if matches!(key.code, KeyCode::Up | KeyCode::Char('k')) {
+            self.cursor = self.cursor.saturating_sub(1);
+            self.preview_overlay();
+            return;
+        }
+        if matches!(key.code, KeyCode::Home | KeyCode::Char('g')) {
+            self.cursor = 0;
+            self.preview_overlay();
+            return;
+        }
+        if matches!(key.code, KeyCode::End | KeyCode::Char('G')) {
+            self.cursor = len.saturating_sub(1);
+            self.preview_overlay();
+            return;
+        }
+        match self.mode {
+            Mode::Tags | Mode::Priorities | Mode::Due => match key.code {
+                KeyCode::Esc => self.mode = Mode::Normal,
+                KeyCode::Char('c') => {
+                    match self.mode {
+                        Mode::Tags => self.tags.clear(),
+                        Mode::Priorities => self.priorities.clear(),
+                        _ => self.due.clear(),
+                    };
+                    self.clamp();
+                }
+                KeyCode::Char(' ') | KeyCode::Enter => {
+                    match self.mode {
+                        Mode::Tags => {
+                            if let Some(tag) = self.tags_available().get(self.cursor)
+                                && !self.tags.remove(tag)
+                            {
+                                self.tags.insert(tag.clone());
+                            }
+                        }
+                        Mode::Priorities => {
+                            if let Some(p) = self.priorities_available().get(self.cursor)
+                                && !self.priorities.remove(p)
+                            {
+                                self.priorities.insert(*p);
+                            }
+                        }
+                        _ => {
+                            let due = ["overdue", "today", "week", "all"][self.cursor];
+                            self.due = if self.due == due {
+                                String::new()
+                            } else {
+                                due.into()
+                            };
+                        }
+                    }
+                    self.clamp();
+                    self.mode = Mode::Normal;
+                }
+                _ => {}
+            },
+            Mode::Sections => self.section_key(key),
+            Mode::Theme => match key.code {
+                KeyCode::Esc => {
+                    self.theme = self.original_theme.clone();
+                    self.mode = Mode::Normal;
+                }
+                KeyCode::Enter => {
+                    let result = config::directory()
+                        .and_then(|dir| config::save_theme_at(&dir, &self.theme));
+                    self.result(result);
+                    self.mode = Mode::Normal;
+                }
+                _ => {}
+            },
+            Mode::Versions => match key.code {
+                KeyCode::Esc => {
+                    self.mode = Mode::Normal;
+                }
+                KeyCode::Enter if len > 0 => {
+                    self.confirm = true;
+                }
+                KeyCode::PageDown => {
+                    self.scroll = (self.scroll + 10).min(self.diff.len().saturating_sub(1))
+                }
+                KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(10),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    fn preview_overlay(&mut self) {
+        if self.mode == Mode::Theme {
+            if let Some(n) = self.themes.keys().nth(self.cursor) {
+                self.theme = n.clone();
+            }
+        } else if self.mode == Mode::Versions
+            && let Err(e) = self.preview_version()
+        {
+            self.status = e;
+        }
+    }
+    fn section_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('s') => self.mode = Mode::Normal,
+            KeyCode::Char('a') => {
+                self.clear_sections();
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Enter if !self.editor.doc.headings.is_empty() => {
+                self.section = Some(self.cursor);
+                self.folded.clear();
+                self.settings.show_headings = true;
+                self.clamp();
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Char(' ') if !self.editor.doc.headings.is_empty() => {
+                if !self.folded.remove(&self.cursor) {
+                    self.folded.insert(self.cursor);
+                }
+                self.clamp();
+            }
+            KeyCode::Char('e' | 'n' | 'N') => {
+                if self.settings.read_only {
+                    self.status = "read-only file: section editing disabled".into();
+                    return;
+                }
+                let heading = self.editor.doc.headings.get(self.cursor);
+                let (kind, index, level, text) = if key.code == KeyCode::Char('e') {
+                    let Some(h) = heading else {
+                        return;
+                    };
+                    (
+                        "rename-heading",
+                        self.cursor as isize,
+                        h.level,
+                        h.text.clone(),
+                    )
+                } else {
+                    let level = heading
+                        .map_or(1, |h| h.level + usize::from(key.code == KeyCode::Char('N')));
+                    if level > 6 {
+                        self.status = "Level 6 headings cannot have a subsection".into();
+                        return;
+                    }
+                    (
+                        "create-heading",
+                        if heading.is_some() {
+                            self.cursor as isize
+                        } else {
+                            -1
+                        },
+                        level,
+                        String::new(),
+                    )
+                };
+                self.action = Action {
+                    kind: kind.into(),
+                    index,
+                    level,
+                    text: text.clone(),
+                    ..Action::default()
+                };
+                self.input = Buffer::new(text);
+                self.mode = Mode::Heading;
+            }
+            _ => {}
+        }
+    }
+    fn move_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => {
+                if let Some((doc, index, dirty)) = self.moving.take() {
+                    self.editor.doc = doc;
+                    self.selected = index;
+                    self.editor.dirty = dirty;
+                }
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Enter => {
+                if let Some((original, _, dirty)) = self.moving.take() {
+                    let next = std::mem::replace(&mut self.editor.doc, original);
+                    self.editor.dirty = dirty;
+                    let result = self.editor.commit(next);
+                    self.mode = Mode::Normal;
+                    self.result(result);
+                }
+            }
+            KeyCode::Up | KeyCode::Down | KeyCode::Char('j' | 'k') => {
+                let down = matches!(key.code, KeyCode::Down | KeyCode::Char('j'));
+                let visible = self.visible();
+                let Some(position) = visible.iter().position(|i| *i == self.selected) else {
+                    return;
+                };
+                let item = &self.editor.doc.items[self.editor.doc.tasks[self.selected].item];
+                let target = if down {
+                    visible.iter().skip(position + 1).copied().find(|i| {
+                        self.editor.doc.items[self.editor.doc.tasks[*i].item]
+                            .range
+                            .start
+                            >= item.range.end
+                    })
+                } else {
+                    visible[..position].last().copied()
+                };
+                if let Some(target) = target {
+                    let action = Action {
+                        kind: "move-to-position".into(),
+                        index: self.selected as isize,
+                        target: target as isize,
+                        insert_after: down,
+                        ..Action::default()
+                    };
+                    let old = self.editor.doc.tasks[self.selected].clone();
+                    match self.editor.doc.apply(&action) {
+                        Ok((next, _)) => {
+                            let count = self
+                                .editor
+                                .doc
+                                .tasks
+                                .iter()
+                                .filter(|t| {
+                                    self.editor.doc.items[t.item].range.start >= item.range.start
+                                        && self.editor.doc.items[t.item].range.start
+                                            < item.range.end
+                                })
+                                .count();
+                            let destination = if down {
+                                let target_end = self.editor.doc.items
+                                    [self.editor.doc.tasks[target].item]
+                                    .range
+                                    .end;
+                                self.editor
+                                    .doc
+                                    .tasks
+                                    .iter()
+                                    .take_while(|t| {
+                                        self.editor.doc.items[t.item].range.start < target_end
+                                    })
+                                    .count()
+                                    - count
+                            } else {
+                                target
+                            };
+                            self.editor.doc = next;
+                            self.selected =
+                                destination.min(self.editor.doc.tasks.len().saturating_sub(1));
+                            debug_assert_eq!(self.editor.doc.tasks[self.selected].text, old.text);
+                        }
+                        Err(e) => self.status = e,
+                    }
+                }
+            }
+            _ => {}
+        }
     }
     fn handle(&mut self, event: Event) -> bool {
-        if let Event::Paste(text) = &event {
-            if let Some(input) = &mut self.input {
-                // Keep the one-line edit contract; ignore pasted control bytes.
-                input.text.extend(text.chars().filter(|c| !c.is_control()));
+        if let Event::Paste(s) = event {
+            if matches!(
+                self.mode,
+                Mode::Input
+                    | Mode::Search
+                    | Mode::Commands
+                    | Mode::Heading
+                    | Mode::MaxVisible
+                    | Mode::Recent
+            ) {
+                self.input.insert(&s);
+                self.cursor = 0;
             }
             return false;
         }
-        let Event::Key(key) = event else { return false };
+        let Event::Key(key) = event else {
+            return false;
+        };
         if key.kind == KeyEventKind::Release {
             return false;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && matches!(key.code, KeyCode::Char('c' | 'd'))
+            && self.mode != Mode::Versions
         {
-            if self.editor.dirty && !self.confirm_quit {
-                self.confirm_quit = true;
-                self.status =
-                    "Unsaved changes. Press quit again to discard, or r to reload.".into();
+            if self.editor.dirty && !self.settings.read_only && !self.quit_confirm {
+                self.status = "Unsaved changes. Quit again to discard, or :save / :reload.".into();
+                self.quit_confirm = true;
                 return false;
             }
             return true;
         }
-        if self.browser.is_some() {
-            self.browser_key(key.code);
-            return false;
-        }
-        if let Some(input) = &mut self.input {
-            match key.code {
-                KeyCode::Esc => {
-                    self.input = None;
-                    self.status = "Cancelled".into();
+        if self.mode == Mode::Versions && self.confirm {
+            self.confirm = false;
+            if matches!(key.code, KeyCode::Char('y' | 'Y')) {
+                let id = self.versions[self.cursor].id;
+                let result = self.editor.restore(id);
+                if result.is_ok() {
+                    self.settings =
+                        Settings::new(&self.config, &self.editor.doc.metadata, &self.flags);
+                    self.editor.readonly = self.settings.read_only;
+                    self.clear_sections();
+                    self.mode = Mode::Normal;
                 }
-                KeyCode::Enter => {
-                    let input = self.input.take().unwrap();
-                    if input.op == "command" {
-                        self.command(&input.text);
-                    } else if input.text.trim().is_empty() {
-                        self.status = "Cancelled empty input".into();
-                    } else {
-                        let result = self.editor.apply(input.op, self.selected(), &input.text);
-                        self.result(result);
-                    }
-                }
-                KeyCode::Backspace => {
-                    input.text.pop();
-                }
-                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    input.text.clear()
-                }
-                KeyCode::Char(c)
-                    if !key
-                        .modifiers
-                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-                {
-                    input.text.push(c)
-                }
-                _ => {}
-            }
-            return false;
-        }
-        if key.code == KeyCode::Char('q') {
-            if !self.editor.dirty || self.confirm_quit {
-                return true;
-            }
-            self.confirm_quit = true;
-            self.status = "Unsaved changes. Press q again to discard, or r to reload.".into();
-            return false;
-        }
-        self.confirm_quit = false;
-        if key.code != KeyCode::Char('r') {
-            self.confirm_reload = false;
-        }
-        match key.code {
-            KeyCode::Char(':') => {
-                self.input = Some(Input {
-                    op: "command",
-                    text: String::new(),
-                });
-            }
-            KeyCode::Char('v') => {
-                let result = self.open_versions();
                 self.result(result);
+            }
+            return false;
+        }
+        match self.mode {
+            Mode::Input | Mode::Heading | Mode::MaxVisible => {
+                self.input_key(key);
+                return false;
+            }
+            Mode::Search | Mode::Commands | Mode::Recent => {
+                self.picker_key(key);
+                return false;
+            }
+            Mode::Tags
+            | Mode::Priorities
+            | Mode::Due
+            | Mode::Sections
+            | Mode::Theme
+            | Mode::Versions => {
+                self.overlay_key(key);
+                return false;
+            }
+            Mode::Move => {
+                self.move_key(key);
+                return false;
+            }
+            Mode::Help => {
+                if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
+                    self.mode = Mode::Normal;
+                } else if matches!(
+                    key.code,
+                    KeyCode::PageDown | KeyCode::Down | KeyCode::Char('j')
+                ) {
+                    self.scroll = self.scroll.saturating_add(5);
+                } else if matches!(key.code, KeyCode::PageUp | KeyCode::Up | KeyCode::Char('k')) {
+                    self.scroll = self.scroll.saturating_sub(5);
+                }
+                return false;
+            }
+            Mode::Diff => {
+                match key.code {
+                    KeyCode::Esc => self.mode = Mode::Normal,
+                    KeyCode::Down | KeyCode::PageDown | KeyCode::Char('j') => {
+                        self.scroll = (self.scroll + 10).min(self.diff.len().saturating_sub(1))
+                    }
+                    KeyCode::Up | KeyCode::PageUp | KeyCode::Char('k') => {
+                        self.scroll = self.scroll.saturating_sub(10)
+                    }
+                    _ => {}
+                }
+                return false;
+            }
+            Mode::Normal => {}
+        }
+        if let KeyCode::Char(c) = key.code
+            && c.is_ascii_digit()
+            && (c != '0' || !self.number.is_empty())
+        {
+            if self.number.len() < 8 {
+                self.number.push(c);
+            }
+            return false;
+        }
+        let count = self.number.parse::<usize>().unwrap_or(1).max(1);
+        self.number.clear();
+        if key.code != KeyCode::Char('g') {
+            self.g = false;
+        }
+        if !matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
+            self.quit_confirm = false;
+        }
+        let visible = self.visible();
+        let position = visible.iter().position(|i| *i == self.selected);
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                if self.editor.dirty && !self.settings.read_only && !self.quit_confirm {
+                    self.status =
+                        "Unsaved changes. Quit again to discard, or :save / :reload.".into();
+                    self.quit_confirm = true;
+                } else {
+                    return true;
+                }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                self.selection.select(Some(self.selected() + 1));
-                self.clamp();
+                if let Some(p) = position {
+                    self.selected = visible[p.saturating_add(count).min(visible.len() - 1)];
+                }
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                self.selection
-                    .select(Some(self.selected().saturating_sub(1)));
-                self.clamp();
-            }
-            KeyCode::Char(' ') | KeyCode::Char('d') => {
-                let result = self.editor.apply(
-                    if key.code == KeyCode::Char(' ') {
-                        "toggle"
-                    } else {
-                        "delete"
-                    },
-                    self.selected(),
-                    "",
-                );
-                self.result(result);
-            }
-            KeyCode::Char('a' | 'e') => {
-                if self.editor.readonly || self.editor.doc.readonly {
-                    self.status = "read-only: editing is disabled".into();
-                } else if key.code == KeyCode::Char('a') {
-                    self.input = Some(Input {
-                        op: "add",
-                        text: String::new(),
-                    });
-                } else if let Some(task) = self.editor.doc.tasks.get(self.selected()) {
-                    self.input = Some(Input {
-                        op: "edit",
-                        text: task.text.clone(),
-                    });
+                if let Some(p) = position {
+                    self.selected = visible[p.saturating_sub(count)];
                 }
+            }
+            KeyCode::PageDown => {
+                if let Some(p) = position {
+                    self.selected = visible[(p + 10).min(visible.len() - 1)];
+                }
+            }
+            KeyCode::PageUp => {
+                if let Some(p) = position {
+                    self.selected = visible[p.saturating_sub(10)];
+                }
+            }
+            KeyCode::Home => self.selected = visible.first().copied().unwrap_or(0),
+            KeyCode::End | KeyCode::Char('G') => {
+                self.selected = visible.last().copied().unwrap_or(0)
+            }
+            KeyCode::Char('g') => {
+                if self.g {
+                    self.selected = visible.first().copied().unwrap_or(0);
+                    self.g = false;
+                } else {
+                    self.g = true;
+                }
+            }
+            KeyCode::Enter | KeyCode::Char(' ') if position.is_some() => {
+                self.apply(Action::new("toggle", self.selected, ""))
+            }
+            KeyCode::Char('d') if position.is_some() => {
+                let selection = self.selection_after_delete();
+                self.apply(Action::new("delete", self.selected, ""));
+                self.selected = selection.min(self.editor.doc.tasks.len().saturating_sub(1));
+                self.clear_sections();
+            }
+            KeyCode::Char('e') if position.is_some() => self.input(Action::new(
+                "edit",
+                self.selected,
+                &self.editor.doc.tasks[self.selected].text.clone(),
+            )),
+            KeyCode::Char('n' | 'N' | 'a') => {
+                let kind = if key.code == KeyCode::Char('n') && position.is_some() {
+                    "insert"
+                } else if self.section.is_some() {
+                    "add-in-section"
+                } else {
+                    "add"
+                };
+                let index = if kind == "add-in-section" {
+                    self.section.unwrap()
+                } else {
+                    self.selected
+                };
+                self.input(Action::new(kind, index, ""));
+            }
+            KeyCode::Tab | KeyCode::BackTab if position.is_some() && !self.settings.read_only => {
+                self.apply(Action::new(
+                    if key.code == KeyCode::Tab {
+                        "indent"
+                    } else {
+                        "outdent"
+                    },
+                    self.selected,
+                    "",
+                ))
             }
             KeyCode::Char('u') => {
                 let result = self.editor.undo();
+                self.clear_sections();
                 self.result(result);
             }
+            KeyCode::Char('m') if position.is_some() => {
+                self.moving = Some((self.editor.doc.clone(), self.selected, self.editor.dirty));
+                self.mode = Mode::Move;
+            }
+            KeyCode::Char('c') if position.is_some() => {
+                self.status = match clipboard::copy(&self.editor.doc.tasks[self.selected].text) {
+                    Ok(()) => "Copied to clipboard".into(),
+                    Err(e) => e,
+                };
+            }
+            KeyCode::Char('/') => {
+                self.mode = Mode::Search;
+                self.input = Buffer::default();
+                self.cursor = 0;
+            }
+            KeyCode::Char(':') => {
+                self.mode = Mode::Commands;
+                self.input = Buffer::default();
+                self.cursor = 0;
+            }
+            KeyCode::Char('t') => {
+                self.mode = Mode::Tags;
+                self.cursor = 0;
+            }
+            KeyCode::Char('p') => {
+                self.mode = Mode::Priorities;
+                self.cursor = 0;
+            }
+            KeyCode::Char('D') => {
+                self.mode = Mode::Due;
+                self.cursor = 0;
+            }
+            KeyCode::Char('s') => self.open_sections(),
+            KeyCode::Char('S') => self.clear_sections(),
             KeyCode::Char('r') => {
-                if self.editor.dirty && !self.confirm_reload {
-                    self.confirm_reload = true;
-                    self.status = "Unsaved changes. Press r again to discard and reload.".into();
-                } else {
-                    let result = self.editor.reload();
-                    self.result(result);
-                    self.confirm_reload = false;
+                match config::directory()
+                    .and_then(|dir| Recent::load(&dir, self.config.recent.max_files))
+                {
+                    Ok(r) => {
+                        self.recent = r.files;
+                        self.mode = Mode::Recent;
+                        self.input = Buffer::default();
+                        self.cursor = 0;
+                    }
+                    Err(e) => self.status = e,
                 }
+            }
+            KeyCode::Char('v') => {
+                if let Err(e) = self.open_versions() {
+                    self.status = e;
+                }
+            }
+            KeyCode::Char('?') => {
+                self.mode = Mode::Help;
+                self.scroll = 0;
             }
             _ => {}
         }
         false
     }
+    fn header(&self) -> String {
+        format!(
+            "tdx v{}{}{}  {}",
+            crate::version(),
+            if self.settings.read_only {
+                "  READ ONLY"
+            } else {
+                ""
+            },
+            if self.editor.dirty { "  UNSAVED" } else { "" },
+            self.path.display()
+        )
+    }
+    fn draw(&mut self, frame: &mut Frame) {
+        let areas = Layout::vertical([
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(3),
+        ])
+        .split(frame.area());
+        frame.render_widget(
+            Paragraph::new(self.header()).style(Style::default().fg(self.color("Accent"))),
+            areas[0],
+        );
+        let footer = if matches!(self.mode, Mode::Input | Mode::Heading | Mode::MaxVisible) {
+            format!(
+                "{}: {}▏{}\nEnter save · Esc cancel · arrows/Home/End · Ctrl-Y paste",
+                if self.mode == Mode::Heading {
+                    "SECTION"
+                } else if self.mode == Mode::MaxVisible {
+                    "MAX VISIBLE"
+                } else if self.action.kind == "edit" {
+                    "EDIT"
+                } else {
+                    "NEW"
+                },
+                clean(&self.input.text[..self.input.cursor]),
+                clean(&self.input.text[self.input.cursor..])
+            )
+        } else {
+            format!("{}\n{}", self.controls(), clean(&self.status))
+        };
+        frame.render_widget(Paragraph::new(footer), areas[2]);
+        match self.mode {
+            Mode::Commands | Mode::Search | Mode::Recent => self.draw_picker(frame, areas[1]),
+            Mode::Tags | Mode::Priorities | Mode::Due | Mode::Theme => {
+                self.draw_options(frame, areas[1])
+            }
+            Mode::Sections | Mode::Heading => self.draw_sections(frame, areas[1]),
+            Mode::Versions => {
+                let panes =
+                    Layout::horizontal([Constraint::Percentage(28), Constraint::Percentage(72)])
+                        .split(areas[1]);
+                let rows: Vec<_> = self
+                    .versions
+                    .iter()
+                    .map(|v| format!("#{} {}", v.id, v.created_at))
+                    .collect();
+                self.render_list(frame, panes[0], "FILE VERSION HISTORY", rows, self.cursor);
+                frame.render_widget(
+                    Paragraph::new(self.diff.clone())
+                        .block(Block::bordered().title("Current → saved version"))
+                        .scroll((self.scroll.min(u16::MAX as usize) as u16, 0)),
+                    panes[1],
+                );
+            }
+            Mode::Diff => {
+                frame.render_widget(
+                    Paragraph::new(self.diff.clone())
+                        .block(Block::bordered().title("Disk → local changes"))
+                        .scroll((self.scroll.min(u16::MAX as usize) as u16, 0)),
+                    areas[1],
+                );
+            }
+            Mode::Help => {
+                frame.render_widget(
+                    Paragraph::new(help())
+                        .block(Block::bordered().title("Help"))
+                        .wrap(Wrap { trim: false })
+                        .scroll((self.scroll.min(50) as u16, 0)),
+                    areas[1],
+                );
+            }
+            _ => self.draw_tasks(frame, areas[1]),
+        }
+    }
+    fn controls(&self) -> String {
+        match self.mode{
+            Mode::Normal=>format!("j/k move · n/N new · e/d edit · u undo · / search · t/p/D filters · s sections · r recent · : commands · ? help{}{}{}{}",if self.tags.is_empty(){String::new()}else{format!(" #{}",self.tags.iter().cloned().collect::<Vec<_>>().join(" #"))},if self.priorities.is_empty(){String::new()}else{format!(" p{:?}",self.priorities)},if self.due.is_empty(){String::new()}else{format!(" due:{}",self.due)},if self.settings.filter_done{" · open only"}else{""}),
+            Mode::Versions=>if self.confirm{"Restore this version? [y/N]"}else{"[↑/↓] Navigate  [PgUp/PgDn] Scroll  [Enter] Restore  [Esc] Close"}.into(),
+            Mode::Diff=>"[PgUp/PgDn] Scroll · [Esc] Close · then :reload or :force-save".into(),
+            Mode::Sections|Mode::Heading=>"j/k select · Enter focus · space fold · e rename · n section · N subsection · a all · Esc close".into(),
+            Mode::Theme=>"↑/↓ live preview · Enter save theme · Esc restore previous theme".into(),
+            Mode::Tags|Mode::Priorities|Mode::Due=>"j/k select · space/Enter toggle · c clear · Esc close".into(),
+            Mode::Move=>"j/k move task · Enter commit · Esc cancel".into(),
+            Mode::Search|Mode::Commands|Mode::Recent=>"Type to search · ↑/↓ or Ctrl-N/P select · Enter choose · Esc cancel".into(),
+            _=>"PgUp/PgDn scroll · Esc close".into(),
+        }
+    }
+    fn render_list(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        title: &str,
+        rows: Vec<String>,
+        selected: usize,
+    ) {
+        let rows: Vec<_> = rows
+            .into_iter()
+            .map(|s| {
+                let text = clean(&s);
+                if matches!(self.mode, Mode::Search | Mode::Commands | Mode::Recent) {
+                    ListItem::new(Line::from(highlight(
+                        &text,
+                        &self.input.text,
+                        self.color("Accent"),
+                    )))
+                } else {
+                    ListItem::new(text)
+                }
+            })
+            .collect();
+        let mut state = ListState::default();
+        if !rows.is_empty() {
+            state.select(Some(selected.min(rows.len() - 1)));
+        }
+        frame.render_stateful_widget(
+            List::new(rows)
+                .block(Block::bordered().title(title))
+                .highlight_symbol(format!("{} ", self.config.display.select_marker))
+                .highlight_style(
+                    Style::default()
+                        .fg(self.color("Accent"))
+                        .add_modifier(Modifier::BOLD),
+                ),
+            area,
+            &mut state,
+        );
+    }
+    fn draw_picker(&self, frame: &mut Frame, area: Rect) {
+        let rows = self
+            .matches()
+            .into_iter()
+            .map(|i| match self.mode {
+                Mode::Commands => format!("{}  {}", COMMANDS[i].0, COMMANDS[i].1),
+                Mode::Search => self.editor.doc.tasks[i].text.clone(),
+                _ => self.recent[i].path.display().to_string(),
+            })
+            .collect();
+        let title = format!(
+            "{}: {}▏{}",
+            match self.mode {
+                Mode::Commands => "Command",
+                Mode::Search => "Search",
+                _ => "Recent files",
+            },
+            clean(&self.input.text[..self.input.cursor]),
+            clean(&self.input.text[self.input.cursor..])
+        );
+        self.render_list(frame, area, &title, rows, self.cursor);
+    }
+    fn draw_options(&self, frame: &mut Frame, area: Rect) {
+        let (title, rows) = match self.mode {
+            Mode::Tags => (
+                "Tags",
+                self.tags_available()
+                    .into_iter()
+                    .map(|t| {
+                        format!(
+                            "[{}] #{}",
+                            if self.tags.contains(&t) { "✓" } else { " " },
+                            t
+                        )
+                    })
+                    .collect(),
+            ),
+            Mode::Priorities => (
+                "Priorities",
+                self.priorities_available()
+                    .into_iter()
+                    .map(|p| {
+                        format!(
+                            "[{}] !p{}",
+                            if self.priorities.contains(&p) {
+                                "✓"
+                            } else {
+                                " "
+                            },
+                            p
+                        )
+                    })
+                    .collect(),
+            ),
+            Mode::Due => (
+                "Due dates",
+                ["overdue", "today", "week", "all"]
+                    .iter()
+                    .map(|s| format!("[{}] {}", if self.due == *s { "✓" } else { " " }, s))
+                    .collect(),
+            ),
+            _ => ("Themes", self.themes.keys().cloned().collect()),
+        };
+        self.render_list(frame, area, title, rows, self.cursor);
+    }
+    fn draw_sections(&self, frame: &mut Frame, area: Rect) {
+        let rows = self
+            .editor
+            .doc
+            .headings
+            .iter()
+            .enumerate()
+            .map(|(i, h)| {
+                let range = self.editor.doc.section_bounds(i);
+                let total = range.len();
+                let done = self.editor.doc.tasks[range]
+                    .iter()
+                    .filter(|t| t.checked)
+                    .count();
+                format!(
+                    "{}{} {}  {}/{} done",
+                    "  ".repeat(h.level - 1),
+                    if self.folded.contains(&i) {
+                        "▸"
+                    } else {
+                        "▾"
+                    },
+                    h.text,
+                    done,
+                    total
+                )
+            })
+            .collect();
+        self.render_list(
+            frame,
+            area,
+            "Sections · n creates an empty section",
+            rows,
+            self.cursor,
+        );
+    }
+    fn draw_tasks(&self, frame: &mut Frame, area: Rect) {
+        let mut visible = self.visible();
+        let selected_pos = visible
+            .iter()
+            .position(|i| *i == self.selected)
+            .unwrap_or(0);
+        if self.settings.max_visible > 0 && visible.len() > self.settings.max_visible {
+            let start = selected_pos
+                .saturating_sub(self.settings.max_visible / 2)
+                .min(visible.len() - self.settings.max_visible);
+            visible = visible[start..start + self.settings.max_visible].to_vec();
+        }
+        let mut rows = Vec::new();
+        let mut selected_row = None;
+        let mut last_heading = None;
+        for i in visible {
+            if self.settings.show_headings {
+                let current = self
+                    .editor
+                    .doc
+                    .headings
+                    .iter()
+                    .enumerate()
+                    .rfind(|(_, h)| h.before_todo_index <= i)
+                    .map(|(h, _)| h);
+                if current != last_heading {
+                    if let Some(h) = current {
+                        let h = &self.editor.doc.headings[h];
+                        rows.push(ListItem::new(Line::styled(
+                            format!("{} {}", "#".repeat(h.level), clean(&h.text)),
+                            Style::default().fg(self.color("Accent")),
+                        )));
+                    }
+                    last_heading = current;
+                }
+            }
+            if i == self.selected {
+                selected_row = Some(rows.len());
+            }
+            let task = &self.editor.doc.tasks[i];
+            let prefix = format!(
+                "{}{}[{}] ",
+                if self.line_numbers {
+                    format!(
+                        "{:>3} ",
+                        if i == self.selected {
+                            i + 1
+                        } else {
+                            i.abs_diff(self.selected)
+                        }
+                    )
+                } else {
+                    String::new()
+                },
+                "  ".repeat(task.depth),
+                if task.checked {
+                    &self.config.display.check_symbol
+                } else {
+                    " "
+                }
+            );
+            let style =
+                Style::default().fg(self.color(if task.checked { "Important" } else { "Base" }));
+            let available = area.width.saturating_sub(6) as usize;
+            let text = format!("{}{}", prefix, clean(&task.text));
+            let lines = if self.settings.word_wrap {
+                wrap(&text, available, prefix.chars().count())
+            } else {
+                vec![text]
+            };
+            let lines: Vec<_> = lines
+                .into_iter()
+                .map(|s| Line::from(styled_text(&s, style, self)))
+                .collect();
+            rows.push(ListItem::new(lines));
+        }
+        if rows.is_empty() {
+            rows.push(ListItem::new(
+                "No matching tasks · n creates a task · s browses empty sections",
+            ));
+        }
+        let mut state = ListState::default();
+        state.select(selected_row);
+        frame.render_stateful_widget(
+            List::new(rows)
+                .block(Block::bordered().title(format!(" {} tasks ", self.editor.doc.tasks.len())))
+                .highlight_symbol(format!("{} ", self.config.display.select_marker))
+                .highlight_style(
+                    Style::default()
+                        .fg(self.color("Accent"))
+                        .add_modifier(Modifier::BOLD),
+                ),
+            area,
+            &mut state,
+        );
+    }
 }
-fn display_text(text: &str) -> String {
-    text.chars()
+fn clean(s: &str) -> String {
+    s.chars()
         .map(|c| if c.is_control() { '�' } else { c })
         .collect()
+}
+fn wrap(s: &str, width: usize, indent: usize) -> Vec<String> {
+    if width < 4 {
+        return vec![s.into()];
+    }
+    let mut lines = Vec::new();
+    let mut remaining = s.to_owned();
+    let padding = " ".repeat(indent.min(width / 2));
+    loop {
+        let mut columns = 0;
+        let mut boundary = remaining.len();
+        let mut space = None;
+        for (i, c) in remaining.char_indices() {
+            if columns + c.width().unwrap_or(0) > width {
+                boundary = i;
+                break;
+            }
+            columns += c.width().unwrap_or(0);
+            if c.is_whitespace() && i > padding.len() {
+                space = Some(i);
+            }
+        }
+        if boundary == remaining.len() {
+            lines.push(remaining);
+            break;
+        }
+        let split = space.unwrap_or(boundary);
+        lines.push(remaining[..split].trim_end().into());
+        remaining = format!("{padding}{}", remaining[split..].trim_start());
+    }
+    lines
+}
+
+fn styled_text(s: &str, base: Style, app: &App<'_>) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut code = false;
+    for part in s.split_inclusive(char::is_whitespace) {
+        let color = if part.starts_with('#') {
+            Some("Tag")
+        } else if part.starts_with("!p1") {
+            Some("PriorityHigh")
+        } else if part.starts_with("!p2") {
+            Some("PriorityMedium")
+        } else if part.starts_with("!p") {
+            Some("PriorityLow")
+        } else if part.starts_with("@due(") {
+            let d = part
+                .trim()
+                .trim_start_matches("@due(")
+                .trim_end_matches(')');
+            let days = NaiveDate::parse_from_str(d, "%Y-%m-%d")
+                .map(|d| (d - Local::now().date_naive()).num_days())
+                .unwrap_or(999);
+            Some(if days <= 0 {
+                "DueUrgent"
+            } else if days <= 3 {
+                "DueSoon"
+            } else {
+                "DueFuture"
+            })
+        } else {
+            None
+        };
+        let style = color.map_or(base, |c| base.fg(app.color(c)));
+        if part.contains('`') {
+            code = !code;
+        }
+        spans.push(Span::styled(
+            part.to_owned(),
+            if code || part.contains('`') {
+                style.bg(app.color("Dim"))
+            } else {
+                style
+            },
+        ));
+    }
+    spans
+}
+fn diff_lines(old: &str, new: &str) -> Vec<Line<'static>> {
+    let diff = TextDiff::configure()
+        .timeout(Duration::from_millis(500))
+        .diff_lines(old, new);
+    let mut lines = Vec::new();
+    for op in diff.ops() {
+        for change in diff.iter_inline_changes(op) {
+            let (prefix, color) = match change.tag() {
+                ChangeTag::Delete => ("- ", Color::Red),
+                ChangeTag::Insert => ("+ ", Color::Green),
+                _ => ("  ", Color::DarkGray),
+            };
+            let mut spans = vec![Span::styled(prefix, Style::default().fg(color))];
+            for (emphasized, text) in change.iter_strings_lossy() {
+                let style = Style::default().fg(color);
+                spans.push(Span::styled(
+                    clean(text.trim_end_matches(['\r', '\n'])),
+                    if emphasized {
+                        style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                    } else {
+                        style
+                    },
+                ));
+            }
+            lines.push(Line::from(spans));
+        }
+    }
+    if old == new {
+        lines.insert(0, Line::from("No differences"));
+    }
+    lines
+}
+fn help() -> String {
+    format!(
+        "{}\n\nCommands\n{}\n\nMove mode groups all moves into one undo entry. Read-only checklist edits stay in memory; :save writes explicitly. Sections support focus/folding, rename and sibling/subsection creation. CLI flags override file frontmatter, then global settings. Version and conflict diffs highlight changed characters.\n",
+        crate::HELP,
+        COMMANDS
+            .iter()
+            .map(|(n, d)| format!("{n}: {d}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
 }
 struct PasteGuard;
 impl Drop for PasteGuard {
@@ -428,39 +1660,293 @@ impl Drop for PasteGuard {
         let _ = execute!(io::stdout(), DisableBracketedPaste);
     }
 }
-
-pub fn run(editor: &mut Editor, path: &Path) -> io::Result<()> {
-    // Ratatui's run restores raw mode/alternate screen on return and panic.
+pub fn run(editor: &mut Editor, path: &Path, config: Config, flags: Overrides) -> io::Result<()> {
     ratatui::run(|terminal| {
         execute!(io::stdout(), EnableBracketedPaste)?;
-        let _paste = PasteGuard;
-        let mut app = App {
-            editor,
-            browser: None,
-            selection: ListState::default(),
-            input: None,
-            status: "Version history enabled · v browse · :force-save resolves conflicts".into(),
-            confirm_quit: false,
-            confirm_reload: false,
-        };
-        app.clamp();
+        let _guard = PasteGuard;
+        let mut app = App::new(editor, path, config, flags);
         let mut checked = Instant::now();
         let mut redraw = true;
         loop {
             if redraw {
-                terminal.draw(|frame| app.draw(frame, path))?;
+                terminal.draw(|f| app.draw(f))?;
             }
             redraw = false;
             if event::poll(Duration::from_millis(100))? {
                 if app.handle(event::read()?) {
-                    return Ok(());
+                    break;
                 }
                 redraw = true;
             }
             if checked.elapsed() >= Duration::from_millis(500) {
-                redraw |= app.check_disk();
+                redraw |= app.reload_if_idle();
                 checked = Instant::now();
             }
         }
+        if let Ok(dir) = config::directory()
+            && app.path.exists()
+        {
+            Recent::record(&dir, app.config.recent.max_files, &app.path, app.selected)
+                .map_err(io::Error::other)?;
+        }
+        Ok(())
     })
+}
+
+// Script input uses the identical state machine, with no raw-mode side effects.
+pub fn piped(editor: &mut Editor, path: &Path, config: Config, flags: Overrides) -> io::Result<()> {
+    use io::Read;
+    let mut input = String::new();
+    io::stdin().read_to_string(&mut input)?;
+    let mut app = App::new(editor, path, config, flags);
+    for event in decode_input(&input) {
+        if app.handle(event) {
+            break;
+        }
+    }
+    let backend = ratatui::backend::TestBackend::new(100, 40);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal.draw(|f| app.draw(f)).unwrap();
+    let buffer = terminal.backend().buffer();
+    for y in 0..40 {
+        let mut line = String::new();
+        for x in 0..100 {
+            line.push_str(buffer[(x, y)].symbol());
+        }
+        println!("{}", line.trim_end());
+    }
+    if app.path.exists() {
+        Recent::record(
+            &config::directory().map_err(io::Error::other)?,
+            app.config.recent.max_files,
+            &app.path,
+            app.selected,
+        )
+        .map_err(io::Error::other)?;
+    }
+    Ok(())
+}
+fn decode_input(mut text: &str) -> Vec<Event> {
+    let mut events = Vec::new();
+    while !text.is_empty() {
+        if let Some(rest) = text.strip_prefix("\x1b[200~") {
+            if let Some((paste, next)) = rest.split_once("\x1b[201~") {
+                events.push(Event::Paste(paste.into()));
+                text = next;
+                continue;
+            }
+            break;
+        }
+        let mut sequence = false;
+        for (prefix, code) in [
+            ("\x1b[A", KeyCode::Up),
+            ("\x1b[B", KeyCode::Down),
+            ("\x1b[C", KeyCode::Right),
+            ("\x1b[D", KeyCode::Left),
+            ("\x1b[H", KeyCode::Home),
+            ("\x1b[F", KeyCode::End),
+            ("\x1b[3~", KeyCode::Delete),
+            ("\x1b[5~", KeyCode::PageUp),
+            ("\x1b[6~", KeyCode::PageDown),
+            ("\x1b[Z", KeyCode::BackTab),
+        ] {
+            if let Some(rest) = text.strip_prefix(prefix) {
+                events.push(Event::Key(KeyEvent::new(code, KeyModifiers::NONE)));
+                text = rest;
+                sequence = true;
+                break;
+            }
+        }
+        if sequence {
+            continue;
+        }
+        let ch = text.chars().next().unwrap();
+        text = &text[ch.len_utf8()..];
+        let (code, modifiers) = match ch {
+            '\r' | '\n' => (KeyCode::Enter, KeyModifiers::NONE),
+            '\t' => (KeyCode::Tab, KeyModifiers::NONE),
+            '\x1b' => (KeyCode::Esc, KeyModifiers::NONE),
+            '\x7f' => (KeyCode::Backspace, KeyModifiers::NONE),
+            '\x01'..='\x1a' => (
+                KeyCode::Char((ch as u8 + b'a' - 1) as char),
+                KeyModifiers::CONTROL,
+            ),
+            c => (KeyCode::Char(c), KeyModifiers::NONE),
+        };
+        events.push(Event::Key(KeyEvent::new(code, modifiers)));
+    }
+    events
+}
+
+fn highlight(text: &str, query: &str, color: Color) -> Vec<Span<'static>> {
+    let folded = query.to_lowercase();
+    let mut wanted = folded.chars().peekable();
+    text.chars()
+        .map(|c| {
+            let matched = wanted
+                .peek()
+                .is_some_and(|q| c.to_lowercase().any(|v| v == *q));
+            if matched {
+                wanted.next();
+            }
+            Span::styled(
+                c.to_string(),
+                if matched {
+                    Style::default()
+                        .fg(color)
+                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                } else {
+                    Style::default()
+                },
+            )
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const SOURCE: &str = "# Work\n\n- [ ] Alpha #work !p2\n  - [ ] Child #home !p1\n- [x] Beta #home !p3\n- [ ] Gamma #work !p1\n\n## Empty\n";
+    fn with_app(f: impl FnOnce(&mut App<'_>)) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tasks.md");
+        std::fs::write(&path, SOURCE).unwrap();
+        let store = Store::with_lock_root(&path, dir.path().join("locks")).unwrap();
+        let mut editor = Editor::new(store, false).unwrap();
+        let mut app = App::new(&mut editor, &path, Config::default(), Overrides::default());
+        f(&mut app);
+    }
+    fn keys(app: &mut App<'_>, input: &str) {
+        for event in decode_input(input) {
+            assert!(!app.handle(event), "unexpected quit: {input}");
+        }
+    }
+    #[test]
+    fn filtered_actions_use_full_document_indexes() {
+        with_app(|app| {
+            keys(app, "t ");
+            assert_eq!(app.mode, Mode::Normal);
+            assert_eq!(app.visible(), vec![1, 2]);
+            keys(app, " ");
+            assert!(app.editor.doc.tasks[1].checked);
+            assert!(!app.editor.doc.tasks[0].checked);
+            keys(app, "u");
+            assert!(!app.editor.doc.tasks[1].checked);
+        });
+    }
+    #[test]
+    fn move_cancel_commit_and_undo_preserve_subtree() {
+        with_app(|app| {
+            keys(app, "mj\x1b");
+            assert_eq!(app.editor.doc.source, SOURCE);
+            keys(app, "mj\r");
+            assert_eq!(app.editor.doc.tasks[0].text, "Beta #home !p3");
+            assert_eq!(app.editor.doc.tasks[2].parent_index, Some(2));
+            keys(app, "u");
+            assert_eq!(app.editor.doc.source, SOURCE);
+        });
+    }
+    #[test]
+    fn readonly_edits_manual_save_and_metadata_flags() {
+        with_app(|app| {
+            app.command("read-only");
+            keys(app, " ");
+            assert!(app.editor.dirty);
+            assert_eq!(std::fs::read_to_string(&app.path).unwrap(), SOURCE);
+            app.command("save");
+            assert!(!app.editor.dirty);
+            assert!(
+                std::fs::read_to_string(&app.path)
+                    .unwrap()
+                    .contains("[x] Alpha")
+            );
+            keys(app, "u");
+            assert_eq!(app.editor.doc.source, SOURCE);
+        });
+    }
+    #[test]
+    fn sections_can_focus_empty_create_and_cancel() {
+        with_app(|app| {
+            keys(app, "sG\r");
+            assert!(app.visible().is_empty());
+            keys(app, "NAdded\r");
+            assert_eq!(app.editor.doc.tasks.last().unwrap().text, "Added");
+            keys(app, "Sse\x01Renamed \r");
+            assert_eq!(app.mode, Mode::Sections);
+            assert!(
+                app.editor
+                    .doc
+                    .headings
+                    .iter()
+                    .any(|h| h.text.starts_with("Renamed"))
+            );
+        });
+    }
+    #[test]
+    fn overlays_render_at_narrow_and_wide_sizes() {
+        with_app(|app| {
+            for mode in [
+                Mode::Normal,
+                Mode::Input,
+                Mode::Search,
+                Mode::Commands,
+                Mode::Tags,
+                Mode::Priorities,
+                Mode::Due,
+                Mode::Sections,
+                Mode::Heading,
+                Mode::Recent,
+                Mode::Theme,
+                Mode::Versions,
+                Mode::Diff,
+                Mode::Help,
+                Mode::MaxVisible,
+                Mode::Move,
+            ] {
+                app.mode = mode;
+                for width in [12, 24, 80, 160] {
+                    let mut terminal =
+                        ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, 20))
+                            .unwrap();
+                    terminal.draw(|f| app.draw(f)).unwrap();
+                    assert_eq!(terminal.backend().buffer().area.width, width);
+                }
+            }
+        });
+    }
+    #[test]
+    fn idle_reload_defers_local_input_and_applies_file_settings() {
+        with_app(|app| {
+            keys(app, "e");
+            let external =
+                "---\nread-only: true\nshow-headings: true\n---\n# Changed\n\n- [ ] External\n";
+            std::fs::write(&app.path, external).unwrap();
+            assert!(!app.reload_if_idle());
+            assert_eq!(app.editor.doc.source, SOURCE);
+            keys(app, "\x1b");
+            assert!(app.reload_if_idle());
+            assert!(app.settings.read_only && app.settings.show_headings);
+            assert_eq!(app.editor.doc.source, external);
+        });
+    }
+    #[test]
+    fn utf8_words_highlights_and_inline_diff() {
+        let lines = wrap("prefix café 🦀 nextword end", 18, 2);
+        assert_eq!(lines, vec!["prefix café 🦀", "  nextword end"]);
+        let spans = highlight("café crab", "cf", Color::Cyan);
+        assert_eq!(
+            spans
+                .iter()
+                .filter(|s| s.style.add_modifier.contains(Modifier::UNDERLINED))
+                .count(),
+            2
+        );
+        let lines = diff_lines("- [ ] old\n", "- [x] old\n");
+        assert!(
+            lines
+                .iter()
+                .flat_map(|l| &l.spans)
+                .any(|s| s.style.add_modifier.contains(Modifier::UNDERLINED))
+        );
+    }
 }

@@ -1,4 +1,4 @@
-use crate::{document::Document, store::Store};
+use crate::{actions::Action, document::Document, store::Store};
 use std::collections::VecDeque;
 
 pub struct Editor {
@@ -10,7 +10,12 @@ pub struct Editor {
 }
 impl Editor {
     pub fn new(store: Store, readonly: bool) -> Result<Self, String> {
-        let doc = Document::parse(store.baseline.clone().unwrap_or_default())?;
+        let doc = Document::parse(
+            store
+                .baseline
+                .clone()
+                .unwrap_or_else(|| "# Todos\n\n".into()),
+        )?;
         Ok(Self {
             doc,
             store,
@@ -20,15 +25,26 @@ impl Editor {
         })
     }
     pub fn apply(&mut self, op: &str, index: usize, text: &str) -> Result<(), String> {
-        if self.readonly || self.doc.readonly {
-            return Err("read-only: editing is disabled".into());
+        self.action(&Action::new(op, index, text)).map(|_| ())
+    }
+    pub fn action(&mut self, action: &Action) -> Result<usize, String> {
+        let (next, index) = self.doc.apply(action)?;
+        self.commit(next)?;
+        Ok(index)
+    }
+    pub fn commit(&mut self, next: Document) -> Result<(), String> {
+        if next.source == self.doc.source {
+            return Ok(());
         }
-        let next = self.doc.change(op, index, text)?;
         if self.past.len() == 100 {
             self.past.pop_front();
         }
         self.past.push_back(self.doc.source.clone());
         self.doc = next;
+        self.dirty = true;
+        if self.readonly { Ok(()) } else { self.save() }
+    }
+    pub fn manual_save(&mut self) -> Result<(), String> {
         self.save()
     }
     fn save(&mut self) -> Result<(), String> {
@@ -45,21 +61,18 @@ impl Editor {
         }
     }
     pub fn undo(&mut self) -> Result<(), String> {
-        if self.readonly || self.doc.readonly {
-            return Err("read-only: editing is disabled".into());
-        }
         if let Some(source) = self.past.back() {
             let next = Document::parse(source.clone())?;
             self.past.pop_back();
             self.doc = next;
-            self.save()?;
+            self.dirty = true;
+            if !self.readonly {
+                self.save()?;
+            }
         }
         Ok(())
     }
     pub fn force_save(&mut self) -> Result<(), String> {
-        if self.readonly || self.doc.readonly {
-            return Err("read-only: editing is disabled".into());
-        }
         match self.store.force_save(&self.doc.source) {
             Ok(()) => {
                 self.dirty = false;
@@ -72,7 +85,7 @@ impl Editor {
         }
     }
     pub fn restore(&mut self, id: i64) -> Result<(), String> {
-        if self.readonly || self.doc.readonly {
+        if self.readonly {
             return Err("read-only: restore is disabled".into());
         }
         let next = Document::parse(self.store.version(id)?)?;
@@ -135,7 +148,7 @@ mod tests {
         let mut editor = Editor::new(store, false).unwrap();
         editor.apply("add", 0, "one").unwrap();
         for _ in 0..110 {
-            assert!(editor.apply("edit", 0, "").is_err());
+            assert!(editor.apply("edit", 0, "\0").is_err());
         }
         assert_eq!(editor.past.len(), 1);
         editor.undo().unwrap();
@@ -205,7 +218,7 @@ mod recovery_tests {
             .map(|v| editor.store.version(v.id).unwrap())
             .collect();
         assert!(contents.contains(&"- [ ] external\n".to_owned()));
-        assert!(contents.contains(&"- [ ] candidate\n".to_owned()));
+        assert!(contents.contains(&"# Todos\n\n- [ ] candidate\n".to_owned()));
         editor.store.finish().unwrap();
     }
 }

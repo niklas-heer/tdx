@@ -1,4 +1,4 @@
-"""Compare full Go executable with the bounded Rust CLI/TUI; timings are observations."""
+"""Correctness-gated full-application Go/Rust comparison; timings are observations."""
 import argparse
 from datetime import datetime, timezone
 import hashlib
@@ -16,6 +16,9 @@ import threading
 import time
 
 from contracts import ROOT, Terminal, cli_contracts, replay_contracts, terminal_contracts, pty_module
+from evidence import fingerprint
+from parity_contracts import compare as action_parity
+from application_contracts import compare as application_parity
 from history_contracts import history_contracts, recovery_terminal, verify_snapshots
 
 OUT = ROOT / "dist/rust-rewrite"
@@ -121,15 +124,6 @@ def terminal_timings(binaries, output, rounds=3, actions=20):
     return records
 
 
-def fingerprint():
-    paths = sorted(set(list((ROOT / "cmd").rglob("*.go")) + list((ROOT / "cmd/tdx/themes").glob("*.toml"))
-                       + list((ROOT / "internal").rglob("*.go")) + list(MANIFEST.parent.glob("*.py"))
-                       + list((MANIFEST.parent / "src").glob("*.rs")) + list((MANIFEST.parent / "go-history").glob("*.go"))
-                       + [MANIFEST, MANIFEST.with_name("Cargo.lock"), ROOT / "go.mod", ROOT / "go.sum",
-                          ROOT / "scripts/usage-pty.py", ROOT / "experiments/rust-eval/fixtures.json"]))
-    return {"sha256": hashlib.sha256(b"".join(p.relative_to(ROOT).as_posix().encode() + b"\0" + p.read_bytes() for p in paths)).hexdigest(),
-            "files": [p.relative_to(ROOT).as_posix() for p in paths]}
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -140,24 +134,24 @@ def main():
         raise SystemExit("Requires macOS/Linux and at least three trials")
     OUT.mkdir(parents=True, exist_ok=True)
     binaries = {"go": OUT / "tdx-go", "rust": OUT / "tdx-rust"}
-    report = {"schema": 2, "measured_at": datetime.now(timezone.utc).isoformat(), "host": platform.platform(),
+    report = {"schema": 3, "measured_at": datetime.now(timezone.utc).isoformat(), "host": platform.platform(),
               "cpu": command(["sysctl", "-n", "machdep.cpu.brand_string"]) if sys.platform == "darwin" else platform.processor(),
               "toolchains": {"go": command(["go", "version"]), "rust": command(["rustc", "--version"]), "python": platform.python_version()},
               "git_parent": command(["git", "rev-parse", "HEAD"]), "working_tree_dirty": bool(command(["git", "status", "--porcelain"])),
               "source": fingerprint(), "trials": args.trials, "build_seconds": {}, "cli": [],
-              "limits": ["Full Go executable versus a feature-incomplete Rust prototype; not an isolated language comparison.",
+              "limits": ["Full application comparison with matching tested document, CLI, TUI, configuration, recent-file and history services; not an isolated language comparison.",
                          "list --json has equivalent tested output; Go still initializes configuration/styles.",
                          "Both writers capture canonical-path SHA256/zstd SQLite history with retention100, WAL/NORMAL and shutdown checkpoint; library and UI implementations differ.",
-                         "Go uses pure-Go SQLite/zstd; Rust uses bundled native SQLite/zstd C libraries. Rust does not load themes or other user configuration.",
+                         "Go uses pure-Go SQLite/zstd; Rust uses bundled native SQLite/zstd C libraries. Both load themes and user configuration.",
                          "CLI wall time includes process startup/output capture; RSS is whole-child peak, not live heap.",
                          "PTY measures key-to-observed-replacement, not render latency or completed durable save; includes parent polling/read overhead.",
                          "Fresh builds exclude downloads; Go compiles stdlib, Rust ships precompiled stdlib; single build observations.",
-                         "macOS/Linux runner; this snapshot validates one host only. No claim of Windows parity."]}
-    def save(): (OUT / "history-results.json").write_text(json.dumps(report, indent=2) + "\n")
+                         "Timing observations describe this host only; native platform correctness is recorded separately."]}
+    def save(): (OUT / "full-parity-results.json").write_text(json.dumps(report, indent=2) + "\n")
     command(["go", "mod", "download"])
     command(["cargo", "fetch", "--locked", "--manifest-path", str(MANIFEST)])
     go_build = ["go", "build", "-trimpath", "-ldflags=-s -w", "-o", str(binaries["go"]), "./cmd/tdx"]
-    rust_build = ["cargo", "build", "--release", "--locked", "--manifest-path", str(MANIFEST)]
+    rust_build = ["cargo", "build", "--release", "--locked", "--manifest-path", str(MANIFEST), "--bin", "tdx-rust"]
     if args.skip_clean_build:
         env = {**os.environ, "CARGO_TARGET_DIR": str(OUT / "target")}
         build(go_build, os.environ, "go-build"); build(rust_build, env, "rust-build")
@@ -178,8 +172,15 @@ def main():
     build(["go", "build", "-o", str(harness), "./cmd/tdx-usage"], os.environ, "harness-build")
     adapter = OUT / "go-history"
     build(["go", "build", "-o", str(adapter), "./experiments/rust-rewrite/go-history"], os.environ, "history-adapter-build")
+    go_adapter = OUT / "go-parity"
+    rust_adapter = OUT / "target/release/parity"
+    build(["go", "build", "-o", str(go_adapter), "./experiments/rust-rewrite/go-parity"], os.environ, "go-parity-build")
+    build(["cargo", "build", "--release", "--locked", "--manifest-path", str(MANIFEST), "--bin", "parity"], {**os.environ, "CARGO_TARGET_DIR": str(OUT / "target")}, "rust-parity-build")
+    actions = action_parity(go_adapter, rust_adapter, OUT / "verified-actions.json")
+    application = application_parity(binaries, OUT / "verified-application.json")
+    assert not actions["failures"] and not application["failures"]
     print("Gating measurements on CLI, identical replay, interoperable history and PTY recovery.", flush=True)
-    report["correctness"] = {"fixtures": cli_contracts(binaries),
+    report["correctness"] = {"document_actions": {"cases": actions["cases"], "steps": actions["steps"]}, "application": application, "fixtures": cli_contracts(binaries),
                              "replays": replay_contracts(binaries, harness, OUT / "verified-replay"),
                              "terminal": terminal_contracts(binaries, OUT / "verified-terminal"),
                              "history": history_contracts(binaries, adapter),
@@ -204,6 +205,8 @@ def main():
                     for name in names:
                         path.write_bytes(original)
                         config = base / f"{name}-{count}-{operation}"
+                        (config / "tdx").mkdir(parents=True, exist_ok=True)
+                        (config / "tdx/config.toml").write_text("[versioning]\nmax_versions=100\n")
                         env = {**os.environ, "XDG_CONFIG_HOME": str(config)}
                         if operation == "edit-with-save":
                             cli = ["edit", "1", f"Changed café #next !p1 trial{trial}"]
@@ -234,7 +237,7 @@ def main():
     report["source_unchanged_during_run"] = report["source"] == fingerprint()
     assert report["source_unchanged_during_run"], "source changed while measuring; rerun"
     save()
-    print(f"Wrote {OUT / 'history-results.json'}", flush=True)
+    print(f"Wrote {OUT / 'full-parity-results.json'}", flush=True)
 
 
 if __name__ == "__main__":

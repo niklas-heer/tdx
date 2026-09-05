@@ -1,0 +1,33 @@
+{
+  "scope": "Standalone Rust application implementing the Go CLI and TUI with corrected shared behavior",
+  "rendering_contract": "Same controls, information, themes and Unicode editing; renderer layout and Markdown whitespace may differ",
+  "groups": [
+    {"name": "CLI", "features": ["list and JSON metadata", "status and repeated tag filters", "add/edit/delete/toggle", "literal arguments and validation", "file/default path and tilde", "read-only precedence", "help/version/debug-config", "recent/last/clear"], "checks": ["contracts.cli_contracts", "application_contracts", "main argument tests"]},
+    {"name": "Markdown document", "features": ["GFM tasks and inline syntax", "multiline task bodies", "ordered/quoted/nested/ordinary lists", "HTML/tables/frontmatter", "byte-preserving checkbox edits", "subtree moves and cycle rejection", "parent deletion with child promotion", "sibling insertion", "indent/outdent", "bulk operations and subtree sorting", "heading rename/create/section add"], "checks": ["parity_contracts", "document tests", "Go editor regressions"]},
+    {"name": "Terminal editing", "features": ["navigation and counts", "top/bottom/page movement", "n/N/e/d/toggle", "bounded undo", "move preview/commit/cancel", "Unicode cursor movement/deletion", "bracketed and system clipboard paste", "piped terminal input"], "checks": ["application_contracts", "tui tests", "native_check.terminal_gate", "contracts.terminal_contracts"]},
+    {"name": "Search and filters", "features": ["fuzzy search and match highlighting", "current-query command execution/completion", "tag and priority filters", "due/overdue/today/week filters", "completed-task filter", "full-document action indexes", "refresh available metadata after edits/undo/reload"], "checks": ["application_contracts", "tui tests", "input tests", "Go Unicode fuzzy regression"]},
+    {"name": "Sections", "features": ["browse/focus/fold/reset", "empty sections", "rename", "sibling and child headings", "level validation", "section insertion"], "checks": ["parity_contracts", "application_contracts", "tui section tests"]},
+    {"name": "Display and configuration", "features": ["configuration search paths", "flags > frontmatter > defaults", "all bundled and user themes", "live theme preview/cancel/save", "preserve unrelated configuration keys", "check/selection symbols", "relative line numbers", "max-visible", "word wrapping", "heading visibility", "scrollable help", "inline diff highlighting"], "checks": ["config tests", "application_contracts", "tui render/wrap/highlight tests"]},
+    {"name": "Recent files", "features": ["shared JSON schema", "frecency ordering", "retention", "search and switch", "hash-guarded cursor restoration", "per-file settings reset", "save cursor for actual active file"], "checks": ["recent tests", "application_contracts recent switch"]},
+    {"name": "History and recovery", "features": ["shared SQLite/zstd snapshots", "deduplication and configurable retention", "canonical file identity", "version browser and inline diff", "confirmed/cancelled restore", "read-only restore rejection", "conditional saves", "force-save captures overwritten revision", "idle external reload and input deferral", "checkpoint and error propagation"], "checks": ["history_contracts", "history/editor/store tests", "native_check"]},
+    {"name": "Native persistence", "features": ["atomic same-directory replacement", "Go-compatible advisory locks", "revision revalidation", "symlink target identity", "permissions", "file sync and Unix directory sync", "Windows replacement with write-through", "failed-save local candidate retention", "read-only ephemeral edits and explicit save", "terminal shutdown"], "checks": ["store tests", "Go filesystem tests", "native_check on macOS/Linux/Windows"]}
+  ],
+  "bug_corrections": [
+    "Go theme saves preserve versioning and unfamiliar configuration keys",
+    "Append creates a root task at document end rather than entering the last nested list",
+    "Sorting moves sibling subtrees instead of reassigning flat labels",
+    "Deleting a parent promotes every nested child list",
+    "Moving a parent into its descendant fails without mutation",
+    "Insertion returns the new sibling index after the selected subtree",
+    "Structural serialization preserves the order and ownership of task paragraphs and lists",
+    "Unknown frontmatter keys do not disable recognized settings",
+    "Explicit flags override file settings; CLI honors file read-only settings",
+    "Recent-file switches reset per-file settings and persist the active file cursor",
+    "Scripted control keys and modal Escape use the interactive state machine",
+    "Invalid indent and unchanged move gestures do not consume undo",
+    "Fuzzy matching uses whole Unicode characters",
+    "Version browsing and unsaved read-only edits defer automatic reload",
+    "Clipboard backends cover macOS, Windows, Wayland and X11"
+  ],
+  "performance_gate": "All document/application/history/terminal checks must pass; publish native evidence separately and retain any unverified platform explicitly"
+}

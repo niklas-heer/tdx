@@ -1,4 +1,4 @@
-"""Executable and actual-terminal contracts for the bounded rewrite prototype."""
+"""Executable and actual-terminal contracts shared by Go and Rust."""
 import argparse
 import importlib.util
 import fcntl
@@ -41,14 +41,10 @@ def cli_contracts(binaries):
                 path = base / f"{name}.md"
                 config = base / name
                 path.write_bytes(source)
-                if fixture["name"] == "multiline" and name == "rust":
-                    error = invoke(binary, path, config, "list", "--json", success=False)
-                    assert b"multiline" in error.stderr
-                    continue
                 outputs[name] = json.loads(invoke(binary, path, config, "list", "--json").stdout)
                 for index in range(len(fixture["markers"])):
                     path.write_bytes(source)
-                    if fixture["name"] == "frontmatter" and name == "rust":
+                    if fixture["name"] == "frontmatter":
                         invoke(binary, path, config, "toggle", str(index + 1), success=False)
                         assert path.read_bytes() == source
                     else:
@@ -61,7 +57,7 @@ def cli_contracts(binaries):
                     assert path.read_bytes() == source
             if "go" in outputs and "rust" in outputs:
                 assert outputs["go"] == outputs["rust"], (fixture["name"], outputs)
-            results.append({"fixture": fixture["name"], "query": "explicit Rust multiline rejection" if fixture["name"] == "multiline" else "matched", "byte_preserving_toggle_and_rejections": "passed", "policy_difference": "Rust enforces frontmatter read-only; Go CLI toggle currently does not" if fixture["name"] == "frontmatter" else None})
+            results.append({"fixture": fixture["name"], "query": "matched", "byte_preserving_toggle_and_rejections": "passed"})
         source = "- [ ] café #tag #tag #other !p0 !p10 !p2 @due(2027-02-29) @due(2028-02-29)\n- [x] done #tag\n"
         for args in [("list", "--json"), ("list", "--json", "--status", "open"), ("list", "--json", "--tag", "tag", "--tag", "other")]:
             outputs = []
@@ -83,15 +79,7 @@ def cli_contracts(binaries):
                 assert b"busy" in error.stderr
                 assert lock_path.read_text() == "- [ ] locked\n"
         results.append({"shared_advisory_lock": "both reject busy target without modifying it"})
-        # Prototype-only guards: unsupported edits must leave every byte intact.
-        for source in ("- [ ] parent\n  - [ ] child\n", "- [ ] parent\n  continuation\n"):
-            path = base / "guard.md"; path.write_text(source)
-            for op in ("edit", "delete"):
-                args = [op, "1"] + (["new"] if op == "edit" else [])
-                supported = op == "edit" and "child" in source
-                invoke(binaries["rust"], path, base / "rust", *args, success=supported)
-                assert path.read_text() == (source.replace("parent", "new", 1) if supported else source)
-                path.write_text(source)
+
     return results
 
 
@@ -124,7 +112,7 @@ def terminal_contracts(binaries, output):
                         terminal.send(b"u"); terminal.until(lambda: path.read_bytes() == original, "Unicode undo")
                         terminal.send(b"eignored\x1b"); terminal.pump(0.1)
                         assert path.read_bytes() == original
-                        terminal.send((b"N" if name == "go" else b"a") + b"\x1b[200~New task\x1b[201~\r")
+                        terminal.send(b"N" + b"\x1b[200~New task\x1b[201~\r")
                         terminal.until(lambda: b"New task" in path.read_bytes(), "add")
                         terminal.send(b"u"); terminal.until(lambda: path.read_bytes() == original, "undo add")
                         terminal.send(b"kkkjd")
@@ -141,11 +129,8 @@ def terminal_contracts(binaries, output):
                         marker = b":reload or :force-save" if name == "go" else b"externally"
                         terminal.until(lambda: marker in terminal.output[start:], "save conflict")
                         assert path.read_bytes() == external
-                        if name == "rust":
-                            terminal.send(b"rr")
-                        else:
-                            terminal.send(b"\x1b"); terminal.pump(0.65)
-                            terminal.send(b":reload\r")
+                        terminal.send(b"\x1b"); terminal.pump(0.65)
+                        terminal.send(b":reload\r")
                         terminal.until(lambda: hashlib.sha256(external).hexdigest() in {h for _, h in snapshots(base / "config", path)}, "reload captured external revision")
                         terminal.send(b" ")
                         terminal.until(lambda: path.read_bytes() == external.replace(b"[ ] External", b"[x] External"), "toggle reloaded revision")

@@ -26,6 +26,10 @@ class Terminal:
         self.output = bytearray()
         self.queries = bytearray()
         self.reaped = False
+        config = Path(config)
+        (config / "tdx").mkdir(parents=True, exist_ok=True)
+        config_file = config / "tdx/config.toml"
+        if not config_file.exists(): config_file.write_text("[versioning]\nmax_versions=100\n")
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
             os.environ.update(XDG_CONFIG_HOME=str(config), TERM="xterm-256color")

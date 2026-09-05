@@ -1,5 +1,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
-use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use serde::Deserialize;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -20,31 +22,31 @@ CREATE TABLE IF NOT EXISTS file_versions (
  UNIQUE(file_id, version_hash));
 CREATE INDEX IF NOT EXISTS idx_file_versions_file_id ON file_versions(file_id);
 ";
-// Bound decompression of corrupted/untrusted history. Ordinary document input
-// remains unrestricted; reads of snapshots above this prototype limit fail.
-const MAX_SNAPSHOT_BYTES: u64 = 64 * 1024 * 1024;
-
 #[derive(Clone, Debug, Serialize)]
 pub struct Version {
     pub id: i64,
     pub created_at: String,
 }
+#[cfg(test)]
 #[derive(Deserialize)]
 struct Config {
     #[serde(default)]
     versioning: Versioning,
 }
+#[cfg(test)]
 #[derive(Deserialize)]
 #[serde(default)]
 struct Versioning {
     max_versions: i64,
 }
+#[cfg(test)]
 impl Default for Versioning {
     fn default() -> Self {
         Self { max_versions: 100 }
     }
 }
 
+#[cfg(test)]
 pub fn max_versions(config_dir: &Path) -> Result<i64, String> {
     match fs::read_to_string(config_dir.join("config.toml")) {
         Ok(text) => toml::from_str::<Config>(&text)
@@ -144,12 +146,8 @@ impl History {
         let mut output = Vec::new();
         zstd::stream::read::Decoder::new(compressed.as_slice())
             .map_err(|e| format!("corrupt snapshot: {e}"))?
-            .take(MAX_SNAPSHOT_BYTES + 1)
             .read_to_end(&mut output)
             .map_err(|e| format!("corrupt snapshot: {e}"))?;
-        if output.len() as u64 > MAX_SNAPSHOT_BYTES {
-            return Err("snapshot exceeds prototype 64 MiB recovery limit".into());
-        }
         if format!("{:x}", Sha256::digest(&output)) != hash {
             return Err("snapshot hash mismatch".into());
         }

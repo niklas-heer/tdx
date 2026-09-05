@@ -211,7 +211,7 @@ tools.rust = "1.98.1"
 run = 'CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo run --release --locked --manifest-path experiments/rust-rewrite/Cargo.toml -- "$@"'
 
 [tasks."rust-rewrite:check"]
-description = "Check Rust prototype formatting, lint and unit/save regressions"
+description = "Check Rust rewrite formatting, lint and application/save regressions"
 tools.rust = "1.98.1"
 run = """
 cargo fmt --manifest-path experiments/rust-rewrite/Cargo.toml --check
@@ -228,6 +228,9 @@ go build -trimpath -ldflags='-s -w' -o dist/rust-rewrite/tdx-go ./cmd/tdx
 go build -o dist/rust-rewrite/tdx-usage ./cmd/tdx-usage
 go build -o dist/rust-rewrite/go-history ./experiments/rust-rewrite/go-history
 CARGO_TARGET_DIR="$PWD/dist/rust-rewrite/target" cargo build --release --locked --manifest-path experiments/rust-rewrite/Cargo.toml
+go build -o dist/rust-rewrite/go-parity ./experiments/rust-rewrite/go-parity
+python3 experiments/rust-rewrite/parity_contracts.py --rust dist/rust-rewrite/target/release/parity
+python3 experiments/rust-rewrite/application_contracts.py --rust dist/rust-rewrite/target/release/tdx-rust
 python3 experiments/rust-rewrite/contracts.py
 """
 

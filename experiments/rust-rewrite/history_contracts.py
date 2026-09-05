@@ -91,7 +91,7 @@ def recovery_terminal(binary, output):
             start = len(terminal.output); terminal.send(b':versions\r')
             terminal.until(lambda: b'[Enter]' in terminal.output[start:], 'recovery browser')
             start = len(terminal.output); terminal.send(b'j\r')
-            terminal.until(lambda: b'[y/N]' in terminal.output[start:], 'restore confirmation')
+            terminal.until(lambda: b'[y/N' in terminal.output[start:], 'restore confirmation')
             terminal.send(b'n'); terminal.pump(0.1); assert path.read_bytes() == changed
             terminal.send(b'\ry'); terminal.until(lambda: path.read_bytes() == original, 'confirmed exact restore')
             # Hold the browser open across an external change: restore must fail without replacing disk.
@@ -109,8 +109,9 @@ def recovery_terminal(binary, output):
             terminal.pump(0.7); start = len(terminal.output); terminal.send(b' local\r')
             terminal.until(lambda: b':force-save' in terminal.output[start:], 'pending edit conflict')
             assert path.read_bytes() == overwritten
+            terminal.send(b'\x1b'); terminal.pump(0.1)
             terminal.send(b':force-save\r')
-            candidate = b'- [ ] Browser external local\n'
+            candidate = b'# Todos\n\n- [ ] Browser external local\n'
             terminal.until(lambda: path.read_bytes() == candidate, 'force save')
             terminal.close()
             verify_snapshots(config, path, [original, changed, external, overwritten, candidate])
@@ -126,6 +127,7 @@ def recovery_terminal(binary, output):
             start = len(terminal.output); terminal.send(b'j\ry')
             terminal.until(lambda: b'disabled' in terminal.output[start:], 'read-only restore denied')
             assert path.read_bytes() == candidate
+            terminal.send(b'\x1b'); terminal.pump(0.1)
             terminal.close()
         finally:
             terminal.cleanup(output / 'readonly-recovery.ansi')
