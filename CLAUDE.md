@@ -11,7 +11,9 @@ mise run build          # Build binary to ./tdx
 mise run install        # Install to ~/.local/bin
 mise run test           # Run all tests
 mise run ci-lint        # Run the pinned linter through Dagger
-go test ./...       # Run tests directly
+mise run test:usage     # 100 simulated hours; replay artifacts in dist/usage
+mise run test:terminal  # Real PTY contracts (macOS/Linux)
+go test ./...          # Run tests directly
 go test -v ./cmd/tdx -run "TestName"  # Run specific test
 ```
 
@@ -23,6 +25,9 @@ go test -v ./cmd/tdx -run "TestName"  # Run specific test
 - `internal/tui/` - Bubble Tea TUI (model, update, view, commands, render)
 - `internal/markdown/` - AST-based markdown parser/serializer using Goldmark
 - `internal/config/` - Recent files tracking (legacy YAML config deprecated)
+- `internal/editor/` - Shared actions and bounded undo with provisional snapshots
+- `internal/usage/` - Independent task oracle and deterministic replay
+- `internal/versioning/` - SQLite history and safe restores
 - `internal/cmd/` - CLI command handlers (list, add, toggle, edit, delete)
 - `internal/util/` - Text utilities, fuzzy search, clipboard
 
@@ -38,20 +43,21 @@ go test -v ./cmd/tdx -run "TestName"  # Run specific test
 - `model.go` - State management
 - `update.go` - Event/message handling
 - `view.go` - Rendering
-- Config and styles are injected via package-level globals (`tui.Config`, `tui.StyleFuncs`)
+- Config, styles and store callbacks are injected per application instance through `tui.Runtime` and `tui.New`
 
 **Markdown handling**: AST-based, not regex
 - Goldmark parses markdown into AST
-- Custom serializer reconstructs markdown preserving formatting
-- Operations (toggle, add, delete, swap) manipulate AST nodes directly
+- Checkbox-only changes preserve source bytes; structural edits use a serializer that can normalize formatting
+- CLI and TUI apply document operations through `internal/editor`
 
 ### Testing
 
 **Testing is critical for this project. Always add tests for new features and bug fixes.**
 
 - Test files use `runPiped(t, filePath, keystrokes)` helper to simulate TUI interaction
-- Use `config.SetConfigDirForTesting(tmpDir)` to isolate config in tests
-- TUI tests send key sequences and verify output contains expected strings
+- Prefer per-instance stores and temporary directories; subprocess tests isolate `XDG_CONFIG_HOME`
+- Bounded model replay checks task state and disk contents; PTY tests exercise the real event loop
+- See `experiments/usage/README.md` for replay, profiling and rewrite-contract limitations
 
 **TUI tests are especially important** - they verify the interactive behavior users experience. Add TUI tests when:
 - Adding new keybindings or commands

@@ -15,13 +15,13 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 
 ## Features
 
-- ⚡ **Fast** - Single binary (4MB), instant startup, 30-40x faster than alternatives
+- ⚡ **Fast** - Native binary with no application runtime to install
 - 📝 **Markdown-native** - Todos live in `todo.md`, version control friendly
 - ⌨️ **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
 - 🖥️ **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
 - 🎯 **Command Palette** - Helix-style `:` commands with fuzzy search
 - 📋 **Read-Only Mode** - Prevent auto-save, check/uncheck all, filter done
-- 🔧 **Scriptable** - `list`, `add`, `toggle`, `edit`, `delete` commands
+- 🔧 **Scriptable** - Filtered JSON output and `list`, `add`, `toggle`, `edit`, `delete` commands
 - 🔄 **Smart Conflict Handling** - Atomic saves, external-change detection, visual conflict diffs
 - 🕘 **Version History** - Automatic snapshots with visual diffs and safe restore
 - 📑 **Per-File Configuration** - YAML frontmatter for file-specific settings
@@ -47,8 +47,13 @@ While focused, **n** adds a task after the selection; in an empty section it cre
 
 Section editing uses the same guarded saves and version history as task editing. Read-only files support section browsing and focus without permitting heading edits.
 
-### What's new in 0.14 (unreleased)
+### What's new in 0.14.0
 
+[Release notes and upgrade guidance](docs/releases/0.14.0.md) · [Download v0.14.0](https://github.com/niklas-heer/tdx/releases/tag/v0.14.0)
+
+- Preserve surrounding Markdown bytes during checkbox-only edits, with faster cached updates.
+- Keep undo history intact when cancelling input and detect external edits made while typing.
+- Validate sustained use with replayable sessions, CLI contracts and real-terminal tests.
 - Manage projects directly through Markdown headings, without opening another editor.
 - Compose tdx with scripts and editors using filtered JSON output and explicit file selection.
 - Type and paste international text in task, search, command, and recent-file inputs.
@@ -92,11 +97,15 @@ Indexes are positions, **not persistent IDs**: re-query after inserting, deletin
 brew install niklas-heer/tap/tdx
 ```
 
+To upgrade an existing Homebrew installation, run `brew update` and `brew upgrade niklas-heer/tap/tdx`.
+
 ### Quick Install Script
 
 ```bash
 curl -fsSL https://niklas-heer.github.io/tdx/install.sh | bash
 ```
+
+The installer writes to `~/.local/bin` by default. Add that directory to `PATH`, or set `TDX_INSTALL_DIR` when running the script. To pin a release, use `curl -fsSL https://niklas-heer.github.io/tdx/install.sh | TDX_VERSION=0.14.0 bash`. Check `command -v tdx` if an older installation exists elsewhere.
 
 ### Download Binary
 
@@ -161,6 +170,7 @@ tdx
 | `t` | Tag filter |
 | `p` | Priority filter |
 | `D` | Due date filter |
+| `s` / `S` | Section overview / show all sections |
 | `r` | Recent files |
 | `:` | Command palette |
 | `u` | Undo |
@@ -190,6 +200,8 @@ Press `:` to open the command palette with fuzzy search. Available commands:
 | `force-save` | Force save even if file was modified externally |
 | `reload` | Reload file from disk (discards unsaved changes) |
 | `versions` | Browse, compare, and restore file version history |
+| `diff` | Inspect a pending save conflict |
+| `sections` / `all-sections` | Open section overview / clear section focus and folds |
 | `wrap` | Toggle word wrap for long lines |
 | `line-numbers` | Toggle relative line numbers |
 | `set-max-visible` | Set max visible items for this session |
@@ -414,8 +426,7 @@ Todos are stored in `todo.md` using standard Markdown:
 - [ ] Another task
 ```
 
-Other Markdown content is preserved, including bare URLs, email addresses,
-links, inline HTML, emphasis, and code.
+Checkbox-only changes to a freshly loaded document preserve every surrounding byte, including frontmatter, HTML, fenced examples and line endings. Adding, editing, moving or removing tasks uses the AST serializer and may normalize formatting. HTML blocks, table syntax and ordinary paragraph line breaks are retained, but complex multiline task bodies and reference definitions do not yet have a general lossless round-trip guarantee. Keep rich documents under version control.
 
 ### Configuration
 
@@ -463,7 +474,7 @@ You only need to include the settings you want to change from the defaults.
 | `[defaults]` | `max_visible` | number | 0 | Limit visible tasks (0 = unlimited) |
 | `[defaults]` | `word_wrap` | boolean | true | Enable word wrapping for long lines |
 | `[defaults]` | `show_headings` | boolean | false | Show markdown headings between tasks |
-| `[defaults]` | `read_only` | boolean | false | Prevent all edits (view-only mode) |
+| `[defaults]` | `read_only` | boolean | false | Disable automatic TUI saves; reject CLI mutations |
 | `[defaults]` | `filter_done` | boolean | false | Hide completed tasks by default |
 | `[recent]` | `max_files` | number | 20 | Maximum recent files to track |
 | `[versioning]` | `max_versions` | number | 100 | Versions retained per file (0 = unlimited) |
@@ -530,87 +541,28 @@ tdx --show-headings todo.md
 
 ## Architecture
 
-### AST-Based Markdown Engine
+### Editing and Markdown preservation
 
-tdx uses **[Goldmark](https://github.com/yuin/goldmark)** (Go's industry-standard Markdown parser) with a custom serializer to provide robust, format-preserving todo management:
+[Goldmark](https://github.com/yuin/goldmark) identifies tasks and headings using task-list, table and strikethrough extensions. The CLI and TUI apply shared document actions through `internal/editor`; each application instance owns its configuration, styles and persistence callbacks.
 
-**Why AST over regex?**
-- ⚡ **Performance** - Parse once, manipulate efficiently in memory
-- 🎯 **Precision** - Surgical updates to specific nodes without side effects
-- 📝 **Format Preservation** - Maintains your markdown structure, spacing, and formatting
-- 🔒 **Reliability** - Correctly handles edge cases (nested lists, code blocks, links, etc.)
-- 🏷️ **Rich Features** - Enables advanced features like tag extraction, heading tracking
+A checkbox edit uses the AST's exact source location and updates cached checked state without extracting all task metadata again. While a document has only checkbox changes, serialization retains its source bytes. Structural changes invalidate that source path and use the custom Markdown serializer. This distinction matters: tdx preserves checkbox edits exactly, but does not promise byte-for-byte preservation of arbitrary Markdown after structural editing.
 
-**How it works:**
+Undo retains up to 100 committed snapshots, with provisional input stored separately until confirmed. File saves compare the loaded disk revision, acquire a file lock and atomically replace the target. Watcher reloads defer during pending input so a concurrent editor's changes cannot silently become the revision used by a later save. Explicit conflict recovery and version history remain available in the TUI.
 
-```
-Read File → Goldmark Parser → AST (in-memory tree)
-                                  ↓
-                           Manipulate nodes
-                           (toggle, add, delete, swap)
-                                  ↓
-                          Custom Serializer → Write File
-```
+### Performance and sustained-use testing
 
-**Implementation Details:**
+Checkbox nodes and headings are cached. Search is debounced for 50 ms, while immediate Enter and navigation use the current query. The [measured 100-hour simulated campaign](experiments/usage/README.md) covers 36,000 actions, real disk saves, conflicts, cancellation and reload, with separate executable and PTY contracts.
 
-1. **Parser** (`internal/markdown/ast.go:29`)
-   - Uses **Goldmark** with tables, strikethrough, and task-list extensions
-   - Keeps presentation-only linkification disabled so bare URLs remain exact source text
-   - Parses markdown into an Abstract Syntax Tree
-   - Each todo becomes a `TaskCheckBox` node within a `ListItem`
-   - Preserves source bytes with segment pointers for text nodes
-
-2. **AST Operations** (`internal/markdown/ast.go`)
-   - `ExtractTodos()` - Walk AST and collect all task list items
-   - `ExtractHeadings()` - Find headings and their positions relative to todos
-   - `ToggleTodo()` - Flip checkbox state in the AST
-   - `UpdateTodoText()` - Replace editable inline content while preserving list structure
-   - `DeleteTodo()` - Remove list item node from parent
-   - `AddTodo()` - Create new list item with checkbox and text nodes
-   - `SwapTodos()` - Reorder list items (handles adjacent and cross-section swaps)
-
-3. **Custom Serializer** (`internal/markdown/serializer.go:12`)
-   - Recursively walks the modified AST
-   - Reconstructs markdown with proper formatting
-   - Built custom because Goldmark's renderer had formatting issues
-   - Handles: headings, lists, checkboxes, code blocks, links, emphasis, strikethrough, etc.
-   - Preserves spacing and blank lines
-
-**Key Benefits:**
-
-- ✅ **Non-destructive** - Your markdown formatting, comments, and structure stay intact
-- ✅ **Complex markdown** - Handles nested lists, code blocks, links, emphasis seamlessly
-- ✅ **Durable writes** - Atomic replace with flushes and conflict detection
-- ✅ **Predictable** - AST guarantees correct parsing and serialization
-- ✅ **Tag support** - HashtagExtraction built into AST traversal
-- ✅ **Heading-aware** - Knows which todos belong under which headings
-
-### Performance Optimizations
-
-tdx is built for speed with several key optimizations:
-
-- **Search debouncing** - Search operations are debounced (50ms) to avoid scoring all todos on every keystroke
-- **Heading caching** - Heading positions are cached and only recomputed when todos change
-- **Zero-allocation navigation** - Finding next/previous visible items allocates no memory (~8ns)
-- **Unified input handling** - TUI and piped input share the same handlers, reducing code and bugs
-
-**Benchmark results** (Apple M4):
-```
-FuzzyScore (exact match):     5.6ns/op    0 allocs
-FuzzyScore (fuzzy match):    33.4ns/op    0 allocs
-Cached headings:              1.0ns/op    0 allocs
-Search 100 todos:             9.8µs/op  114 allocs
-Navigation (visible todo):    8.0ns/op    0 allocs
-```
+The report includes loaded-document checkbox benchmarks, complete action latency, allocation profiles, exact source revisions and reproduction commands. These measurements are workload-specific; they do not establish an application-wide comparison with other tools. Simulated hours are accelerated actions rather than wall-clock endurance. See the [Rust evaluation](experiments/rust-eval/README.md) for the narrower parser experiment and its limitations.
 
 ### Project Structure
 
 ```
 tdx/
 ├── .dagger/             # Portable CI and release pipeline (Go)
-├── mise.toml          # Documented development tasks
-├── cmd/tdx/              # Main application
+├── mise.toml           # Pinned tools and development tasks
+├── cmd/tdx-usage/       # Developer replay runner (not shipped)
+├── cmd/tdx/             # Main application
 │   ├── main.go          # Entry point, CLI routing
 │   ├── config.go        # Build-time configuration
 │   ├── userconfig.go    # User configuration (themes, settings)
@@ -627,6 +579,8 @@ tdx/
 │   │   ├── commands.go  # Command palette
 │   │   ├── render.go    # Display logic
 │   │   └── *_test.go    # Unit & benchmark tests
+│   ├── usage/           # Independent oracle and session replay
+│   ├── versioning/      # SQLite-backed file history
 │   ├── editor/          # Shared editing actions and bounded undo
 │   ├── cmd/             # CLI command handlers
 │   │   └── cli.go       # List, add, toggle, etc.

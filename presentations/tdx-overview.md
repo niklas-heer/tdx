@@ -29,7 +29,7 @@ A **fast**, **single-binary** CLI todo manager
 
 <!-- column: 0 -->
 
-- ⚡ 4MB binary, instant startup
+- ⚡ Native binary, no application runtime
 - 📝 Markdown-native (`todo.md`)
 - ⌨️ Vim-style navigation
 
@@ -58,7 +58,7 @@ A **fast**, **single-binary** CLI todo manager
 
 ---
 
-So I built **tdx** — 30-40x faster than alternatives 🏎️
+So I built **tdx** — a Markdown workflow with keyboard-first editing 🏎️
 
 <!-- end_slide -->
 
