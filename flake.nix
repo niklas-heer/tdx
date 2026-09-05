@@ -57,7 +57,7 @@
             git
             mise
           ];
-          shellHook = ''echo "TDX development shell!" echo "Go version: $(go version)" '';
+          shellHook = ''echo "Run mise run check to validate tdx, or mise run dev to launch it."'';
         };
       }
     );

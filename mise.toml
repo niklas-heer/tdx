@@ -1,3 +1,6 @@
+[task_config]
+shell = "bash -e -o pipefail -c"
+
 [tools]
 go = "1.27.1"
 

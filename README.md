@@ -616,6 +616,7 @@ tdx/
 
 - Go 1.27.1 (installed by mise)
 - [mise](https://mise.jdx.dev) (tool versions and tasks)
+- Bash (use Git Bash on Windows)
 
 After cloning, run `mise trust` and `mise run setup`. Docker is required only for Dagger tasks (`ci` and `release-artifacts`); normal build, test, and lint tasks run locally.
 
