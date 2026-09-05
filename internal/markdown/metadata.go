@@ -111,3 +111,11 @@ func (m *Metadata) GetInt(field string, defaultValue int) int {
 	}
 	return defaultValue
 }
+
+// Clone isolates per-file settings in document snapshots.
+func (m *Metadata) Clone() *Metadata {
+	if m == nil {
+		return nil
+	}
+	return &Metadata{FilterDone: copyPointer(m.FilterDone), MaxVisible: copyPointer(m.MaxVisible), ShowHeadings: copyPointer(m.ShowHeadings), ReadOnly: copyPointer(m.ReadOnly), WordWrap: copyPointer(m.WordWrap)}
+}

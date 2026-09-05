@@ -39,3 +39,20 @@ func TestSerializeAST_NestedLists(t *testing.T) {
 
 	t.Logf("Serialized output:\n%s", output)
 }
+
+func TestSerializeAST_OrderedAndQuotedTasks(t *testing.T) {
+	for _, source := range []string{
+		"9. [ ] Nine\n   - [x] Child\n10. [ ] Ten\n    1) [ ] Nested\n       - [x] Deep\n",
+		"> - [ ] Quoted\n>   - [x] Child\n",
+		"> Outer\n> \n> > - [ ] Inner\n> >   - [x] Child\n",
+	} {
+		doc, err := ParseAST(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		output := SerializeAST(doc)
+		if output != source {
+			t.Fatalf("structure changed:\n%s\nwant:\n%s", output, source)
+		}
+	}
+}

@@ -6,15 +6,12 @@ import (
 	"time"
 )
 
-// WriteHook, if non-nil, is called after every committed markdown replacement.
-// It receives the file path and the serialised content that was written.
-// Set this at startup to enable versioning or other post-write side-effects.
-var WriteHook func(filePath, content string) error
-
-// ReadHook, if non-nil, is called after every successful ReadFile that loads
-// an existing file from disk (not for newly-created placeholder files).
-// It receives the file path and the raw file content that was read.
-var ReadHook func(filePath, content string) error
+// Store owns persistence callbacks for one application instance. The zero value
+// reads and writes Markdown without history side effects.
+type Store struct {
+	OnRead  func(filePath, content string) error
+	OnWrite func(filePath, content string) error
+}
 
 // Todo represents a single todo item
 type Todo struct {
@@ -48,7 +45,7 @@ func (fm *FileModel) GetAST() *ASTDocument {
 }
 
 // ReadFile reads and parses a markdown file using AST
-func ReadFile(filePath string) (*FileModel, error) {
+func (store Store) ReadFile(filePath string) (*FileModel, error) {
 	revision, content, modTime, err := readDiskRevision(filePath)
 	if err != nil {
 		return nil, err
@@ -74,8 +71,8 @@ func ReadFile(filePath string) (*FileModel, error) {
 	fm.Metadata = metadata
 	fm.setRevision(revision, modTime)
 
-	if ReadHook != nil {
-		return fm, ReadHook(revision.target, content)
+	if store.OnRead != nil {
+		return fm, store.OnRead(revision.target, content)
 	}
 
 	return fm, nil
@@ -99,33 +96,33 @@ func (fm *FileModel) CheckFileModified() (bool, error) {
 
 // WriteFile writes a FileModel to disk using AST serialization
 // Returns an error if the file was modified externally
-func WriteFile(filePath string, fm *FileModel) error {
+func (store Store) WriteFile(filePath string, fm *FileModel) error {
 	if !fm.revisionKnown {
 		return ErrRevisionUnknown
 	}
 	content := SerializeMarkdown(fm)
-	return writeContent(filePath, content, &fm.revision, fm, false)
+	return store.writeContent(filePath, content, &fm.revision, fm, false)
 }
 
 // WriteFileUnchecked writes a FileModel to disk without checking for external modifications
 // Use this only for an explicit overwrite after the caller has handled conflicts.
-func WriteFileUnchecked(filePath string, fm *FileModel) error {
+func (store Store) WriteFileUnchecked(filePath string, fm *FileModel) error {
 	content := SerializeMarkdown(fm)
-	return writeContent(filePath, content, nil, fm, true)
+	return store.writeContent(filePath, content, nil, fm, true)
 }
 
 // WriteContent writes exact content only if the file still matches fm's loaded revision.
-func WriteContent(filePath, content string, fm *FileModel) error {
+func (store Store) WriteContent(filePath, content string, fm *FileModel) error {
 	if !fm.revisionKnown {
 		return ErrRevisionUnknown
 	}
-	return writeContent(filePath, content, &fm.revision, fm, false)
+	return store.writeContent(filePath, content, &fm.revision, fm, false)
 }
 
 // WriteContentUnchecked writes content byte-for-byte without parsing or serializing it.
 // It is intended for explicit force-overwrite operations.
-func WriteContentUnchecked(filePath, content string) error {
-	return writeContent(filePath, content, nil, nil, true)
+func (store Store) WriteContentUnchecked(filePath, content string) error {
+	return store.writeContent(filePath, content, nil, nil, true)
 }
 
 // ParseMarkdown parses markdown content into a FileModel with AST backend
@@ -467,6 +464,10 @@ func (fm *FileModel) Clone() *FileModel {
 	// Deep copy todos
 	todos := make([]Todo, len(fm.Todos))
 	copy(todos, fm.Todos)
+	for i := range todos {
+		todos[i].Tags = append([]string(nil), fm.Todos[i].Tags...)
+		todos[i].DueDate = copyPointer(fm.Todos[i].DueDate)
+	}
 
 	// Deep copy lines (for backward compatibility)
 	lines := make([]string, len(fm.Lines))
@@ -486,7 +487,7 @@ func (fm *FileModel) Clone() *FileModel {
 		dirty:         fm.dirty,
 		FilePath:      fm.FilePath,
 		ModTime:       fm.ModTime,
-		Metadata:      fm.Metadata,
+		Metadata:      fm.Metadata.Clone(),
 		revision:      fm.revision,
 		revisionKnown: fm.revisionKnown,
 	}
@@ -659,4 +660,33 @@ func rebuildFileStructureLegacy(fm *FileModel) {
 	}
 
 	fm.Lines = newLines
+}
+
+// ReadFile uses a hook-free store.
+func ReadFile(filePath string) (*FileModel, error) { return (Store{}).ReadFile(filePath) }
+
+// WriteFile uses a hook-free store.
+func WriteFile(filePath string, fm *FileModel) error { return (Store{}).WriteFile(filePath, fm) }
+
+// WriteFileUnchecked uses a hook-free store.
+func WriteFileUnchecked(filePath string, fm *FileModel) error {
+	return (Store{}).WriteFileUnchecked(filePath, fm)
+}
+
+// WriteContent uses a hook-free store.
+func WriteContent(filePath, content string, fm *FileModel) error {
+	return (Store{}).WriteContent(filePath, content, fm)
+}
+
+// WriteContentUnchecked uses a hook-free store.
+func WriteContentUnchecked(filePath, content string) error {
+	return (Store{}).WriteContentUnchecked(filePath, content)
+}
+
+func copyPointer[T any](value *T) *T {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }

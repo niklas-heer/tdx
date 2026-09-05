@@ -196,7 +196,7 @@ func prepareReplacement(target, content string) (name string, err error) {
 	return name, nil
 }
 
-func writeContent(filePath, content string, expected *fileRevision, fm *FileModel, force bool) (err error) {
+func (store Store) writeContent(filePath, content string, expected *fileRevision, fm *FileModel, force bool) (err error) {
 	target, err := resolveTarget(filePath)
 	if err != nil {
 		return err
@@ -249,8 +249,8 @@ func writeContent(filePath, content string, expected *fileRevision, fm *FileMode
 	if expected != nil && !expected.equal(current) {
 		return &ConflictError{Path: target, DiskContent: diskContent}
 	}
-	if force && current.exists && ReadHook != nil {
-		if err := ReadHook(target, diskContent); err != nil {
+	if force && current.exists && store.OnRead != nil {
+		if err := store.OnRead(target, diskContent); err != nil {
 			return fmt.Errorf("capture overwritten version: %w", err)
 		}
 	}
@@ -277,8 +277,8 @@ func writeContent(filePath, content string, expected *fileRevision, fm *FileMode
 	if syncErr := syncParentDirectory(filepath.Dir(target)); syncErr != nil {
 		postCommitErr = fmt.Errorf("sync parent directory: %w", syncErr)
 	}
-	if WriteHook != nil {
-		if hookErr := WriteHook(target, content); hookErr != nil {
+	if store.OnWrite != nil {
+		if hookErr := store.OnWrite(target, content); hookErr != nil {
 			postCommitErr = errors.Join(postCommitErr, hookErr)
 		}
 	}
