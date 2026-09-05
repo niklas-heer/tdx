@@ -1,8 +1,8 @@
 # Go / Rust evaluation
 
-A runnable [Rust CLI/TUI prototype](#runnable-rust-prototype) and a [history-enabled comparison](#history-enabled-comparison) extend this historical parser evaluation. Earlier measurements remain unchanged.
+The [full-featured application comparison](#full-featured-application-comparison) supersedes the earlier parser, basic prototype and history-only milestones below. Historical measurements remain unchanged and describe the capabilities at their original revisions.
 
-**Recommendation: keep tdx in Go for now.** Rust wins this parser experiment, but the measured Go editor operation is about 3 ms for 1,000 tasks. A rewrite would still need to reproduce the TUI, metadata, undo, version history, and safe-save behavior. The application remains Go and pre-1.0.
+**Recommendation: keep Go as the default and pursue Rust for its resource savings.** The standalone Rust candidate now implements the complete CLI/TUI feature matrix. Full-application measurements show substantially lower memory use and a smaller executable, but text editing is slower on large documents and fresh builds take longer. Those tradeoffs matter more than the earlier parser-only speedup.
 
 The new `internal/editor` package gives CLI and TUI a shared action boundary. Configuration, styles, recent-file storage, and Markdown history callbacks are supplied per instance. This makes engine changes and compatibility tests easier without requiring a language migration.
 
@@ -152,7 +152,7 @@ Library references: [Ratatui application lifecycle](https://docs.rs/ratatui/0.30
 
 This milestone adds Go-compatible SQLite/zstd history, snapshot browsing and conditional restore, force-save recovery, idle external reload, and single-line parent-label edits. It keeps the basic terminal interface and standalone experimental executable. The production Go application is unchanged.
 
-The [history baseline](../rust-rewrite/history-baseline.json) preserves individual measurements, binary hashes and the measured source fingerprint. The [Linux correctness report](../rust-rewrite/history-linux-check.json) records the additional native execution checks. Reproduce the macOS/Linux comparison with `mise run rust-rewrite:eval`; generated measurements are in `dist/rust-rewrite/history-results.json`. The earlier baseline above remains historical.
+The [history baseline](../rust-rewrite/history-baseline.json) preserves individual measurements, binary hashes and the measured source fingerprint. The [Linux correctness report](../rust-rewrite/history-linux-check.json) records the additional native execution checks. This historical runner wrote `dist/rust-rewrite/history-results.json`. The current `mise run rust-rewrite:eval` runs the full-featured comparison below and writes `dist/rust-rewrite/full-parity-results.json`.
 
 Both writers now capture opened and committed content, identify files by canonical path, hash uncompressed bytes with SHA-256, compress with zstd, deduplicate content, retain 100 versions by default, and use SQLite WAL/NORMAL with a five-second busy timeout and a shutdown checkpoint. Rust uses bundled native SQLite and zstd C libraries; Go uses pure-Go implementations. This tests matching history behavior, not identical libraries or full application parity. Snapshot recovery in Rust is limited to 64 MiB of decompressed UTF-8 content; larger or corrupt snapshots fail without replacing the active document.
 
@@ -201,3 +201,78 @@ Continue the Rust prototype if lower memory use or large-document responsiveness
 Keep Go as the production implementation while pursuing a bounded next milestone. A full rewrite still lacks evidence for complete structural Markdown, search/moves/sections, input cursor movement, settings/themes, history diffs and Windows behavior. The fresh Rust build took about 4.4 times as long, and native C dependencies add cross-compilation work. Before choosing a migration, compare a bounded source-snapshot undo strategy in Go against the same workloads and run representative user documents through both editors. The current result supports further Rust development for resource savings; it does not establish that a complete rewrite will preserve these ratios.
 
 Implementation references: [rusqlite connection and checkpoint APIs](https://docs.rs/rusqlite/0.40.2/rusqlite/struct.Connection.html), [zstd reusable compressor](https://docs.rs/zstd/0.13.3/zstd/bulk/struct.Compressor.html), and [TOML configuration parsing](https://docs.rs/toml/1.1.4/toml/).
+
+## Full-featured application comparison
+
+The Rust candidate now implements all nine groups in the [feature matrix](../rust-rewrite/feature-parity.json): CLI, structural Markdown, terminal editing, search/filters, sections, display/configuration, recent files, history/recovery, and native persistence. It runs independently of Go. Its CLI and TUI use the same Rust editor; the Go adapters are development-only differential test tools. Go remains the installed and released implementation.
+
+The terminal supports navigation/counts, Unicode cursor editing and clipboard paste, subtree moves, bounded undo, search and metadata filters, section creation/renaming/folding, all bundled and custom themes, settings and command completion, recent-file switching, and version browsing with inline diffs and confirmed restore. Both implementations honor matching configuration precedence and share recent-file and SQLite/zstd history formats. Read-only checklist edits remain in memory until an explicit save. Guarded saves, force-save recovery, deferred external reload, and platform-specific atomic replacement are enabled.
+
+Behavioral parity means matching commands, controls, information, document semantics and persisted state. Ratatui and Bubble Tea can lay out and redraw cells differently; this is not a pixel-identical rendering claim. Structural edits may normalize Markdown whitespace, while checkbox-only changes preserve surrounding bytes. The corpus does not prove equivalence for every possible Markdown document or terminal.
+
+### Run the complete candidate
+
+```sh
+mise run rust-rewrite -- --file /path/to/tasks.md          # interactive TUI
+mise run rust-rewrite -- --file /path/to/tasks.md list --json
+mise run rust-rewrite:check                               # format, Clippy, Rust tests
+mise run rust-rewrite:contracts                           # both executables and PTY contracts
+mise run rust-rewrite:eval --trials 9                     # fresh comparable measurements
+mise run check                                           # complete Go/project checks
+```
+
+Evaluation runs on macOS/Linux and writes ignored `dist/rust-rewrite/full-parity-results.json`. The separate `Rust feature parity` CI workflow executes native builds, regression tests, differential actions, application workflows, shared-lock checks and actual PTY/Windows ConPTY interactions on macOS, Linux and Windows. The candidate is available for native Windows builds through Cargo; it has no Go runtime dependency.
+
+### Correctness and bug handling
+
+The differential gate covers 1,154 cases and 2,993 action states, including fixed-seed action sequences, inline/multiline Markdown, nested and ordinary lists, malformed/empty inputs, rejection behavior, headings, and preservation of unrelated prose, tables and HTML. Another 58 executable workflows compare tasks, headings and saved cursor positions, and exercise settings, themes, recent-file switching and Unicode clipboard handling. Additional CLI replay, history interoperability, contention/corruption, restore, conflict, resize and terminal-shutdown contracts gate the timing run. Rust has 32 application unit tests on Unix and 30 on Windows (two Unix symlink tests are platform-specific), plus three document tests exercised again through the independent parity adapter; the adapter does not add three unique tests.
+
+Differential testing corrected Go defects instead of reproducing them in Rust. Corrections include sorting whole subtrees, promoting every child list when deleting a parent, preventing cyclic moves, retaining paragraph/list order, inserting after a subtree, preserving unrelated configuration keys during theme saves, honoring settings precedence, resetting settings and cursor ownership when switching files, Unicode fuzzy matching and clipboard support, and deferring reload while browsing history or retaining read-only edits. Focused Go regressions and the shared contracts cover these decisions; the matrix lists them explicitly. Native Windows testing also caught a Rust input defect: Crossterm 0.29 paired UTF-16 surrogate key-down and key-up records incorrectly, dropping emoji. A Windows console reader now decodes key-down text separately, handles repeated/navigation/control keys and bracketed paste, and has dedicated regressions.
+
+Native CI passed on **macOS arm64, Linux x86_64 and Windows x86_64** with Go 1.27.1, Rust 1.98.1 and Python 3.14.7. Each platform passed the 1,154-case/2,993-state action corpus, 58 application workflows, cross-engine advisory locking and real terminal resize, Unicode typing/paste, moves, undo, conflict/reload and shutdown. The [native evidence](../rust-rewrite/full-parity-native.json) and [successful CI run](https://github.com/niklas-heer/tdx/actions/runs/33982922599) identify the same measured source files and contents. Windows pathlib orders filenames differently; its recorded hash was independently reproduced from the benchmark source using that recorded order. Windows additionally uses PyWinpty 3.0.2 with ConPTY. Snapshot interoperability and the more extensive restore/fault PTY suite are recorded in the macOS benchmark gates; all platforms run native history/storage unit tests. Native correctness does not imply matching performance across these hosts.
+
+### Measurement method
+
+Both applications enable themes/configuration, recent-file handling, bounded undo and the same tested history policy: canonical-path SHA-256 identity, zstd snapshots, retention of 100 versions, SQLite WAL/NORMAL and shutdown checkpoint. Each terminal toggle session must produce two unique versions; each distinct-edit session must produce 21. Rust uses bundled native SQLite/zstd libraries and Go uses pure-Go libraries, so this is an application comparison, not a controlled language-runtime experiment.
+
+Nine CLI trials alternate engine order after two warmups, using matching disposable documents and checking JSON output. Three persistent terminal sessions per engine, operation and document size each perform 20 actions. Table values use median session RSS/CPU and pooled medians of the 60 observed-save samples. The raw baseline retains individual trials, ranges, source identity, compiler versions and binary hashes.
+
+Observed terminal save latency runs from sending input to observing the expected file replacement. It includes parent polling/read overhead and excludes some post-replacement synchronization, history capture and rendering; it is neither key-to-frame latency nor completed durable-save latency. Session CPU includes the entire child lifetime. RSS is whole-process resident memory with undo state retained, not live heap size or evidence of a leak. The repetitive generated documents and short sessions are reproducible workloads, not a substitute for long-term use with personal documents.
+
+Both executables are stripped release builds; Rust uses thin LTO and one codegen unit. Fresh-cache build timings exclude downloads and are single observations. Go compiles its standard library while Rust ships one precompiled and builds bundled C dependencies. Measurements describe one local Apple M2 Pro/macOS host, not cross-platform performance or CI thresholds. Other host activity and run-to-run variation are uncontrolled; native CI separately validates correctness.
+
+### Full-application measurements
+
+September 5, 2026; Apple M2 Pro, macOS 15.7.9 arm64; Go 1.27.1, Rust 1.98.1 and Python 3.14.7. The [raw full-parity baseline](../rust-rewrite/full-parity-baseline.json) records revision `c4084c4` and source fingerprint `c1a9a7c552ce93aab346468a719e38e4d20ac2d105bc2a988eb0a509bf1f5ad8`. Source remained unchanged throughout measurement; the recorded dirty working tree contained report/matrix updates.
+
+| Tasks | Go JSON (ms) | Rust JSON (ms) | Go CLI edit/save (ms) | Rust CLI edit/save (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 9.32 | 5.86 | 21.81 | 17.14 |
+| 1,000 | 12.51 | 7.03 | 27.93 | 20.34 |
+| 10,000 | 42.74 | 22.64 | 82.32 | 50.28 |
+
+| Tasks | Go TUI toggle/save (ms) | Rust TUI toggle/save (ms) | Go TUI distinct edit/save (ms) | Rust TUI distinct edit/save (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 6.36 | 6.55 | 8.04 | 7.64 |
+| 1,000 | 8.61 | 6.98 | 11.25 | 16.09 |
+| 10,000 | 28.42 | 19.26 | 43.21 | 103.47 |
+
+| Tasks, after 20 distinct edits | Go RSS (MiB) | Rust RSS (MiB) | Go session CPU (ms) | Rust session CPU (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 37.25 | 10.23 | 153.60 | 76.58 |
+| 1,000 | 90.20 | 23.05 | 268.70 | 334.07 |
+| 10,000 | 629.02 | 95.12 | 1804.66 | 2932.43 |
+
+| Measurement | Go | Rust |
+| --- | ---: | ---: |
+| Stripped executable (MiB) | 10.39 | 5.01 |
+| Fresh-cache build (s) | 7.511 | 40.469 |
+| No-op build (s) | 0.289 | 0.130 |
+
+### Decision after full parity
+
+Rust retains a strong resource advantage with the full services enabled: about **74% less RSS after 20 distinct edits at 1,000 tasks**, **85% less at 10,000 tasks**, and a **52% smaller executable**. JSON queries and CLI edits are faster on this host. Both retain the required snapshot counts; the 10,000-task edit history occupies 156 KiB in Go and 188 KiB in Rust after checkpoint.
+
+The interactive tradeoff is substantial: Rust distinct edits take about **1.43× as long at 1,000 tasks** and **2.39× as long at 10,000 tasks** on the observed-save metric. At 10,000 tasks they consume about **63% more whole-session CPU**, despite faster checkbox toggles. Fresh Rust builds take about **5.4× as long** in this observation. The full-featured result reverses the earlier, simpler prototype's text-edit advantage; its earlier performance ratios should not be used to justify migration.
+
+The rewrite is worth pursuing when memory or executable size is a concrete product requirement, but it is not a clear overall replacement for Go. Keep Go as the default while profiling Rust text input/edit/render work and comparing a bounded source-snapshot undo strategy in Go. Those are follow-up optimization experiments, not missing application features. The current measurements do not identify a single proven cause for the edit slowdown or isolate language effects from parser, renderer, undo and database-library choices. Try the complete candidate with representative documents before making a production migration decision.
