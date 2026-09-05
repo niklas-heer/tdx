@@ -89,4 +89,3 @@ tdx in a **single shared** SQLite database located in the tdx config directory (
 - **WHEN** a script invokes `tdx list`, including JSON and filtered queries
 - **THEN** the application SHALL not open the version store or register versioning hooks
 - **AND** the query SHALL work without a writable configuration directory
-
