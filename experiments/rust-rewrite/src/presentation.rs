@@ -13,6 +13,32 @@ use std::{
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub type Links = BTreeMap<(u16, u16), String>;
+/// Keep a long path's filename visible without splitting Unicode glyphs.
+pub fn tail(text: &str, width: usize) -> String {
+    if text.width() <= width {
+        return text.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let glyphs = glyphs(text, Style::default(), None);
+    let mut used = 1;
+    let mut start = glyphs.len();
+    for (index, glyph) in glyphs.iter().enumerate().rev() {
+        if used + glyph.width() > width {
+            break;
+        }
+        used += glyph.width();
+        start = index;
+    }
+    format!(
+        "…{}",
+        glyphs[start..]
+            .iter()
+            .map(|g| g.text.as_str())
+            .collect::<String>()
+    )
+}
 #[derive(Clone)]
 pub struct Glyph {
     pub text: String,

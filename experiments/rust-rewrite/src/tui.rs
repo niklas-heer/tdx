@@ -340,7 +340,11 @@ impl<'a> App<'a> {
         let mut matches: Vec<_> = rows
             .iter()
             .filter_map(|(i, s)| {
-                let score = input::fuzzy(&self.input.text, s);
+                let score = if self.mode == Mode::Recent {
+                    usize::from(s.to_lowercase().contains(&self.input.text.to_lowercase()))
+                } else {
+                    input::fuzzy(&self.input.text, s)
+                };
                 (score > 0).then_some((*i, score))
             })
             .collect();
@@ -606,11 +610,19 @@ impl<'a> App<'a> {
             || (key.modifiers.contains(KeyModifiers::CONTROL)
                 && matches!(key.code, KeyCode::Char('p' | 'k')));
         if down {
-            self.cursor = (self.cursor + 1).min(rows.len().saturating_sub(1));
+            self.cursor = if self.mode == Mode::Recent && !rows.is_empty() {
+                (self.cursor + 1) % rows.len()
+            } else {
+                (self.cursor + 1).min(rows.len().saturating_sub(1))
+            };
             return;
         }
         if up {
-            self.cursor = self.cursor.saturating_sub(1);
+            self.cursor = if self.mode == Mode::Recent && !rows.is_empty() && self.cursor == 0 {
+                rows.len() - 1
+            } else {
+                self.cursor.saturating_sub(1)
+            };
             return;
         }
         match key.code {
@@ -1514,8 +1526,20 @@ impl<'a> App<'a> {
         rows: Vec<String>,
         selected: usize,
     ) {
+        let count = rows.len();
         let rows = if rows.is_empty() {
-            vec!["No matches".into()]
+            vec![
+                match self.mode {
+                    Mode::Recent if self.input.text.is_empty() => "No recent files",
+                    Mode::Recent => "No matching files",
+                    Mode::Tags => "No tags found",
+                    Mode::Priorities => "No priorities found",
+                    Mode::Theme => "No themes available",
+                    Mode::Sections => "No sections yet · n to create",
+                    _ => "No matches",
+                }
+                .into(),
+            ]
         } else {
             rows
         };
@@ -1523,7 +1547,7 @@ impl<'a> App<'a> {
             .into_iter()
             .map(|s| {
                 let text = clean(&s);
-                if matches!(self.mode, Mode::Search | Mode::Commands | Mode::Recent) {
+                if matches!(self.mode, Mode::Search | Mode::Commands) {
                     ListItem::new(Line::from(highlight(
                         &text,
                         &self.input.text,
@@ -1535,12 +1559,16 @@ impl<'a> App<'a> {
             })
             .collect();
         let mut state = ListState::default();
-        if !rows.is_empty() {
+        if count > 0 {
             state.select(Some(selected.min(rows.len() - 1)));
         }
         frame.render_stateful_widget(
             List::new(rows)
-                .block(self.panel(format!(" {title} ")))
+                .block(self.panel(format!(" {title} ")).title_bottom(format!(
+                    " {}/{} ",
+                    (selected + 1).min(count),
+                    count
+                )))
                 .highlight_symbol(format!("{} ", self.config.display.select_marker))
                 .highlight_style(
                     Style::default()
@@ -1558,7 +1586,26 @@ impl<'a> App<'a> {
             .map(|i| match self.mode {
                 Mode::Commands => format!("{}  {}", COMMANDS[i].0, COMMANDS[i].1),
                 Mode::Search => self.editor.doc.tasks[i].text.clone(),
-                _ => self.recent[i].path.display().to_string(),
+                _ => {
+                    let file = &self.recent[i];
+                    let path = config::home()
+                        .and_then(|home| {
+                            file.path
+                                .strip_prefix(home)
+                                .ok()
+                                .map(|p| format!("~/{}", p.display()))
+                        })
+                        .unwrap_or_else(|| file.path.display().to_string());
+                    let info = format!(" ×{}", file.access_count);
+                    let width = (area.width as usize).saturating_sub(
+                        3 + self.config.display.select_marker.width() + info.width(),
+                    );
+                    format!(
+                        "{}{}",
+                        presentation::tail(&clean(&path), width.min(60)),
+                        info
+                    )
+                }
             })
             .collect();
         let title = format!(
@@ -1606,12 +1653,32 @@ impl<'a> App<'a> {
             ),
             Mode::Due => (
                 "Due dates",
-                ["overdue", "today", "week", "all"]
-                    .iter()
-                    .map(|s| format!("[{}] {}", if self.due == *s { "✓" } else { " " }, s))
+                [
+                    ("overdue", "Overdue", "Past due date"),
+                    ("today", "Today", "Due today"),
+                    ("week", "This Week", "Due within 7 days"),
+                    ("all", "Has Due Date", "Any due date set"),
+                ]
+                .iter()
+                .map(|(value, label, description)| {
+                    format!(
+                        "[{}] {}  {}",
+                        if self.due == *value { "✓" } else { " " },
+                        label,
+                        description
+                    )
+                })
+                .collect(),
+            ),
+            _ => (
+                "Themes",
+                self.themes
+                    .keys()
+                    .map(|name| {
+                        format!("[{}] {}", if *name == self.theme { "●" } else { " " }, name)
+                    })
                     .collect(),
             ),
-            _ => ("Themes", self.themes.keys().cloned().collect()),
         };
         self.render_list(frame, area, title, rows, self.cursor);
     }
@@ -2181,6 +2248,59 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+    #[test]
+    fn recent_picker_preserves_substring_order_wraps_and_shows_file_info() {
+        with_app(|app| {
+            app.mode = Mode::Recent;
+            app.recent = ["/deep/aXb.md", "/deep/ab.md", "/deep/AB-final.md"]
+                .into_iter()
+                .map(|path| RecentFile {
+                    path: PathBuf::from(path),
+                    last_accessed: chrono::Utc::now(),
+                    access_count: 7,
+                    last_cursor_pos: 0,
+                    content_hash: String::new(),
+                    last_modified: chrono::Utc::now(),
+                })
+                .collect();
+            app.input = Buffer::new("ab".into());
+            assert_eq!(app.matches(), vec![1, 2]);
+            app.picker_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+            assert_eq!(app.cursor, 1);
+            app.picker_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+            assert_eq!(app.cursor, 0);
+            app.recent[1].path = PathBuf::from(format!("/{}/ab-café🦀.md", "long/".repeat(30)));
+            let shown = text(&screen(app, 48, 24));
+            assert!(shown.contains("ab-café🦀") && shown.contains("×7") && shown.contains("1/2"));
+            app.input = Buffer::new("missing".into());
+            let shown = text(&screen(app, 48, 24));
+            assert!(shown.contains("No matching files") && shown.contains("0/0"));
+        });
+        assert_eq!(presentation::tail("deep/café.md", 8), "…café.md");
+        assert_eq!(
+            presentation::tail("deep/cafe\u{301}.md", 8),
+            "…cafe\u{301}.md"
+        );
+        assert_eq!(presentation::tail("deep/🦀.md", 6), "…🦀.md");
+        assert_eq!(presentation::tail("deep/file", 0), "");
+    }
+    #[test]
+    fn option_pickers_expose_active_theme_and_due_meanings() {
+        with_app(|app| {
+            app.mode = Mode::Due;
+            app.due = "week".into();
+            let shown = text(&screen(app, 100, 28));
+            assert!(shown.contains("[✓] This Week") && shown.contains("Due within 7 days"));
+            app.mode = Mode::Theme;
+            app.cursor = app
+                .themes
+                .keys()
+                .position(|name| *name == app.theme)
+                .unwrap();
+            let shown = text(&screen(app, 100, 28));
+            assert!(shown.contains(&format!("[●] {}", app.theme)));
+        });
     }
     #[test]
     fn metadata_rendering_matches_go_token_boundaries_and_invalid_dates() {
