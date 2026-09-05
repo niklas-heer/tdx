@@ -14,9 +14,9 @@ func clipboardCommands(paste bool) [][]string {
 		}
 		return [][]string{{"pbcopy"}}
 	case "windows":
-		script := "$text = [Console]::In.ReadToEnd(); Set-Clipboard -Value $text"
+		script := "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new(); $text = [Console]::In.ReadToEnd(); Set-Clipboard -Value $text"
 		if paste {
-			script = "Get-Clipboard -Raw"
+			script = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); Get-Clipboard -Raw"
 		}
 		return [][]string{{"powershell", "-NoProfile", "-NonInteractive", "-Command", script}}
 	default:

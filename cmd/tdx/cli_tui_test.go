@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -107,6 +108,9 @@ func testMain(m *testing.M) int {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	testBinary = filepath.Join(tmpDir, "tdx")
+	if runtime.GOOS == "windows" {
+		testBinary += ".exe"
+	}
 	buildCmd := exec.Command("go", "build", "-o", testBinary, ".")
 	if output, err := buildCmd.CombinedOutput(); err != nil {
 		panic(string(output) + err.Error())
@@ -119,7 +123,12 @@ func testMain(m *testing.M) int {
 func runCLI(t *testing.T, file string, args ...string) string {
 	cmdArgs := append([]string{file}, args...)
 	cmd := exec.Command(testBinary, cmdArgs...)
-	out, _ := cmd.CombinedOutput() // Some commands may fail, that's okay
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if _, exited := err.(*exec.ExitError); !exited {
+			t.Fatalf("could not launch test binary: %v", err)
+		}
+	} // Nonzero command exits are intentionally tested by some callers.
 	return strings.TrimSpace(string(out))
 }
 
