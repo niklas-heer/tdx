@@ -1848,16 +1848,20 @@ fn styled_text(s: &str, base: Style, app: &App<'_>) -> Vec<Span<'static>> {
         let color = if part.starts_with('#') {
             "Tag"
         } else if let Some(priority) = part.strip_prefix("!p") {
-            match priority {
-                "1" => "PriorityHigh",
-                "2" => "PriorityMedium",
+            match priority.parse::<u64>().unwrap_or(0) {
+                1 => "PriorityHigh",
+                2 => "PriorityMedium",
                 _ => "PriorityLow",
             }
         } else {
             let d = &part[5..part.len() - 1];
-            let days = NaiveDate::parse_from_str(d, "%Y-%m-%d")
-                .map(|d| (d - Local::now().date_naive()).num_days())
-                .unwrap_or(999);
+            let Ok(date) = NaiveDate::parse_from_str(d, "%Y-%m-%d") else {
+                spans.push(Span::styled(part.to_owned(), base));
+                end = found.end();
+                continue;
+            };
+            // Match Go's time.Now().Truncate(24*time.Hour) date boundary.
+            let days = (date - chrono::Utc::now().date_naive()).num_days();
             if days <= 0 {
                 "DueUrgent"
             } else if days <= 3 {
@@ -2177,6 +2181,24 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+    #[test]
+    fn metadata_rendering_matches_go_token_boundaries_and_invalid_dates() {
+        with_app(|app| {
+            let base = Style::default().fg(Color::White);
+            let spans = styled_text("(#tag) !p01 !p12 @due(2026-99-99)", base, app);
+            for (token, color) in [
+                ("#tag", app.color("Tag")),
+                ("!p01", app.color("PriorityHigh")),
+                ("!p12", app.color("PriorityLow")),
+                ("@due(2026-99-99)", Color::White),
+            ] {
+                assert_eq!(
+                    spans.iter().find(|s| s.content == token).unwrap().style.fg,
+                    Some(color)
+                );
+            }
+        });
     }
     #[test]
     fn command_registry_matches_every_go_command() {
