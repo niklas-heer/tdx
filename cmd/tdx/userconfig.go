@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"charm.land/lipgloss/v2"
 	"github.com/BurntSushi/toml"
-	"github.com/charmbracelet/lipgloss"
 )
 
 //go:embed themes/*.toml
