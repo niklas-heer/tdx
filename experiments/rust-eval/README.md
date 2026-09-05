@@ -1,8 +1,10 @@
 # Go / Rust evaluation
 
+The complete rewrite now has a [hardened Rust development workflow](#rust-development-and-hardening) with a dated nightly, strict lints, nextest and Miri. Earlier measurements below retain their original compiler and source identity.
+
 The [Ratatui UI completion](#ratatui-ui-completion) extends the full-featured application comparison with explicit presentation checks. The [full-featured application comparison](#full-featured-application-comparison) supersedes the earlier parser, basic prototype and history-only milestones below. Historical measurements remain unchanged and describe the capabilities at their original revisions.
 
-**Recommendation: pursue the complete Rust candidate while retaining Go as the production default for evaluation.** The rewrite implements the complete CLI/TUI feature matrix with a polished Ratatui interface. The latest full-application comparison shows lower memory use, a smaller executable and faster large-document editing; fresh Rust builds take longer. The [updated decision](#updated-decision) supersedes the earlier milestones below.
+**Recommendation: pursue the complete Rust candidate while retaining Go as the production default for evaluation.** The rewrite implements the complete CLI/TUI feature matrix with a polished Ratatui interface. The latest full-application comparison shows lower memory use, a smaller executable and faster large-document editing; fresh Rust builds take longer. The [nightly comparison](#nightly-comparison) supersedes the earlier measurements below.
 
 The new `internal/editor` package gives CLI and TUI a shared action boundary. Configuration, styles, recent-file storage, and Markdown history callbacks are supplied per instance. This makes engine changes and compatibility tests easier without requiring a language migration.
 
@@ -329,3 +331,68 @@ Final native CI passed on **macOS arm64, Linux x86_64 and Windows x86_64** at re
 **The complete Rust candidate is now worth pursuing for both resource use and large-document interaction.** At 10,000 tasks it uses about **83% less RSS** after 20 distinct edits, takes about **53% less observed edit/save time**, and consumes about **77% less whole-session CPU** than Go. The executable is **51% smaller**. At 1,000 tasks, edit/save time is about 30% lower and RSS about 80% lower. At 100 tasks the interactive timings are effectively similar in this sample.
 
 The earlier text-edit slowdown is no longer present after the rendering changes, which restrict task layout to the visible window. This is a comparison of completed applications using different parsers, renderers and database libraries; it does not isolate a Rust language advantage. Observed save time is not key-to-frame or completed durable-save latency. Fresh Rust builds still take about **5.1× longer** in this run (37.2 versus 7.3 seconds). The generated workload and short sessions support further use with representative documents, not an immediate production migration decision. Go remains the default while the complete standalone Rust candidate is available for that comparison.
+
+## Rust development and hardening
+
+The full CLI/TUI rewrite uses **nightly-2026-09-05**, verified as Rust **1.100.0-nightly (0ed41eb41 2026-09-04)** on September 5, 2026. The root [rust-toolchain.toml](../../rust-toolchain.toml) pins the channel and includes Clippy, rustfmt, Rust Analyzer, rust-src and Miri. The latest stable, **1.98.1**, remains the explicitly tested compatibility floor in the application manifest and the toolchain for the historical parser experiment. The application does not require unstable language features; nightly enables interpreted Miri checks and follows the requested development preference.
+
+Use `mise run setup` for installation, including the toolchain components. An editor with Rust Analyzer support can open `experiments/rust-rewrite/Cargo.toml`; `rustup run nightly-2026-09-05 rust-analyzer` selects the matching language server. When updating nightly, change the dated root toolchain and corresponding mise task pins, refresh `mise lock rust`, and run the complete gates before committing the change.
+
+| Task | Purpose |
+| --- | --- |
+| `mise run rust-rewrite:check` | All-target/all-feature compilation, strict Clippy, nextest, rustdoc and Python harness regressions |
+| `mise run rust-rewrite:stable` | Compilation and tests on stable 1.98.1 |
+| `mise run rust-rewrite:miri` | Interpret action, Markdown, Unicode editing, Windows decoder and presentation tests with strict provenance |
+| `mise run rust-rewrite:watch` | Bacon, starting with Clippy; `c` for Clippy and `t` for nextest |
+| `mise run rust-rewrite:contracts` | Full Go/Rust document, executable, history and terminal compatibility |
+| `mise run rust-rewrite:eval --trials 9` | New correctness-gated comparison with the pinned nightly |
+
+Nextest **0.9.143** and Bacon **3.25.0** are versioned development tools in mise, not application dependencies. Native CI installs the versioned official nextest binary and reads the toolchain/components and nextest version from the checked-in configuration. Nextest isolates tests in processes, reports slow tests, terminates tests after two 30-second periods, and uses **zero retries**. Its CI profile retains all failures and writes JUnit results. Bacon's default job checks code without launching the application. Existing CLI subprocess, real-terminal and cross-language tests remain the integration suite; nextest supplements those gates.
+
+Clippy denies **pedantic**, **nursery**, **unwrap_used**, **expect_used**, **unreachable**, **unimplemented**, **unchecked_time_subtraction**, **todo**, **panic_in_result_fn**, **panic**, **exit**, **as_conversions** and **undocumented_unsafe_blocks**. Rust also denies **unsafe_op_in_unsafe_fn**. Test-only unwrap/expect/panic/indexing allowances live in `clippy.toml`. The action-input boundary additionally denies **indexing_slicing**, **arithmetic_side_effects** and **string_slice**.
+
+Audit findings were reviewed before enforcement. Indexing, slicing and arithmetic bans are not enabled across the parser and renderer: their byte-offset and terminal-coordinate operations need algorithm-specific bounds reasoning, and blanket changes would introduce substantial mechanical churn. Concrete conversion/scroll issues were corrected, input text/cursor fields are now private with read-only accessors, and differential, Unicode-sequence and boundary regressions protect the invariants. Narrow, explained exceptions preserve Go's positional `.md` handling and floating-point frecency arithmetic; independent configuration flags and cohesive dispatch functions retain their existing design. Five fixed regex literals retain locally documented unwraps and are initialized by regression tests. No production input-dependent unwrap remains.
+
+This review fixed a **65,535-row diff scrolling limit**, oversized display-marker coordinate overflow/truncation, and a Windows finite-timeout conversion that could produce the infinite-wait sentinel. It also removed an unnecessary full-source clone during parsing and made invalid action-index conversion fail closed. A Clippy autofix incorrectly changed the descendant-move guard; the full differential corpus caught it, and an explicit equal-end descendant regression now protects the intended behavior. Automated lint suggestions are reviewed and tested, not accepted as behavioral authority.
+
+Miri covers the pure Rust tests. Native SQLite/zstd, real filesystem locking/replacement and OS terminal FFI remain covered by native tests on macOS, Linux and Windows. This package has binary targets only: `cargo test --doc` reports no library targets, so library doctests are not applicable. Rustdoc generation, including private application items, runs with warnings denied. The gallery exporter remains one explicitly invoked development utility, not a disabled acceptance test.
+
+The remaining recommendations were assessed as follows:
+
+| Recommendation | Decision |
+| --- | --- |
+| Nix/devenv/rust-overlay and hooks | Nix/devenv excluded as requested; mise and CI provide reproducibility and enforcement without mandatory local hooks |
+| watchexec | Omitted because Bacon already supplies continuous checks |
+| cargo-generate and cargo-seek | Omitted: this existing application needs neither scaffolding nor another crate-discovery interface |
+| Criterion | Omitted: the existing repeated subprocess/PTY harness compares full Go/Rust application services; a new microbenchmark would not replace that measurement |
+| serde and Chrono/Jiff | Existing serde and Chrono retained; no second serialization or date/time stack |
+| color-eyre and clap | Existing error/argument handling retained to preserve Go CLI output and argument behavior |
+| itertools and rayon | Standard iterators suffice; no measured need for added parallel execution |
+| cmd_lib | The few clipboard subprocesses already use `std::process` |
+| sqlx | Existing rusqlite implementation already interoperates with Go's history database |
+| utoipa, reqwest/rustls, Leptos/Trunk, Dioxus and Tauri | No web API, network client, web frontend or desktop GUI requirement |
+| Generic typestate | Existing mode enums, guarded store operations and encapsulated input state address the present invariants without additional generic state machinery |
+
+Windows CI installation also handles drive-letter paths by supplying the downloaded nextest archive to tar through standard input. Native Windows Clippy prompted explicit raw pointers at the console FFI boundary and a narrow exception preserving the common fallible directory-sync interface. No application dependency was added or updated, and both application/probe Cargo lockfiles remain unchanged. These choices follow the attachment's requirement to adopt recommendations where they provide a concrete benefit.
+
+### Hardening verification
+
+The [final native CI run](https://github.com/niklas-heer/tdx/actions/runs/33990674294) passed on macOS arm64, Linux x86_64 and Windows x86_64 at revision `5b9d339`. Every platform passed strict formatting/compilation/Clippy, nextest, rustdoc, Python harness regressions, the 1,154-case/2,993-state action corpus, 58 application workflows, shared locks and real PTY/ConPTY interactions. Both applications emitted clickable OSC 8 links in each retained terminal transcript. The [hardening native evidence](../rust-rewrite/hardening-native.json) records independently verified file/content identity with the benchmark, including toolchain and CI configuration.
+
+There are **44 unique application tests on Unix and 42 on Windows**, plus five repeated action/document tests in the parity adapter: nextest executes **49/47 tests** respectively, with zero failures and no retries. Two symlink tests are Unix-specific. The ignored gallery utility was run explicitly. **All 13 focused Miri tests passed locally and in Linux CI**, and stable 1.98.1 compatibility passed locally and in Linux CI. Local Go/project checks, the complete contract suite, gallery generation, Bacon's actual Clippy/nextest jobs and strict OpenSpec validation also passed. Library doctests remain the only inapplicable check because the package contains no library target; documentation generation passed with warnings denied.
+
+### Nightly comparison
+
+The [hardening baseline](../rust-rewrite/hardening-baseline.json) records revision `5b9d339` and source fingerprint `cbef30c96b581d8bd00d1e1b0bca8ca6adb2988d1b5037b7b067afda949bd95f`. This September 5, 2026 run used the pinned nightly, Go 1.27.1 and Python 3.14.7 on the same Apple M2 Pro/macOS 15.7.9 host. All measured source remained unchanged; the working tree contained report updates. The fingerprint now also covers toolchain, lint, developer-tool and native workflow configuration.
+
+Nine alternating CLI trials and three terminal sessions per engine/workload followed the complete correctness gate: 1,154 document cases, 2,993 action states, 58 application workflows, CLI fixtures/replay, cross-language history, restore/conflict recovery and PTY contracts. Each terminal session performs 20 actions with the full history and configuration services enabled. The table uses medians of the three sessions; the raw baseline includes individual samples and the CLI and toggle workloads.
+
+| Tasks, 20 distinct edits | Go edit/save (ms) | Rust edit/save (ms) | Go ending RSS (MiB) | Rust ending RSS (MiB) | Go session CPU (ms) | Rust session CPU (ms) |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 9.61 | 8.82 | 38.14 | 10.77 | 212.80 | 106.64 |
+| 1,000 | 10.66 | 8.76 | 85.42 | 17.19 | 238.05 | 92.15 |
+| 10,000 | 40.80 | 20.12 | 641.78 | 87.81 | 1713.97 | 381.81 |
+
+The stripped executables remain **10.39 MiB Go / 5.07 MiB Rust**. Fresh-cache builds took **7.28 / 37.75 seconds** and no-op builds **0.168 / 0.088 seconds** respectively. Build values are single observations excluding downloads.
+
+The decision remains to pursue the complete Rust candidate. At 10,000 tasks this sample shows about **51% less observed edit/save time**, **86% less ending RSS** and **78% less session CPU**, with a **51% smaller executable** and approximately **5.2× longer fresh builds**. Small-document timings are close. This comparison does not isolate the effect of nightly or of Rust itself: parsers, UI and database implementations differ. Observed replacement time includes parent polling and is not key-to-frame or completed durable-save latency. RSS includes retained undo/history and is neither live heap nor a leak measurement. Native correctness checks do not establish performance on CI hosts; representative real documents remain the next basis for a production migration decision.
