@@ -7,8 +7,10 @@ tdx is a standalone terminal todo manager. Markdown files remain the user's sour
 - Go application entry point: cmd/tdx/main.go.
 - Bubble Tea v2 and Lip Gloss v2: internal/tui.
 - Goldmark AST parsing and guarded atomic saves: internal/markdown.
+- Shared document actions and bounded undo: internal/editor. CLI/TUI receive their own configuration, styling, and persistence callbacks.
 - CLI commands: internal/cmd; user configuration: cmd/tdx/userconfig.go.
 - Local SQLite version history: internal/versioning.
+- Isolated Go/Rust parser evaluation and correctness corpus: experiments/rust-eval. This is not an application rewrite.
 - mise.toml pins development tools and defines tasks; .dagger contains the separate portable CI module.
 
 ## Conventions

@@ -34,6 +34,7 @@ func (m *TdxCi) Ci(ctx context.Context, source *dagger.Directory) (string, error
 		name string
 		run  func() error
 	}{
+		{name: "rust-experiment", run: func() error { _, err := m.rustCheck(ctx, source); return err }},
 		{name: "format", run: func() error { _, err := m.Format(ctx, source); return err }},
 		{name: "vet", run: func() error { _, err := m.Vet(ctx, source); return err }},
 		{name: "test", run: func() error { _, err := m.Test(ctx, source); return err }},
@@ -247,4 +248,20 @@ func readMetadata(ctx context.Context, source *dagger.Directory) (pipeline.Metad
 	}
 	metadata.Description = strings.TrimSpace(metadata.Description)
 	return metadata, nil
+}
+
+// rustCheck validates the optional parser experiment without running machine-dependent timings.
+func (m *TdxCi) rustCheck(ctx context.Context, source *dagger.Directory) (string, error) {
+	return dag.Container().
+		From(goImage).
+		WithEnvVariable("PATH", "/root/.cargo/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
+		WithExec([]string{"bash", "-euc", "set -o pipefail; curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.98.1 --component rustfmt --component clippy"}).
+		WithDirectory("/src", cleanSource(source)).
+		WithWorkdir("/src/experiments/rust-eval/rust-probe").
+		WithEnvVariable("CARGO_TARGET_DIR", "/tmp/rust-target").
+		WithMountedCache("/root/.cargo/registry", dag.CacheVolume("tdx-rust-registry")).
+		WithExec([]string{"cargo", "fmt", "--check"}).
+		WithExec([]string{"cargo", "clippy", "--locked", "--", "-D", "warnings"}).
+		WithExec([]string{"cargo", "test", "--locked"}).
+		Stdout(ctx)
 }

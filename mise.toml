@@ -42,11 +42,11 @@ run = "bash scripts/test.sh --race"
 
 [tasks.fmt]
 description = "Format Go source"
-run = "gofmt -w cmd internal .dagger/main.go .dagger/pipeline"
+run = "gofmt -w cmd internal experiments .dagger/main.go .dagger/pipeline"
 
 [tasks."fmt:check"]
 description = "Verify Go formatting"
-run = 'files=$(gofmt -l cmd internal .dagger/main.go .dagger/pipeline); test -z "$files" || { printf "%s\n" "$files"; exit 1; }'
+run = 'files=$(gofmt -l cmd internal experiments .dagger/main.go .dagger/pipeline); test -z "$files" || { printf "%s\n" "$files"; exit 1; }'
 
 [tasks.vet]
 description = "Run Go static checks"
@@ -160,4 +160,19 @@ go test -coverprofile=dist/coverage/coverage.out ./...
 go tool cover -func=dist/coverage/coverage.out
 go tool cover -html=dist/coverage/coverage.out -o dist/coverage/index.html
 printf 'Open dist/coverage/index.html in your browser.\n'
+"""
+
+[tasks.rust-eval]
+description = "Compare Go and the isolated Rust parser prototype; write profiles/results to dist/rust-eval"
+tools.rust = "1.98.1"
+tools.python = "3.14.7"
+run = "python3 experiments/rust-eval/evaluate.py"
+
+[tasks."rust:check"]
+description = "Check formatting, lint, and tests for the Rust experiment"
+tools.rust = "1.98.1"
+run = """
+cargo fmt --manifest-path experiments/rust-eval/rust-probe/Cargo.toml --check
+CARGO_TARGET_DIR="$PWD/dist/rust-eval/target" cargo clippy --locked --manifest-path experiments/rust-eval/rust-probe/Cargo.toml -- -D warnings
+CARGO_TARGET_DIR="$PWD/dist/rust-eval/target" cargo test --locked --manifest-path experiments/rust-eval/rust-probe/Cargo.toml
 """
