@@ -1,0 +1,6 @@
+- [ ] Validate the authorized proposal and research the deterministic simulation approach.
+- [ ] Share the native save protocol with a deterministic fault simulator; add replay, safety/liveness checks and defect-detection controls.
+- [ ] Validate native save behavior, failure handling and real process crash/recovery.
+- [ ] Implement full-document source editing and rendered Markdown preview with guarded saves and regression coverage.
+- [ ] Integrate local/CI checks; run Rust, stable, Miri, Go compatibility and native terminal gates.
+- [ ] Record measured benefits, limitations and reproduction commands; archive and publish.
