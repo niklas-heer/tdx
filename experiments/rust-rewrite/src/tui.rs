@@ -157,19 +157,23 @@ impl<'a> App<'a> {
         app
     }
     fn color(&self, name: &str) -> Color {
-        self.themes
-            .get(&self.theme)
-            .and_then(|c| c.get(name))
-            .and_then(|c| c.parse().ok())
-            .unwrap_or(match name {
-                "Accent" => Color::Cyan,
-                "AlertError" => Color::Red,
-                "Success" => Color::Green,
-                "Important" => Color::Magenta,
-                "Dim" => Color::DarkGray,
-                _ => Color::Reset,
-            })
+        let colors = self.themes.get(&self.theme).unwrap_or(&self.config.colors);
+        let value = colors
+            .get(name)
+            .filter(|s| !s.is_empty())
+            .map(String::as_str)
+            .or_else(|| match name {
+                "Tag" => colors.get("Warning").map(String::as_str),
+                "PriorityLow" | "DueFuture" => colors.get("Dim").map(String::as_str),
+                "PriorityHigh" => Some("#f7768e"),
+                "PriorityMedium" => Some("#bb9af7"),
+                "DueUrgent" => Some("#7dcfff"),
+                "DueSoon" => Some("#7aa2f7"),
+                _ => None,
+            });
+        value.and_then(|s| s.parse().ok()).unwrap_or(Color::Reset)
     }
+
     fn visible(&self) -> Vec<usize> {
         let today = Local::now().date_naive();
         self.editor
@@ -225,8 +229,7 @@ impl<'a> App<'a> {
                 .unwrap_or(0);
         }
     }
-    fn selection_after_delete(&self) -> usize {
-        let index = self.selected;
+    fn best_selection(&self, index: usize, removed: bool) -> usize {
         let tasks = &self.editor.doc.tasks;
         let Some(task) = tasks.get(index) else {
             return 0;
@@ -240,7 +243,7 @@ impl<'a> App<'a> {
                 && candidate.parent_index == task.parent_index
                 && visible.contains(&i)
             {
-                return i - 1;
+                return i - usize::from(removed);
             }
         }
         for i in (0..index).rev() {
@@ -263,9 +266,9 @@ impl<'a> App<'a> {
             .iter()
             .copied()
             .find(|i| *i > index)
-            .map(|i| i - 1)
+            .map(|i| i - usize::from(removed))
             .or_else(|| visible.iter().copied().rfind(|i| *i < index))
-            .unwrap_or(0)
+            .unwrap_or(if removed { 0 } else { index })
     }
     fn clear_sections(&mut self) {
         self.section = None;
@@ -299,7 +302,9 @@ impl<'a> App<'a> {
     fn apply(&mut self, action: Action) {
         self.editor.readonly = self.settings.read_only;
         let result = self.editor.action(&action);
-        if let Ok(index) = &result {
+        if let Ok(index) = &result
+            && !matches!(action.kind.as_str(), "rename-heading" | "create-heading")
+        {
             self.selected = *index;
         }
         self.result(result.map(|_| ()));
@@ -1088,10 +1093,14 @@ impl<'a> App<'a> {
                 }
             }
             KeyCode::Enter | KeyCode::Char(' ') if position.is_some() => {
-                self.apply(Action::new("toggle", self.selected, ""))
+                let index = self.selected;
+                self.apply(Action::new("toggle", index, ""));
+                if !self.visible().contains(&index) {
+                    self.selected = self.best_selection(index, false);
+                }
             }
             KeyCode::Char('d') if position.is_some() => {
-                let selection = self.selection_after_delete();
+                let selection = self.best_selection(self.selected, true);
                 self.apply(Action::new("delete", self.selected, ""));
                 self.selected = selection.min(self.editor.doc.tasks.len().saturating_sub(1));
                 self.clear_sections();

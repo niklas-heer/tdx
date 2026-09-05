@@ -12,6 +12,7 @@ use std::{
 #[derive(Default)]
 pub struct Config {
     pub theme: Theme,
+    pub colors: Colors,
     pub display: Display,
     pub defaults: Defaults,
     pub recent: RecentConfig,
@@ -179,8 +180,14 @@ impl Settings {
 pub type Colors = BTreeMap<String, String>;
 #[derive(Deserialize)]
 struct ThemeFile {
-    theme: Theme,
+    theme: ThemeIdentity,
+    #[serde(default)]
     colors: Colors,
+}
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ThemeIdentity {
+    name: String,
 }
 pub fn themes() -> BTreeMap<String, Colors> {
     let mut result = BTreeMap::new();
@@ -198,6 +205,7 @@ pub fn themes() -> BTreeMap<String, Colors> {
             if path.extension().is_some_and(|e| e == "toml")
                 && let Ok(text) = fs::read_to_string(path)
                 && let Ok(t) = toml::from_str::<ThemeFile>(&text)
+                && !t.theme.name.is_empty()
             {
                 result.insert(t.theme.name, t.colors);
             }

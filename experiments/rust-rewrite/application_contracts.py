@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import random
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -85,8 +86,11 @@ def compare(binaries, output):
                     else: assert 'theme' not in saved
 
                 # Headings and unrelated blocks are verified separately by action contracts.
-                results[engine] = {'tasks': tasks, 'source': path.read_text(), 'screen': screen, 'config': (config / 'config.toml').read_text()}
-            if results['go']['tasks'] != results['rust']['tasks']:
+                recent_state = json.loads((config / 'recent.json').read_text())
+                cursor = next(f['last_cursor_pos'] for f in recent_state['files'] if f['path'] == str(path))
+                headings = re.findall(r'^(#{1,6}) +([^\r\n]*)', path.read_text(), flags=re.M)
+                results[engine] = {'tasks': tasks, 'headings': headings, 'cursor': cursor, 'source': path.read_text(), 'screen': screen, 'config': (config / 'config.toml').read_text()}
+            if any(results['go'][key] != results['rust'][key] for key in ('tasks', 'headings', 'cursor')):
                 failures.append({'case': name, **results})
             else:
                 passed.append(name)
@@ -119,6 +123,31 @@ def compare(binaries, output):
             recent = json.loads((config / 'recent.json').read_text())
             assert any(f['path'] == str(second) and f['access_count'] >= 2 for f in recent['files']), (engine, recent)
             passed.append(engine + '/recent-switch-metadata-cursor')
+            themes = config / 'themes'; themes.mkdir()
+            (themes / 'custom.toml').write_text('[theme]\nname="custom"\n[colors]\nAccent="#123456"\nSuccess="#abcdef"\nWarning="#654321"\n')
+            (config / 'config.toml').write_text('[theme]\nname="custom"\n')
+            debug = invoke(binary, second, env, ['--debug-config'])
+            assert 'Colors.Accent: #123456' in debug and 'Colors.Success: #abcdef' in debug, (engine, debug)
+            (config / 'config.toml').write_text('[theme]\nname="legacy"\n[colors]\nAccent="#fedcba"\nSuccess="#010203"\n')
+            debug = invoke(binary, second, env, ['--debug-config'])
+            assert 'Colors.Accent: #fedcba' in debug and 'Colors.Success: #010203' in debug, (engine, debug)
+            passed.append(engine + '/custom-and-legacy-colors')
+            # Use disposable clipboard commands on Unix. Windows CI exercises
+            # the native PowerShell clipboard on its dedicated runner.
+            if os.name != 'nt':
+                commands = directory / 'clipboard-bin'; commands.mkdir()
+                for name in ('pbcopy', 'wl-copy', 'pbpaste', 'wl-paste'):
+                    script = commands / name
+                    script.write_text('#!/bin/sh\ncat ' + ('> ' if name in ('pbcopy', 'wl-copy') else '') + '"$TDX_CLIPBOARD_FILE"\n')
+                    script.chmod(0o755)
+                env = {**env, 'PATH': str(commands) + os.pathsep + env['PATH'], 'TDX_CLIPBOARD_FILE': str(directory / 'clipboard.txt')}
+            second.write_text('# Clipboard\n\n- [ ] Clipped café 🦀 #tag\n')
+            invoke(binary, second, env, keys='ggcN\x16\rq')
+            copied = json.loads(invoke(binary, second, env, ['list', '--json']))
+            assert len(copied) == 2 and copied[1]['text'] == 'Clipped café 🦀 #tag', (engine, copied)
+            passed.append(engine + '/clipboard-unicode-copy-paste')
+
+
 
     report = {'passed': passed, 'failures': failures}
     output.parent.mkdir(parents=True, exist_ok=True)

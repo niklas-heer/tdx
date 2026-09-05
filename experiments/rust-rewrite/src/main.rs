@@ -181,7 +181,7 @@ fn run() -> Result<(), String> {
         }
         "debug-config" => {
             let themes = config::themes();
-            let colors = themes.get(&config.theme.name);
+            let colors = Some(themes.get(&config.theme.name).unwrap_or(&config.colors));
             println!(
                 "Theme: {}\nColors.Accent: {}\nColors.Success: {}\nDisplay.CheckSymbol: {}\nDisplay.SelectMarker: {}\nDefaults.File: {}\nDefaults.MaxVisible: {}\nDefaults.WordWrap: {}\nDefaults.ShowHeadings: {}\nDefaults.ReadOnly: {}\nDefaults.FilterDone: {}\nRecent.MaxFiles: {}",
                 config.theme.name,

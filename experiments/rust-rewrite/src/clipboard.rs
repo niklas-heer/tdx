@@ -12,7 +12,7 @@ fn commands(copy: bool) -> Vec<Vec<&'static str>> {
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
-                "$text = [Console]::In.ReadToEnd(); Set-Clipboard -Value $text",
+                "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new(); $text = [Console]::In.ReadToEnd(); Set-Clipboard -Value $text",
             ]
         } else {
             vec![
@@ -20,7 +20,7 @@ fn commands(copy: bool) -> Vec<Vec<&'static str>> {
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
-                "Get-Clipboard -Raw",
+                "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); Get-Clipboard -Raw",
             ]
         }]
     } else if copy {
