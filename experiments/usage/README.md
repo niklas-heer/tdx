@@ -60,6 +60,8 @@ The verified campaign at commit `70eef6c` completed **36,000 actions / 100 simul
 | 1,000 | 1.064 ms | 0.0058 ms | 14,027 | 1 |
 | 10,000 | 11.354 ms | 0.0250 ms | 140,042 | 1 |
 
+Post-campaign review also hardened the harness: unsupported replay drivers are rejected before constructing output paths, and the PTY conflict scenario waits for observable EDIT mode before the external write. Regression, race, project and terminal checks passed after these changes. The campaign engine and production application were unchanged; the recorded 100-hour measurement remains tied to `70eef6c`.
+
 The loaded-checkbox benchmark measures a previously parsed 1,000- or 10,000-task document, one toggle and serialization. It excludes undo snapshots, rendering, history, locking and disk I/O. It must not be compared directly with the original Rust report's parse/edit/serialize pipeline or presented as an application-wide speedup. The remaining string allocation is the serialized output.
 
 Session allocation totals include the harness oracle, validation and rendering, and count cumulative allocations, **not live memory or leaks**. The sampled CPU profile on macOS is sparse and dominated by system calls; it cannot reliably rank application CPU costs. The allocation profile still identifies parsing/extraction and undo snapshots as future measurement targets. The campaign intentionally keeps filesystem safety checks and synchronous durable saves.

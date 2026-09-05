@@ -770,5 +770,32 @@
     "Model driver is synchronous; PTY suite separately exercises event loop",
     "Existing Rust probe is not a compatible application candidate",
     "Structural Markdown edits still normalize formatting"
-  ]
+  ],
+  "post_campaign_validation": {
+    "revision": "424068642aa718526d34b5b42cdf393faa4dfc59",
+    "changes": [
+      "Reject unsupported replay drivers before creating output filenames; isolate CLI flags for regression tests",
+      "Wait for observable EDIT mode before external PTY writes"
+    ],
+    "checks": [
+      "Replay path traversal regression and valid replay/CLI help tests, including race detector",
+      "mise run check",
+      "PTY suite with observable edit-mode synchronization"
+    ],
+    "pty": {
+      "status": "passed",
+      "scenarios": [
+        {
+          "scenario": "editing",
+          "passed": true,
+          "wall_seconds": 3.274599749944173
+        },
+        {
+          "scenario": "readonly",
+          "passed": true,
+          "wall_seconds": 0.6777780000120401
+        }
+      ]
+    }
+  }
 }
