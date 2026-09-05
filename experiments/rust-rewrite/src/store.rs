@@ -1,3 +1,30 @@
+#[cfg(windows)]
+fn persist(temp: tempfile::NamedTempFile, target: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_NORMAL, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+        SetFileAttributesW,
+    };
+    let path = temp.into_temp_path(); // Close the handle before replacement.
+    let from: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let to: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+    // SAFETY: Both paths are nul-terminated, live UTF-16 buffers; no pointers escape.
+    unsafe {
+        if SetFileAttributesW(from.as_ptr(), FILE_ATTRIBUTE_NORMAL) == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if MoveFileExW(
+            from.as_ptr(),
+            to.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        ) == 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 use crate::history;
 use crate::history::{History, Version};
@@ -363,30 +390,4 @@ mod tests {
         assert_eq!(fs::read_to_string(&a).unwrap(), "same");
         assert_eq!(fs::read_to_string(&b).unwrap(), "same");
     }
-}
-#[cfg(windows)]
-fn persist(temp: tempfile::NamedTempFile, target: &Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ATTRIBUTE_NORMAL, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-        SetFileAttributesW,
-    };
-    let path = temp.into_temp_path(); // Close the handle before replacement.
-    let from: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
-    let to: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
-    // SAFETY: Both paths are nul-terminated, live UTF-16 buffers; no pointers escape.
-    unsafe {
-        if SetFileAttributesW(from.as_ptr(), FILE_ATTRIBUTE_NORMAL) == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-        if MoveFileExW(
-            from.as_ptr(),
-            to.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        ) == 0
-        {
-            return Err(std::io::Error::last_os_error());
-        }
-    }
-    Ok(())
 }
