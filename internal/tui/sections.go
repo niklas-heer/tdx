@@ -121,7 +121,11 @@ func (m Model) handleSectionsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if m.FoldedSections == nil {
 				m.FoldedSections = make(map[int]bool)
 			}
-			m.FoldedSections[m.SectionCursor] = !m.FoldedSections[m.SectionCursor]
+			if m.FoldedSections[m.SectionCursor] {
+				delete(m.FoldedSections, m.SectionCursor)
+			} else {
+				m.FoldedSections[m.SectionCursor] = true
+			}
 			m.InvalidateDocumentTree()
 			m.adjustSelectionForFilter()
 		}

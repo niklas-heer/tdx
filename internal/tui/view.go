@@ -52,7 +52,13 @@ func (m Model) renderView() string {
 	if m.SectionFocus > 0 && m.SectionFocus <= len(m.GetHeadings()) {
 		background = styles.Cyan("Section: "+m.GetHeadings()[m.SectionFocus-1].Text) + styles.Dim("  S all tasks · s sections") + "\n\n" + background
 	} else if len(m.FoldedSections) > 0 {
-		background = styles.Dim("Some sections are folded · s sections · S show all") + "\n\n" + background
+		var names []string
+		for i, h := range m.GetHeadings() {
+			if m.FoldedSections[i] {
+				names = append(names, h.Text)
+			}
+		}
+		background = styles.Dim("Folded: "+strings.Join(names, ", ")+" · s sections · S show all") + "\n\n" + background
 	}
 
 	// If there's an overlay active, composite it on top
@@ -469,6 +475,13 @@ func (m Model) renderMainContent() string {
 
 	// Show message when filters result in no visible todos
 	if !m.SearchMode && !m.InputMode && len(m.FileModel.Todos) > 0 && len(todosToShow) == 0 {
+		if m.SectionFocus > 0 {
+			first, last := sectionBounds(m.GetHeadings(), m.SectionFocus-1, len(m.FileModel.Todos))
+			if first == last {
+				b.WriteString(styles.Dim("No tasks in this section. Press n to add one, or S for all tasks.") + "\n")
+				return b.String()
+			}
+		}
 		b.WriteString(styles.Dim("  No todos match current filters."))
 		b.WriteString("\n")
 		// Build hint about which filters are active

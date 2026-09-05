@@ -20,6 +20,7 @@ func TestTUISections(t *testing.T) {
 		{"create sibling", "snLater\r", "Later", "", "# Later\n"},
 		{"create child", "sNPlanning\r", "Planning", "", "## Planning\n"},
 		{"fold", "s \x1b", "Home task", "Child task", ""},
+		{"unfold", "s  \x1b", "Child task", "Folded:", ""},
 		{"clear focus", "sj\rS", "Home task", "", ""},
 		{"empty cannot delete hidden task", "sjj\rd", "Section: Empty", "Home task", "- [ ] Main task"},
 		{"search stays in focus", "sj\r/Home", "No matches", "Home task", ""},
