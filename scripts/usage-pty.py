@@ -134,8 +134,9 @@ def run(binary, output):
                     assert len(databases) == 1, databases
                     with sqlite3.connect(databases[0]) as db:
                         assert db.execute("select count(*) from file_versions").fetchone()[0] >= 3
+                    start = len(terminal.output)
                     terminal.send(b"e")
-                    terminal.pump(0.1)
+                    terminal.until(lambda: b"EDIT" in terminal.output[start:], "edit mode before external write")
                     external = original.replace(b"Nine", b"External")
                     path.write_bytes(external)
                     terminal.pump(1.2)  # Exercise at least one real watch tick during input.
