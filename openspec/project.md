@@ -10,7 +10,7 @@ tdx is a standalone terminal todo manager. Markdown files remain the user's sour
 - Shared document actions and bounded undo: internal/editor. CLI/TUI receive their own configuration, styling, and persistence callbacks.
 - CLI commands: internal/cmd; user configuration: cmd/tdx/userconfig.go.
 - Local SQLite version history: internal/versioning.
-- Isolated Go/Rust parser evaluation and correctness corpus: experiments/rust-eval. This is not an application rewrite.
+- Shared save protocol: internal/saveprotocol. Deterministic fault simulation: internal/savesim and cmd/tdx-simulate. The retired Rust experiment remains in Git history; its parser corpus is retained in internal/markdown/testdata.
 - mise.toml pins development tools and defines tasks; .dagger contains the separate portable CI module.
 
 ## Conventions

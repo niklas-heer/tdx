@@ -553,7 +553,7 @@ Undo retains up to 100 committed snapshots, with provisional input stored separa
 
 Checkbox nodes and headings are cached. Search is debounced for 50 ms, while immediate Enter and navigation use the current query. The [measured 100-hour simulated campaign](experiments/usage/README.md) covers 36,000 actions, real disk saves, conflicts, cancellation and reload, with separate executable and PTY contracts.
 
-The report includes loaded-document checkbox benchmarks, complete action latency, allocation profiles, exact source revisions and reproduction commands. These measurements are workload-specific; they do not establish an application-wide comparison with other tools. Simulated hours are accelerated actions rather than wall-clock endurance. See the [Rust evaluation](experiments/rust-eval/README.md) for the narrower parser experiment and its limitations.
+The report includes loaded-document checkbox benchmarks, complete action latency, allocation profiles, exact source revisions and reproduction commands. These measurements are workload-specific; they do not establish an application-wide comparison with other tools. Simulated hours are accelerated actions rather than wall-clock endurance.
 
 ### Project Structure
 
@@ -608,7 +608,13 @@ After cloning, run `mise trust` and `mise run setup`. Docker is required only fo
 
 The CLI and TUI share document actions in `internal/editor`. Configuration, styles, recent files, and Markdown history callbacks belong to each application instance, making isolated integration tests straightforward.
 
-For the optional Rust parser experiment, run `mise run rust:check` and `mise run rust-eval`. See the [measured comparison and limitations](experiments/rust-eval/README.md); Rust is not part of the shipped application.
+The Rust experiment has been retired; Go remains the maintained application. Its useful save-engine hardening is now in Go. The former implementation and measurements remain available in Git history.
+
+Run `mise run test:engine` for 1,000 deterministic save-fault seeds with exact replay, recovery checks and deliberately broken negative controls. Evidence is written to `dist/go-engine/report.json`. To inspect one schedule, run `go run ./cmd/tdx-simulate --seed 0 --runs 1 --steps 200 --trace dist/go-engine/seed-0.json`.
+
+Native saves and simulation share the same save protocol. The simulation controls I/O latency, lock contention, unavailable storage/history, external revisions, process crashes and power loss. It checks whole-file preservation, stale-write rejection, force-save history, commit reporting and recovery. Native subprocess tests stop saves at eight boundaries and verify complete files and usable locks after restart. Short writes are rejected; failed preparation cleans up its actual temporary file; logical paths are revalidated before replacement.
+
+This models save ordering and I/O outcomes, not filesystem or SQLite internals, arbitrary external writes after final validation, or hardware guarantees. Native tests remain necessary. tdx has no network service, so no network implementation is simulated.
 
 ### Sustained-use testing
 

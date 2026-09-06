@@ -35,7 +35,7 @@ _*.md
 /tmp/
 presentations/example.todo.md
 
-# Optional Rust experiment and Python bytecode
+# Retired experiment build caches and Python bytecode
 /experiments/rust-eval/rust-probe/target/
 __pycache__/
 /experiments/rust-rewrite/target/

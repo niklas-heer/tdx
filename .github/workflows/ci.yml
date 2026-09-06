@@ -11,8 +11,34 @@ permissions:
   contents: read
 
 jobs:
-  rust-parity:
-    uses: ./.github/workflows/rust-parity.yml
+  engine:
+    name: Save engine (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Native save, history, recovery and race checks
+        shell: bash
+        run: go test -race -count=1 ./internal/saveprotocol ./internal/savesim ./internal/markdown ./internal/editor ./internal/versioning ./cmd/tdx-simulate
+      - name: Deterministic replay and negative controls
+        shell: bash
+        run: |
+          mkdir -p dist/go-engine
+          go build -o dist/go-engine/tdx-simulate.exe ./cmd/tdx-simulate
+          ./dist/go-engine/tdx-simulate.exe --runs 1000 --steps 200 --check --output dist/go-engine/report.json
+          ./dist/go-engine/tdx-simulate.exe --seed 0 --trace dist/go-engine/seed-0.json
+      - name: Retain engine evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-engine-${{ matrix.os }}
+          path: dist/go-engine/*.json
 
   portable:
     name: Portable

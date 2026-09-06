@@ -1,6 +1,6 @@
 # Sustained-use harness and Go follow-up
 
-The [Rust evaluation](../rust-eval/README.md) recommended measuring actual editing, reducing repeated extraction, and trying source-preserving Go edits before a rewrite. This harness implements that follow-up. **Keep Go for now.** The Rust parser probe still implements none of the editor, save/conflict, history or terminal contracts exercised here.
+This Go harness measures actual editing, repeated extraction and source-preserving edits. The Rust evaluation that originally motivated it has been retired; its historical results remain in Git. Go is the maintained application, with additional deterministic save-engine checks available through `mise run test:engine`.
 
 ## Run and replay
 
@@ -35,7 +35,7 @@ python3 scripts/usage-pty.py --binary /absolute/path/to/candidate \
   --output dist/usage/candidate-pty
 ```
 
-The CLI adapter checks each mutation, then the full `list --json` task representation: one-based indexes, text, checked state, depth, parent, tags, priority and due date. Each subprocess has a ten-second timeout. Its supported actions are add, edit, delete, toggle and reopen/query. TUI-only actions fail explicitly when given to the CLI adapter; they are never silently counted as passing. The existing Rust parser probe is **not** a compatible candidate executable.
+The CLI adapter checks each mutation, then the full `list --json` task representation: one-based indexes, text, checked state, depth, parent, tags, priority and due date. Each subprocess has a ten-second timeout. Its supported actions are add, edit, delete, toggle and reopen/query. TUI-only actions fail explicitly when given to the CLI adapter; they are never silently counted as passing. The retired parser-only probe did not implement this executable contract.
 
 Trace schema 1 is JSON: `schema`, `seed`, `driver`, `initial` tasks and ordered `steps`. A task contains `text` and `checked`; a step contains `op`, zero-based `index`, optional `text`, positive `seconds`, and the complete expected task array. The driver also recalculates each expectation using the independent oracle, rejecting inconsistent traces. The current oracle's grammar is flat literal task text with whitespace-delimited metadata tokens; arbitrary Markdown and nested editing require additional contracts before a full rewrite comparison. See [trace.go](../../internal/usage/trace.go) and [replay.go](../../internal/usage/replay.go).
 
