@@ -61,6 +61,25 @@ Section editing uses the same guarded saves and version history as task editing.
 - Use mise for reproducible development tools and tasks. `mise tasks` lists available commands; `mise run check` runs local validation.
 - Installation defaults to `~/.local/bin`; set `TDX_INSTALL_DIR` to choose another directory. Existing todo files and global configuration remain compatible.
 
+## Rezero: choose a batch you are ready to start
+
+Run **`:rezero`** in the TUI to use Mark Forster's Resistance Zero workflow, as [demonstrated by Ben Vallack](https://www.youtube.com/watch?v=Tsgj1_OwhPs). Review every open task from the bottom of the file to the top, marking those you feel ready to work on. Finish reviewing before starting the marked batch, which also runs from bottom to top.
+
+| Stage | Keys |
+| --- | --- |
+| Review | **Space** or **.** mark and advance; **Enter** pass; **b** revisit the previous decision |
+| Work | **Space** or **Enter** complete; **r** continue later; **p** defer without completing |
+| Round complete | **Enter** or **r** review again |
+| Any stage | **n** add for the next round; **u** undo the last saved Rezero edit; **?** show keys; **Esc** return to the normal list |
+
+Readiness dots are separate from checkboxes and last for the current session. The list stays inline in your terminal. Rezero temporarily shows all tasks, including dimmed completed entries, regardless of filters or folded sections. Exiting restores your normal view. Sorting and unrelated editing commands require leaving the mode first.
+
+**Continue later** opens the task's first-line title for editing at its current position. Enter checks off the original task and its descendants, then appends an open continuation at the end of the file, retaining notes and each child's previous completion state. This represents finishing a work session while leaving the remaining work open. Esc cancels without making changes. New tasks and continuations are considered in the next round. A nested continuation becomes a top-level task with its children still nested beneath it; because it is appended at file end, it belongs to the final Markdown section.
+
+Creation and continuation preserve existing source bytes; continuation changes only the original subtree's checkbox marks before appending. Both use guarded saves and version history. One **u** restores the document and round position before the edit. Ambiguous containers, such as quoted task re-entry or an unclosed trailing fence, are rejected without changing the document. General edits outside Rezero retain the Markdown preservation limits described below.
+
+Read-only files allow review but reject completion, creation and continuation. Reloading a file or resolving a conflict with force-save ends the round so old dots cannot refer to different tasks. After a save conflict, the complete local candidate remains available through **`:diff`**, **`:reload`** and **`:force-save`**. Cancel the inline field with Esc before opening those commands. Rezero supports choosing work you feel ready to start; it does not enforce deadlines or guarantee that deferred work gets finished.
+
 ## Scripting and editor integrations
 
 Query a project without opening the TUI or writing history:
@@ -206,6 +225,7 @@ Press `:` to open the command palette with fuzzy search. Available commands:
 | `line-numbers` | Toggle relative line numbers |
 | `set-max-visible` | Set max visible items for this session |
 | `show-headings` | Toggle displaying markdown headings between tasks |
+| `rezero` | Start or leave the Rezero review/work cycle |
 
 **Read-Only Mode:**
 

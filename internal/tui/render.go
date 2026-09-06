@@ -145,6 +145,7 @@ func RenderHelp(version string, cyanStyle, dimStyle func(string) string) string 
 			entries: []entry{
 				{"u", "Undo"},
 				{"r", "Recent files"},
+				{":rezero", "Readiness / work cycle"},
 				{"?", "Help"},
 				{"esc", "Quit"},
 			},

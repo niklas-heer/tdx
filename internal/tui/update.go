@@ -40,6 +40,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reloadedMsg:
 		// Successfully reloaded from disk
 		m = msg.model
+		m.stopRezero()
 		m.clearSections()
 		m.InvalidateHeadingsCache()  // Invalidate cache on reload
 		return m, watchFileChanges() // Continue watching
@@ -91,6 +92,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.SectionsMode {
 		return m.handleSectionsKey(msg)
+	}
+
+	if m.rezeroInput != "" {
+		return m.handleRezeroInput(msg)
 	}
 
 	// Handle input/edit mode
@@ -149,6 +154,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Handle recent files mode
 	if m.RecentFilesMode {
 		return m.handleRecentFilesKey(msg)
+	}
+
+	if m.rezero.Phase != "" {
+		return m.handleRezeroKey(msg)
 	}
 
 	// Number buffer for vim-style navigation
@@ -927,7 +936,14 @@ func (m Model) handleCommandKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// Execute current command
 		if len(m.FilteredCmds) > 0 && m.CommandCursor < len(m.FilteredCmds) {
 			cmdIdx := m.FilteredCmds[m.CommandCursor]
-			m.Commands[cmdIdx].Handler(&m)
+			name := m.Commands[cmdIdx].Name
+			if m.rezero.Phase != "" && m.ReadOnly && name == "force-save" {
+				m.Err = fmt.Errorf("read-only file: force-save is disabled")
+			} else if m.rezero.Phase != "" && name != "rezero" && name != "reload" && name != "diff" && name != "force-save" {
+				m.Err = fmt.Errorf("leave Rezero with Esc before using :%s", name)
+			} else {
+				m.Commands[cmdIdx].Handler(&m)
+			}
 		}
 		m.CommandMode = false
 		m.searchPending = false
@@ -1390,6 +1406,9 @@ type reloadedMsg struct {
 func (m *Model) isTodoVisible(idx int) bool {
 	if idx < 0 || idx >= len(m.FileModel.Todos) {
 		return false
+	}
+	if m.rezero.Phase != "" {
+		return true
 	}
 	if !m.sectionAllowsTodo(idx) {
 		return false

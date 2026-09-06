@@ -26,6 +26,13 @@ func InitCommands(cfg ...*ConfigType) []Command {
 		activeCfg = cfg[0]
 	}
 	cmds := []Command{
+		{Name: "rezero", Description: "Review readiness and work a bottom-to-top batch", Handler: func(m *Model) {
+			if m.rezero.Phase != "" {
+				m.stopRezero()
+			} else {
+				m.startRezero()
+			}
+		}},
 		{
 			Name:        "check-all",
 			Description: "Mark all todos as complete",
@@ -262,6 +269,7 @@ func InitCommands(cfg ...*ConfigType) []Command {
 					return
 				}
 				m.FileModel = *fm
+				m.stopRezero()
 				m.resetFileSettings()
 				m.RefreshAvailableTags()
 				m.history.Clear()
@@ -289,7 +297,11 @@ func InitCommands(cfg ...*ConfigType) []Command {
 				}
 				fm, readErr := m.Config().Store.ReadFile(m.FilePath)
 				if fm != nil {
+					if m.rezero.Phase != "" && m.ConflictPending {
+						m.history.Push(&m.FileModel)
+					}
 					m.FileModel = *fm
+					m.stopRezero()
 					m.clearConflict()
 				}
 				m.Err = errors.Join(saveErr, readErr)

@@ -24,6 +24,7 @@ import time
 class Terminal:
     def __init__(self, binary, path, config, readonly=False, context="", screen=None):
         self.screen = screen
+        self.initial_row = 1 + context.count("\n")
         if screen is not None:
             import pyte
             self.stream = pyte.ByteStream(screen)
@@ -71,7 +72,7 @@ class Terminal:
                 self.stream.feed(data)
                 continue
             self.queries.extend(data)
-            for query, reply in [(b"\x1b[6n", b"\x1b[1;1R"), (b"\x1b[c", b"\x1b[?1;2c")]:
+            for query, reply in [(b"\x1b[6n", f"\x1b[{self.initial_row};1R".encode()), (b"\x1b[c", b"\x1b[?1;2c")]:
                 while query in self.queries:
                     self.send(reply)
                     self.queries = self.queries.replace(query, b"", 1)
@@ -178,6 +179,63 @@ def run(binary, output):
                 terminal.close()
                 assert path.read_bytes() == original, "exit changed file"
                 results.append({"scenario": label, "passed": True, "wall_seconds": time.monotonic()-started})
+            finally:
+                terminal.cleanup(output / f"{label}.ansi")
+    results.extend(run_rezero(binary, output))
+    return results
+
+
+def run_rezero(binary, output):
+    results = []
+    for readonly in (False, True):
+        with tempfile.TemporaryDirectory(prefix="tdx-rezero-pty-") as tmp:
+            base = Path(tmp)
+            path = base / "tasks.md"
+            original = b"---\nfilter-done: true\n---\n# Work\n\n- [ ] Earlier\n- [x] Finished\n- [ ] Latest\n"
+            path.write_bytes(original)
+            context = "previous shell command output\r\n"
+            terminal = Terminal(binary, path, base / "config", readonly, context=context)
+            label = "rezero-readonly" if readonly else "rezero"
+            try:
+                terminal.until(lambda: b"Latest" in terminal.output, "initial Rezero fixture")
+                terminal.send(b":rezero\r")
+                terminal.until(lambda: b"REZERO" in terminal.output and b"Finished" in terminal.output, "whole-file review with completed context")
+                assert path.read_bytes() == original, "starting review changed file"
+                terminal.send(b" ")
+                terminal.pump(0.15)
+                assert path.read_bytes() == original, "readiness dot completed a task"
+                terminal.send(b" ")
+                terminal.until(lambda: b"WORK" in terminal.output, "work phase after complete review")
+                if readonly:
+                    terminal.send(b" ")
+                    terminal.until(lambda: b"read-only file" in terminal.output, "read-only completion refused")
+                    assert path.read_bytes() == original
+                else:
+                    start = len(terminal.output)
+                    terminal.send(b"r")
+                    terminal.until(lambda: b"CONTINUE" in terminal.output[start:], "inline continuation")
+                    terminal.send(b"\x1b[200~ caf\xc3\xa9 \xf0\x9f\xa6\x80\x1b[201~\r")
+                    terminal.until(lambda: "- [ ] Latest café 🦀" in path.read_text(), "continuation saved")
+                    assert path.read_bytes().startswith(original.replace(b"[ ] Latest", b"[x] Latest"))
+                    terminal.send(b"u")
+                    terminal.until(lambda: path.read_bytes() == original, "one-key continuation undo")
+                    for width in (24, 80):
+                        terminal.resize(width, 20)
+                        terminal.send(b" ")
+                        terminal.until(lambda: b"[x] Latest" in path.read_bytes(), "completion after resize")
+                        terminal.send(b"u")
+                        terminal.until(lambda: path.read_bytes() == original, "undo after resize")
+                    terminal.send(b"n")
+                    terminal.pump(0.15)
+                    terminal.send(b"\x1b[200~Next round\x1b[201~\r")
+                    terminal.until(lambda: b"[ ] Next round" in path.read_bytes(), "append for next round")
+                    terminal.send(b"u")
+                    terminal.until(lambda: path.read_bytes() == original, "append undo")
+                terminal.close()
+                assert b"previous shell command output" in terminal.output, "shell context missing"
+                assert b"\x1b[?1049h" not in terminal.output and b"\x1b[?1047h" not in terminal.output, "Rezero entered alternate screen"
+                assert path.read_bytes() == original
+                results.append({"scenario": label, "passed": True})
             finally:
                 terminal.cleanup(output / f"{label}.ansi")
     return results

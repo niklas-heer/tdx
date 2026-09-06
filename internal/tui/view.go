@@ -49,9 +49,9 @@ func (m Model) renderView() string {
 
 	// Combine main content and status bar
 	background := mainContent + "\n" + statusBar
-	if m.SectionFocus > 0 && m.SectionFocus <= len(m.GetHeadings()) {
+	if m.rezero.Phase == "" && m.SectionFocus > 0 && m.SectionFocus <= len(m.GetHeadings()) {
 		background = styles.Cyan("Section: "+m.GetHeadings()[m.SectionFocus-1].Text) + styles.Dim("  S all tasks · s sections") + "\n\n" + background
-	} else if len(m.FoldedSections) > 0 {
+	} else if m.rezero.Phase == "" && len(m.FoldedSections) > 0 {
 		var names []string
 		for i, h := range m.GetHeadings() {
 			if m.FoldedSections[i] {
@@ -168,7 +168,11 @@ func (m Model) renderMainContent() string {
 
 	// Determine which todos to display
 	var todosToShow []int
-	if m.SearchMode {
+	if m.rezero.Phase != "" {
+		for i := range m.FileModel.Todos {
+			todosToShow = append(todosToShow, i)
+		}
+	} else if m.SearchMode {
 		todosToShow = m.SearchResults
 	} else {
 		for i := range m.FileModel.Todos {
@@ -295,7 +299,7 @@ func (m Model) renderMainContent() string {
 
 	// Get all headings if enabled (uses cached headings for performance)
 	var allHeadings []markdown.Heading
-	if m.ShowHeadings {
+	if m.ShowHeadings || m.rezero.Phase != "" {
 		allHeadings = m.GetHeadings()
 	}
 
@@ -306,9 +310,9 @@ func (m Model) renderMainContent() string {
 		todo := m.FileModel.Todos[todoIdx]
 
 		// Show headings that fall between last displayed todo and current todo
-		if m.ShowHeadings {
+		if m.ShowHeadings || m.rezero.Phase != "" {
 			for hi, heading := range allHeadings {
-				if m.SectionFocus > 0 {
+				if m.rezero.Phase == "" && m.SectionFocus > 0 {
 					focus := m.SectionFocus - 1
 					if hi < focus {
 						continue
@@ -384,6 +388,10 @@ func (m Model) renderMainContent() string {
 			arrow = styles.Yellow(" ≡ ")
 		}
 
+		if m.rezero.Phase != "" && m.rezero.Ready[todoIdx] && !isSelected {
+			arrow = styles.Cyan(" · ")
+		}
+
 		// Build the line prefix (needed early for edit mode wrapping)
 		// Add indentation based on nesting depth (2 spaces per level)
 		indent := strings.Repeat("  ", todo.Depth)
@@ -403,6 +411,14 @@ func (m Model) renderMainContent() string {
 			text = ColorizeTags(text, styles.Tag)
 			text = ColorizePriorities(text, styles.PriorityHigh, styles.PriorityMedium, styles.PriorityLow)
 			text = ColorizeDueDates(text, styles.DueUrgent, styles.DueSoon, styles.DueFuture)
+		}
+
+		if m.rezero.Phase != "" && todo.Checked {
+			text = styles.Dim(todo.Text)
+		}
+		if m.rezero.Phase != "" && m.rezero.Ready[todoIdx] && isSelected {
+			text = styles.Cyan("· ") + text
+			plainText = "· " + plainText
 		}
 
 		// Show edit cursor if in edit mode on this item
@@ -475,7 +491,7 @@ func (m Model) renderMainContent() string {
 
 	// Show message when filters result in no visible todos
 	if !m.SearchMode && !m.InputMode && len(m.FileModel.Todos) > 0 && len(todosToShow) == 0 {
-		if m.SectionFocus > 0 {
+		if m.rezero.Phase == "" && m.SectionFocus > 0 {
 			first, last := sectionBounds(m.GetHeadings(), m.SectionFocus-1, len(m.FileModel.Todos))
 			if first == last {
 				b.WriteString(styles.Dim("No tasks in this section. Press n to add one, or S for all tasks.") + "\n")
@@ -577,6 +593,11 @@ func (m Model) renderStatusBar() string {
 			b.WriteString(styles.Dim("any key to dismiss"))
 		}
 		b.WriteString("\n")
+	}
+
+	if m.rezero.Phase != "" && !m.CommandMode {
+		b.WriteString(m.rezeroStatus())
+		return b.String()
 	}
 
 	// Status bar

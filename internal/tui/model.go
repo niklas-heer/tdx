@@ -75,6 +75,10 @@ type Runtime struct {
 
 // Model holds the TUI application state
 type Model struct {
+	rezero         rezeroRound
+	rezeroInput    string
+	rezeroUndo     []rezeroUndo
+	rezeroHelp     bool
 	SectionsMode   bool
 	SectionCursor  int
 	SectionFocus   int // One-based heading index; zero means all sections.

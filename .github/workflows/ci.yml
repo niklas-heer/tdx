@@ -25,7 +25,7 @@ jobs:
           go-version-file: go.mod
       - name: Native save, history, recovery and race checks
         shell: bash
-        run: go test -race -count=1 ./internal/saveprotocol ./internal/savesim ./internal/markdown ./internal/editor ./internal/versioning ./cmd/tdx-simulate
+        run: go test -race -count=1 ./internal/saveprotocol ./internal/savesim ./internal/markdown ./internal/editor ./internal/tui ./internal/versioning ./cmd/tdx-simulate
       - name: Deterministic replay and negative controls
         shell: bash
         run: |
@@ -33,6 +33,18 @@ jobs:
           go build -o dist/go-engine/tdx-simulate.exe ./cmd/tdx-simulate
           ./dist/go-engine/tdx-simulate.exe --runs 1000 --steps 200 --check --output dist/go-engine/report.json
           ./dist/go-engine/tdx-simulate.exe --seed 0 --trace dist/go-engine/seed-0.json
+      - name: Inline terminal contracts
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          go build -o dist/go-engine/tdx ./cmd/tdx
+          python3 scripts/usage-pty.py --binary dist/go-engine/tdx --output dist/usage/pty
+      - name: Retain terminal evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: terminal-${{ matrix.os }}
+          path: dist/usage/pty/*
       - name: Retain engine evidence
         if: always()
         uses: actions/upload-artifact@v6
