@@ -11,6 +11,8 @@ type Kind string
 
 const (
 	Add            Kind = "add"
+	AppendSource   Kind = "append-source"
+	Continue       Kind = "continue"
 	Insert         Kind = "insert"
 	AddInSection   Kind = "add-in-section"
 	Edit           Kind = "edit"
@@ -57,6 +59,10 @@ func Apply(doc *markdown.FileModel, action Action) (int, error) {
 		}
 	}
 	switch action.Kind {
+	case AppendSource:
+		return doc.AppendTodoSource(action.Text)
+	case Continue:
+		return doc.ContinueTodoSource(index, action.Text)
 	case Add:
 		doc.AddTodoItem(action.Text, action.Checked)
 		return len(doc.Todos) - 1, nil
