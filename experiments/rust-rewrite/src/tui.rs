@@ -12,13 +12,7 @@ use crate::{
     store::Store,
 };
 use chrono::{Local, NaiveDate};
-use crossterm::{
-    event::{
-        DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
-        KeyModifiers,
-    },
-    execute,
-};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -101,6 +95,7 @@ struct App<'a> {
     cursor: usize,
     input: Buffer,
     action: Action,
+    input_position: usize,
     status: String,
     tags: BTreeSet<String>,
     priorities: BTreeSet<i64>,
@@ -125,6 +120,10 @@ struct App<'a> {
     draft: SourceBuffer,
     source_scroll: usize,
 }
+struct TaskRows {
+    lines: Vec<Vec<Vec<presentation::Glyph>>>,
+    selected: Option<usize>,
+}
 impl<'a> App<'a> {
     fn new(editor: &'a mut Editor, path: &Path, config: Config, flags: Overrides) -> Self {
         let settings = Settings::new(&config, &editor.doc.metadata, &flags);
@@ -147,6 +146,7 @@ impl<'a> App<'a> {
             cursor: 0,
             input: Buffer::default(),
             action: Action::default(),
+            input_position: 0,
             status: String::new(),
             tags: BTreeSet::new(),
             priorities: BTreeSet::new(),
@@ -332,6 +332,15 @@ impl<'a> App<'a> {
         self.result(result.map(|_| ()));
     }
     fn input(&mut self, action: Action) {
+        // Ask the same pure document operation for its insertion position. This
+        // handles nested lists and sections without duplicating their semantics.
+        let mut planned = action.clone();
+        planned.text = "draft".into();
+        self.input_position = self
+            .editor
+            .doc
+            .apply(&planned)
+            .map_or(self.selected, |(_, i)| i);
         self.input = Buffer::new(action.text.clone());
         self.action = action;
         self.mode = Mode::Input;
@@ -1346,6 +1355,10 @@ impl<'a> App<'a> {
     fn draw(&mut self, frame: &mut Frame) {
         self.links.clear();
         let area = frame.area();
+        if self.compact() {
+            self.draw_compact(frame, area);
+            return;
+        }
         frame.render_widget(
             Block::default().style(Style::default().fg(self.color("Base"))),
             area,
@@ -1700,6 +1713,7 @@ impl<'a> App<'a> {
     }
     fn controls(&self) -> String {
         match self.mode{
+            Mode::Input=>"Enter save · Esc cancel · Ctrl-Y paste".into(),
             Mode::Markdown=>if self.confirm {"Discard draft? y discard · Esc keep editing"} else {"Ctrl-S save · Ctrl-A all · Ctrl-Z undo · Esc checklist"}.into(),
             Mode::Normal=>format!("j/k move · n/N new · e/d edit · u undo · / search · t/p/D filters · s sections · r recent · : commands · ? help{}{}{}{}",if self.tags.is_empty(){String::new()}else{format!(" #{}",self.tags.iter().cloned().collect::<Vec<_>>().join(" #"))},if self.priorities.is_empty(){String::new()}else{format!(" p{:?}",self.priorities)},if self.due.is_empty(){String::new()}else{format!(" due:{}",self.due)},if self.settings.filter_done{" · open only"}else{""}),
             Mode::Versions=>if self.confirm{"Restore this version? [y/N]"}else{"[↑/↓] Navigate  [PgUp/PgDn] Scroll  [Enter] Restore  [Esc] Close"}.into(),
@@ -1918,17 +1932,151 @@ impl<'a> App<'a> {
             self.cursor,
         );
     }
+    const fn compact(&self) -> bool {
+        matches!(self.mode, Mode::Normal | Mode::Input | Mode::Move)
+    }
+    fn compact_footer(&self, width: u16) -> Vec<Line<'static>> {
+        let done = self.editor.doc.tasks.iter().filter(|t| t.checked).count();
+        let total = self.editor.doc.tasks.len();
+        let mut lines = vec![
+            Line::default(),
+            Line::styled(
+                format!(
+                    "{} · {} open · {done} done · {}",
+                    self.mode_name(),
+                    total - done,
+                    clean(
+                        &self
+                            .path
+                            .file_name()
+                            .unwrap_or(self.path.as_os_str())
+                            .to_string_lossy()
+                    )
+                ),
+                Style::default().fg(self.color("Dim")),
+            ),
+        ];
+        let context = self.context();
+        if !context.is_empty() {
+            lines.push(Line::styled(
+                context,
+                Style::default().fg(self.color("Dim")),
+            ));
+        }
+        lines.push(Line::styled(
+            if self.mode == Mode::Normal {
+                "n new · e edit · ␣ toggle · u undo · : cmd · ? help · Esc quit".into()
+            } else {
+                self.controls()
+            },
+            Style::default().fg(self.color("Accent")),
+        ));
+        if !self.status.is_empty() {
+            lines.push(Line::styled(
+                clean(&self.status),
+                Style::default().fg(self.color("Warning")),
+            ));
+        }
+        lines
+            .into_iter()
+            .flat_map(|line| {
+                wrap(&line.to_string(), usize::from(width), 0)
+                    .into_iter()
+                    .map(move |text| Line::styled(text, line.style))
+            })
+            .collect()
+    }
+    fn height(&self, width: u16, available: u16) -> u16 {
+        if !self.compact() {
+            return available.min(24);
+        }
+        let footer = self.compact_footer(width);
+        let footer_height = footer.len();
+        let body = self.task_rows(Rect::new(0, 0, width, available));
+        u16::try_from(body.lines.iter().map(Vec::len).sum::<usize>() + footer_height)
+            .unwrap_or(u16::MAX)
+            .clamp(1, available.max(1))
+    }
+    fn draw_compact(&mut self, frame: &mut Frame, area: Rect) {
+        let footer = self.compact_footer(area.width);
+        let footer_height = u16::try_from(footer.len()).unwrap_or(u16::MAX);
+        let areas =
+            Layout::vertical([Constraint::Min(1), Constraint::Length(footer_height)]).split(area);
+        self.draw_tasks(frame, areas[0]);
+        frame.render_widget(Paragraph::new(footer), areas[1]);
+    }
+    fn input_row(&self, area: Rect, editing: Option<usize>) -> Vec<Vec<presentation::Glyph>> {
+        let depth = editing
+            .or_else(|| (self.action.kind == "insert").then_some(self.selected))
+            .and_then(|i| self.editor.doc.tasks.get(i))
+            .map_or(0, |t| t.depth);
+        let number = if self.line_numbers {
+            editing.map_or_else(|| "    ".into(), |i| format!("{:>3} ", i + 1))
+        } else {
+            String::new()
+        };
+        let check = editing
+            .and_then(|i| self.editor.doc.tasks.get(i))
+            .filter(|t| t.checked)
+            .map_or(" ", |_| self.config.display.check_symbol.as_str());
+        let available =
+            usize::from(area.width).saturating_sub(self.config.display.select_marker.width() + 1);
+        let prefix = presentation::tail(
+            &format!("{number}{}[{check}] ", "  ".repeat(depth)),
+            available.saturating_sub(2),
+        );
+        let style = Style::default().fg(self.color("Accent"));
+        if !self.settings.word_wrap {
+            let text = presentation::input_window(
+                self.input.text(),
+                self.input.cursor(),
+                available.saturating_sub(prefix.width()),
+            );
+            return vec![presentation::glyphs(
+                &format!("{prefix}{text}"),
+                style,
+                None,
+            )];
+        }
+        let (before, after) = self.input.text().split_at(self.input.cursor());
+        let mut rich = presentation::glyphs(&format!("{prefix}{}", clean(before)), style, None);
+        rich.extend(presentation::glyphs(
+            "▏",
+            style.add_modifier(Modifier::UNDERLINED),
+            None,
+        ));
+        rich.extend(presentation::glyphs(&clean(after), style, None));
+        let lines = presentation::lines(rich, available, prefix.width(), true);
+        let cursor = lines
+            .iter()
+            .position(|line| {
+                line.iter()
+                    .any(|g| g.style.add_modifier.contains(Modifier::UNDERLINED))
+            })
+            .unwrap_or(0);
+        let height = usize::from(area.height.max(1));
+        let start = cursor.saturating_sub(height - 1);
+        lines.into_iter().skip(start).take(height).collect()
+    }
+
     #[expect(
         clippy::too_many_lines,
-        reason = "Keep mode dispatch and rendering order visible in one place"
+        reason = "Shape only the visible task window, headings and inline editor together"
     )]
-    fn draw_tasks(&mut self, frame: &mut Frame, area: Rect) {
+    fn task_rows(&self, area: Rect) -> TaskRows {
         let mut visible = self.visible();
-        let matched = visible.len();
-        let selected_pos = visible
-            .iter()
-            .position(|i| *i == self.selected)
-            .unwrap_or(0);
+        let creating = self.mode == Mode::Input && self.action.kind != "edit";
+        let focus = if creating {
+            visible
+                .iter()
+                .copied()
+                .find(|i| *i >= self.input_position)
+                .or_else(|| visible.last().copied())
+                .unwrap_or(self.selected)
+        } else {
+            self.selected
+        };
+        let selected_pos = visible.iter().position(|i| *i == focus).unwrap_or(0);
         if self.settings.max_visible > 0 && visible.len() > self.settings.max_visible {
             let start = selected_pos
                 .saturating_sub(self.settings.max_visible / 2)
@@ -1939,20 +2087,22 @@ impl<'a> App<'a> {
         // indexes, but avoid shaping and allocating every glyph in large files.
         let limit = (usize::from(area.height)).max(1);
         if visible.len() > limit {
-            let position = visible
-                .iter()
-                .position(|i| *i == self.selected)
-                .unwrap_or(0);
+            let position = visible.iter().position(|i| *i == focus).unwrap_or(0);
             let start = position
                 .saturating_sub(limit / 2)
                 .min(visible.len() - limit);
             visible = visible[start..start + limit].to_vec();
         }
-        let mut rows = Vec::new();
         let mut rich_rows: Vec<Vec<Vec<presentation::Glyph>>> = Vec::new();
         let mut selected_row = None;
         let mut last_heading = None;
+        let mut inserted = false;
         for i in visible {
+            if creating && !inserted && i >= self.input_position {
+                selected_row = Some(rich_rows.len());
+                rich_rows.push(self.input_row(area, None));
+                inserted = true;
+            }
             if self.settings.show_headings {
                 let current = self
                     .editor
@@ -1965,17 +2115,21 @@ impl<'a> App<'a> {
                 if current != last_heading {
                     if let Some(h) = current {
                         let h = &self.editor.doc.headings[h];
-                        rich_rows.push(vec![vec![]]);
-                        rows.push(ListItem::new(Line::styled(
-                            format!("{} {}", "#".repeat(h.level), clean(&h.text)),
+                        rich_rows.push(vec![presentation::glyphs(
+                            &format!("{} {}", "#".repeat(h.level), clean(&h.text)),
                             Style::default().fg(self.color("Accent")),
-                        )));
+                            None,
+                        )]);
                     }
                     last_heading = current;
                 }
             }
-            if i == self.selected {
-                selected_row = Some(rows.len());
+            if i == self.selected && !creating {
+                selected_row = Some(rich_rows.len());
+                if self.mode == Mode::Input {
+                    rich_rows.push(self.input_row(area, Some(i)));
+                    continue;
+                }
             }
             let task = &self.editor.doc.tasks[i];
             let prefix = format!(
@@ -2002,7 +2156,7 @@ impl<'a> App<'a> {
             let style =
                 Style::default().fg(self.color(if task.checked { "Important" } else { "Base" }));
             let marker_width = self.config.display.select_marker.width() + 1;
-            let available = (usize::from(area.width)).saturating_sub(2 + marker_width);
+            let available = (usize::from(area.width)).saturating_sub(marker_width);
             let mut rich = presentation::glyphs(&prefix, style, None);
             rich.extend(presentation::inline(
                 &clean(&task.text),
@@ -2013,28 +2167,42 @@ impl<'a> App<'a> {
             ));
             let lines =
                 presentation::lines(rich, available, prefix.width(), self.settings.word_wrap);
-            rows.push(ListItem::new(
-                lines
-                    .iter()
-                    .map(|g| presentation::line(g))
-                    .collect::<Vec<_>>(),
-            ));
             rich_rows.push(lines);
         }
-        if rows.is_empty() {
-            rows.push(ListItem::new(
-                "No matching tasks · n creates a task · s browses empty sections",
-            ));
+        if creating && !inserted {
+            selected_row = Some(rich_rows.len());
+            rich_rows.push(self.input_row(area, None));
         }
+        if rich_rows.is_empty() {
+            rich_rows.push(vec![presentation::glyphs(
+                "No matching tasks · n creates a task · s browses empty sections",
+                Style::default().fg(self.color("Dim")),
+                None,
+            )]);
+        }
+        TaskRows {
+            lines: rich_rows,
+            selected: selected_row,
+        }
+    }
+    fn draw_tasks(&mut self, frame: &mut Frame, area: Rect) {
+        let layout = self.task_rows(area);
         let mut state = ListState::default();
-        state.select(selected_row);
+        state.select(layout.selected);
+        let rows: Vec<_> = layout
+            .lines
+            .iter()
+            .map(|lines| {
+                ListItem::new(
+                    lines
+                        .iter()
+                        .map(|g| presentation::line(g))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect();
         frame.render_stateful_widget(
             List::new(rows)
-                .block(self.panel(format!(
-                    " Tasks · {}/{} ",
-                    selected_pos + usize::from(matched > 0),
-                    matched
-                )))
                 .highlight_symbol(format!("{} ", self.config.display.select_marker))
                 .highlight_style(
                     Style::default()
@@ -2044,21 +2212,21 @@ impl<'a> App<'a> {
             area,
             &mut state,
         );
-        let mut y = area.y.saturating_add(1);
+        let mut y = area.y;
         let start_x = area.x.saturating_add(
             u16::try_from(self.config.display.select_marker.width())
                 .unwrap_or(u16::MAX)
-                .saturating_add(2),
+                .saturating_add(1),
         );
-        for lines in rich_rows.iter().skip(state.offset()) {
+        for lines in layout.lines.iter().skip(state.offset()) {
             for line in lines {
-                if y >= area.bottom().saturating_sub(1) {
+                if y >= area.bottom() {
                     break;
                 }
                 let mut x = start_x;
                 for g in line {
                     let width = u16::try_from(g.text.width()).unwrap_or(u16::MAX);
-                    if x.saturating_add(width) > area.right().saturating_sub(1) {
+                    if x.saturating_add(width) > area.right() {
                         break;
                     }
                     if let Some(url) = &g.url {
@@ -2197,61 +2365,57 @@ fn help() -> String {
             .join("\n")
     )
 }
-struct PasteGuard;
-impl Drop for PasteGuard {
-    fn drop(&mut self) {
-        let _ = execute!(io::stdout(), DisableBracketedPaste);
-    }
-}
 pub fn run(editor: &mut Editor, path: &Path, config: Config, flags: Overrides) -> io::Result<()> {
-    ratatui::run(|terminal| {
-        execute!(io::stdout(), EnableBracketedPaste)?;
-        let _guard = PasteGuard;
-        let mut app = App::new(editor, path, config, flags);
-        let mut checked = Instant::now();
+    let mut terminal = crate::inline_terminal::InlineTerminal::new()?;
+    let mut app = App::new(editor, path, config, flags);
+    let mut checked = Instant::now();
+    #[cfg(windows)]
+    let mut input = crate::console_input::Reader::new()?;
+    let mut redraw = true;
+    let mut previous_links = Links::new();
+    loop {
+        if redraw {
+            let (width, height) = crossterm::terminal::size()?;
+            if terminal.prepare(width, height, app.height(width, height))? {
+                previous_links.clear();
+            }
+            let completed = terminal.terminal.draw(|f| app.draw(f))?;
+            presentation::sync_links(
+                completed.buffer,
+                &app.links,
+                &previous_links,
+                &mut io::stdout(),
+            )?;
+            previous_links.clone_from(&app.links);
+            terminal.park_cursor()?;
+        }
+        redraw = false;
         #[cfg(windows)]
-        let mut input = crate::console_input::Reader::new()?;
-        let mut redraw = true;
-        let mut previous_links = Links::new();
-        loop {
-            if redraw {
-                let completed = terminal.draw(|f| app.draw(f))?;
-                presentation::sync_links(
-                    completed.buffer,
-                    &app.links,
-                    &previous_links,
-                    &mut io::stdout(),
-                )?;
-                previous_links.clone_from(&app.links);
+        let event = input.next(Duration::from_millis(100))?;
+        #[cfg(not(windows))]
+        let event = if crossterm::event::poll(Duration::from_millis(100))? {
+            Some(crossterm::event::read()?)
+        } else {
+            None
+        };
+        if let Some(event) = event {
+            if app.handle(event) {
+                break;
             }
-            redraw = false;
-            #[cfg(windows)]
-            let event = input.next(Duration::from_millis(100))?;
-            #[cfg(not(windows))]
-            let event = if crossterm::event::poll(Duration::from_millis(100))? {
-                Some(crossterm::event::read()?)
-            } else {
-                None
-            };
-            if let Some(event) = event {
-                if app.handle(event) {
-                    break;
-                }
-                redraw = true;
-            }
-            if checked.elapsed() >= Duration::from_millis(500) {
-                redraw |= app.reload_if_idle();
-                checked = Instant::now();
-            }
+            redraw = true;
         }
-        if let Ok(dir) = config::directory()
-            && app.path.exists()
-        {
-            Recent::record(&dir, app.config.recent.max_files, &app.path, app.selected)
-                .map_err(io::Error::other)?;
+        if checked.elapsed() >= Duration::from_millis(500) {
+            redraw |= app.reload_if_idle();
+            checked = Instant::now();
         }
-        Ok(())
-    })
+    }
+    if let Ok(dir) = config::directory()
+        && app.path.exists()
+    {
+        Recent::record(&dir, app.config.recent.max_files, &app.path, app.selected)
+            .map_err(io::Error::other)?;
+    }
+    Ok(())
 }
 
 // Script input uses the identical state machine, with no raw-mode side effects.
@@ -2383,6 +2547,65 @@ mod tests {
         for event in decode_input(input) {
             assert!(!app.handle(event), "unexpected quit: {input}");
         }
+    }
+    #[test]
+    fn compact_task_input_tracks_document_position_and_cancel() {
+        with_app(|app| {
+            app.settings.show_headings = true;
+            app.selected = 0;
+            let height = app.height(100, 32);
+            assert!(height < 14);
+            keys(app, "nDraft café 🦀");
+            let height = app.height(100, 32);
+            let shown = text(&screen(app, 100, height));
+            let lines: Vec<_> = shown.lines().collect();
+            let row = |s: &str| lines.iter().position(|line| line.contains(s)).unwrap();
+            assert!(row("Alpha") < row("Child"));
+            assert_eq!(row("Child") + 1, row("Draft café"));
+            assert_eq!(row("Draft café") + 1, row("Beta"));
+            assert_eq!(std::fs::read_to_string(&app.path).unwrap(), SOURCE);
+            keys(app, "\x1b");
+            assert_eq!(app.editor.doc.source, SOURCE);
+            keys(app, "e changed");
+            let height = app.height(100, 32);
+            let shown = text(&screen(app, 100, height));
+            assert_eq!(shown.matches("Alpha").count(), 1);
+            assert!(shown.contains("Alpha #work !p2 changed▏"));
+            keys(app, "\r");
+            assert!(
+                std::fs::read_to_string(&app.path)
+                    .unwrap()
+                    .contains("Alpha #work !p2 changed")
+            );
+            keys(app, "u");
+            assert_eq!(app.editor.doc.source, SOURCE);
+            app.section = Some(1);
+            keys(app, "nEmpty section draft");
+            let height = app.height(60, 20);
+            assert!(text(&screen(app, 60, height)).contains("Empty section draft▏"));
+            keys(app, "\x1b");
+        });
+    }
+    #[test]
+    fn append_editor_stays_visible_with_a_limited_task_window() {
+        with_app(|app| {
+            app.editor.doc = Document::parse(
+                (0..100)
+                    .map(|i| format!("- [ ] Task {i}\n"))
+                    .collect::<Vec<_>>()
+                    .concat(),
+            )
+            .unwrap();
+            app.settings.max_visible = 5;
+            keys(app, "NLast draft");
+            for (width, height) in [(40, 12), (80, 24), (100, 32)] {
+                let rows = app.height(width, height);
+                assert!(rows <= height);
+                let shown = text(&screen(app, width, rows));
+                assert!(shown.contains("Last draft▏"), "{shown}");
+                assert!(shown.contains("Task 99"), "{shown}");
+            }
+        });
     }
     #[test]
     fn markdown_complete_source_save_undo_and_conflict() {

@@ -8,6 +8,7 @@ from pathlib import Path
 import platform
 import select
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -18,18 +19,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class WindowsTerminal:
-    def __init__(self, binary, path, config, readonly=False):
+    def __init__(self, binary, path, config, readonly=False, context="", screen=None):
         from winpty import PtyProcess
+        self.screen = screen
+        if screen is not None:
+            import pyte
+            self.stream = pyte.ByteStream(screen)
         self.output = bytearray()
         args = [str(binary), '--file', str(path)] + (['--read-only'] if readonly else [])
+        if context:
+            args = [sys.executable, '-c', 'import os, sys; print(sys.argv[1], end="", flush=True); os.execv(sys.argv[2], sys.argv[2:])', context, *args]
         self.proc = PtyProcess.spawn(args, env={**os.environ, 'XDG_CONFIG_HOME': str(config), 'TERM': 'xterm-256color', 'PYWINPTY_BACKEND': '0'}, dimensions=(32, 100), backend=0)
     def send(self, data): self.proc.write(data.decode('utf-8'))
-    def resize(self, width, height): self.proc.setwinsize(height, width)
+    def resize(self, width, height):
+        if self.screen is not None: self.screen.resize(lines=height, columns=width)
+        self.proc.setwinsize(height, width)
     def pump(self, seconds=0.05):
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             if select.select([self.proc.fileobj], [], [], min(.05, max(0, end-time.monotonic())))[0]:
-                try: self.output.extend(self.proc.read(65536).encode())
+                try:
+                    data = self.proc.read(65536).encode()
+                    self.output.extend(data)
+                    if self.screen is not None: self.stream.feed(data)
                 except EOFError: break
     def until(self, predicate, label):
         end = time.monotonic() + 15
@@ -131,6 +143,8 @@ def main():
     report = {'source': fingerprint(), 'platform': platform.platform(), 'python': platform.python_version(), 'action_cases': a['cases'], 'action_steps': a['steps'], 'application_workflows': len(b['passed']), 'shared_lock': lock_gate(binaries, args.rust_adapter.resolve()), 'terminal': terminal_gate(binaries, args.output), 'binary_sha256': {k: hashlib.sha256(v.read_bytes()).hexdigest() for k,v in binaries.items()}}
     from markdown_check import check as markdown_check
     report['rust_markdown'] = markdown_check(binaries['rust'], args.output)
+    from inline_check import check as inline_check
+    report['rust_inline'] = inline_check(binaries['rust'], args.output)
     (args.output / 'report.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps(report, indent=2))
 

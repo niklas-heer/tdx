@@ -22,7 +22,12 @@ import time
 
 
 class Terminal:
-    def __init__(self, binary, path, config, readonly=False):
+    def __init__(self, binary, path, config, readonly=False, context="", screen=None):
+        self.screen = screen
+        if screen is not None:
+            import pyte
+            self.stream = pyte.ByteStream(screen)
+            screen.write_process_input = lambda reply: self.send(reply.encode())
         self.output = bytearray()
         self.queries = bytearray()
         self.reaped = False
@@ -36,10 +41,12 @@ class Terminal:
             args = [str(binary), "--file", str(path)]
             if readonly:
                 args.append("--read-only")
+            os.write(1, context.encode())
             os.execv(str(binary), args)
         self.resize(100, 32)
 
     def resize(self, width, height):
+        if self.screen is not None: self.screen.resize(lines=height, columns=width)
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ, struct.pack("HHHH", height, width, 0, 0))
         os.kill(self.pid, signal.SIGWINCH)
 
@@ -60,6 +67,9 @@ class Terminal:
             if not data:
                 return
             self.output.extend(data)
+            if self.screen is not None:
+                self.stream.feed(data)
+                continue
             self.queries.extend(data)
             for query, reply in [(b"\x1b[6n", b"\x1b[1;1R"), (b"\x1b[c", b"\x1b[?1;2c")]:
                 while query in self.queries:

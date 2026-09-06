@@ -468,3 +468,11 @@ Every platform also passed the existing 1,154-case/2,993-state action corpus, 58
 The source editor now occupies the full content area at every terminal width. Both Markdown commands edit the complete raw document directly; preview rendering, its cached state and the Ctrl-P toggle have been removed. Normal checklist rendering, the shared save protocol, history and Windows input handling retain their existing behavior.
 
 This refinement passed local formatting, strict Clippy, all-target checks, 61 nextest tests, rustdoc, Python harness regressions and workflow validation. The full compatibility suite passed 1,154 cases, 2,993 action states and 58 application workflows, plus CLI/replay/history interoperability and real PTY source editing, exact mixed-newline/Unicode saves, undo, conflict retention and discard. The wide and narrow source layouts were visually inspected. The simulation milestone above remains a historical snapshot of its recorded revision.
+
+### Inline terminal interaction
+
+The Rust checklist now occupies a compact region in the normal terminal buffer, so earlier shell output remains visible when space permits. `n` inserts at the document insertion position, `N` appends, and `e` edits directly in the task row. Wrapped input keeps its caret visible. Enter saves through the existing guarded-save path; Escape cancels. Help, pickers, history and the full Markdown editor use the same managed region, which shrinks when the checklist returns.
+
+The terminal adapter clears only its own rows on resize; it avoids Ratatui's automatic narrowing behavior that clears the screen. Tests cover compact layout, nested insertion, limited-list append, preceding shell context, Unicode editing, cancellation, save/undo, resizing, tool closure and normal terminal restoration. These checks establish specific interaction contracts, not universal visual parity across all terminal emulators.
+
+Run the screen regression locally with `python experiments/rust-rewrite/inline_check.py --binary dist/rust-rewrite/target/release/tdx-rust --output dist/rust-rewrite/inline-terminal` after installing test-only `pyte==0.8.2` and `wcwidth==0.8.3` in a Python environment. Native CI installs these pinned test dependencies. No application dependency, Rust toolchain, lint policy or save-engine change is needed for this fix.

@@ -6,6 +6,7 @@ mod console_input;
 mod document;
 mod editor;
 mod history;
+mod inline_terminal;
 mod input;
 mod presentation;
 mod recent;
