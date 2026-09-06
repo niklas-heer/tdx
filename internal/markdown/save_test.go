@@ -29,11 +29,11 @@ func (f *failingReplacement) Chmod(os.FileMode) error {
 	}
 	return nil
 }
-func (f *failingReplacement) WriteString(string) (int, error) {
+func (f *failingReplacement) WriteString(content string) (int, error) {
 	if f.stage == "write" {
 		return 0, errors.New("injected write failure")
 	}
-	return 1, nil
+	return len(content), nil
 }
 func (f *failingReplacement) Sync() error {
 	if f.stage == "sync" {
@@ -113,8 +113,14 @@ func TestSaveCrashHelperProcess(t *testing.T) {
 			time.Sleep(time.Hour)
 		}
 	}
-	if err := WriteFile(os.Getenv("TDX_SAVE_PATH"), fm); err != nil {
-		t.Fatal(err)
+	var saveErr error
+	if wanted == "captured-before" {
+		saveErr = WriteFileUnchecked(os.Getenv("TDX_SAVE_PATH"), fm)
+	} else {
+		saveErr = WriteFile(os.Getenv("TDX_SAVE_PATH"), fm)
+	}
+	if saveErr != nil {
+		t.Fatal(saveErr)
 	}
 }
 
@@ -648,7 +654,7 @@ func TestForcePreimageCaptureFailureLeavesOriginal(t *testing.T) {
 }
 
 func TestCrashBoundariesNeverExposePartialTarget(t *testing.T) {
-	for _, stage := range []string{"prepared", "replaced"} {
+	for _, stage := range []string{"prepared", "locked", "validated", "captured-before", "replaced", "synced", "captured-after", "unlocked"} {
 		t.Run(stage, func(t *testing.T) {
 			isolateSaveLocks(t)
 			dir := t.TempDir()
@@ -689,10 +695,11 @@ func TestCrashBoundariesNeverExposePartialTarget(t *testing.T) {
 				t.Fatal(err)
 			}
 			completeReplacement := "# Todos\n\n- [ ] old\n- [ ] new\n"
-			if stage == "prepared" && string(got) != original {
+			beforeCommit := stage == "prepared" || stage == "locked" || stage == "validated" || stage == "captured-before"
+			if beforeCommit && string(got) != original {
 				t.Fatalf("prepared-stage crash changed target: %q", got)
 			}
-			if stage == "replaced" && string(got) != completeReplacement {
+			if !beforeCommit && string(got) != completeReplacement {
 				t.Fatalf("replaced-stage crash left incomplete target: %q", got)
 			}
 			recovered, err := ReadFile(path)

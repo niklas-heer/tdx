@@ -1,10 +1,10 @@
 package markdown
 
 import (
-	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,13 +12,14 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/niklas-heer/tdx/internal/config"
+	"github.com/niklas-heer/tdx/internal/saveprotocol"
 )
 
 var (
 	// ErrFileChanged identifies a conditional save rejected because disk changed.
 	ErrFileChanged = errors.New("file changed externally")
 	// ErrFileBusy identifies a save that could not acquire the tdx lock in time.
-	ErrFileBusy = errors.New("file is busy in another tdx process")
+	ErrFileBusy = saveprotocol.ErrBusy
 	// ErrRevisionUnknown identifies a conditional save attempted without a loaded baseline.
 	ErrRevisionUnknown = errors.New("file revision unavailable; load with ReadFile or use an unchecked write")
 )
@@ -114,19 +115,23 @@ func readDiskRevision(path string) (fileRevision, string, time.Time, error) {
 	if err != nil {
 		return fileRevision{}, "", time.Time{}, err
 	}
+	info, err := os.Stat(target)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fileRevision{target: target}, "", time.Time{}, nil
+	}
+	if err != nil {
+		return fileRevision{}, "", time.Time{}, fmt.Errorf("stat %q: %w", target, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fileRevision{}, "", time.Time{}, fmt.Errorf("%q is not a regular file", target)
+	}
+	// Inspect before reading: a stable FIFO/device path must not block a load.
 	content, err := os.ReadFile(target)
 	if errors.Is(err, fs.ErrNotExist) {
 		return fileRevision{target: target}, "", time.Time{}, nil
 	}
 	if err != nil {
 		return fileRevision{}, "", time.Time{}, fmt.Errorf("read %q: %w", target, err)
-	}
-	info, err := os.Stat(target)
-	if err != nil {
-		return fileRevision{}, "", time.Time{}, fmt.Errorf("stat %q: %w", target, err)
-	}
-	if !info.Mode().IsRegular() {
-		return fileRevision{}, "", time.Time{}, fmt.Errorf("%q is not a regular file", target)
 	}
 	return fileRevision{
 		target: target,
@@ -169,12 +174,15 @@ func prepareReplacement(target, content string) (name string, err error) {
 	closed := false
 	defer func() {
 		if !closed {
-			if closeErr := tmp.Close(); closeErr != nil && err == nil {
-				err = fmt.Errorf("close replacement: %w", closeErr)
+			if closeErr := tmp.Close(); closeErr != nil {
+				err = errors.Join(err, fmt.Errorf("close replacement: %w", closeErr))
 			}
 		}
 		if err != nil {
-			_ = os.Remove(name)
+			// Error returns clear the named result; the file still owns its path.
+			if removeErr := os.Remove(tmp.Name()); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
+				err = errors.Join(err, fmt.Errorf("remove replacement: %w", removeErr))
+			}
 		}
 	}()
 
@@ -183,8 +191,12 @@ func prepareReplacement(target, content string) (name string, err error) {
 			return "", fmt.Errorf("set replacement permissions: %w", err)
 		}
 	}
-	if _, err = tmp.WriteString(content); err != nil {
-		return "", fmt.Errorf("write replacement: %w", err)
+	n, writeErr := tmp.WriteString(content)
+	if writeErr != nil {
+		return "", fmt.Errorf("write replacement: %w", writeErr)
+	}
+	if n != len(content) {
+		return "", fmt.Errorf("write replacement: %w", io.ErrShortWrite)
 	}
 	if err = tmp.Sync(); err != nil {
 		return "", fmt.Errorf("sync replacement: %w", err)
@@ -196,96 +208,143 @@ func prepareReplacement(target, content string) (name string, err error) {
 	return name, nil
 }
 
-func (store Store) writeContent(filePath, content string, expected *fileRevision, fm *FileModel, force bool) (err error) {
-	target, err := resolveTarget(filePath)
-	if err != nil {
-		return err
-	}
-	tmpPath, err := prepareReplacement(target, content)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.Remove(tmpPath) }()
-	if saveStageHook != nil {
-		saveStageHook("prepared")
-	}
+// nativeSave supplies effects; ordering and failure continuation live in the
+// same saveprotocol.Save used by the deterministic simulator.
+type nativeSave struct {
+	store                       Store
+	path, target, content, temp string
+	expected                    *fileRevision
+	model                       *FileModel
+	lock                        *flock.Flock
+	current                     fileRevision
+	diskContent                 string
+}
 
-	path, err := lockPath(target)
-	if err != nil {
-		return err
-	}
-	fileLock := flock.New(path)
-	ctx, cancel := context.WithTimeout(context.Background(), lockWait)
-	defer cancel()
-	locked, err := fileLock.TryLockContext(ctx, lockRetry)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("%w: %s", ErrFileBusy, target)
+func (n *nativeSave) execute(phase saveprotocol.Phase) error {
+	switch phase {
+	case saveprotocol.Prepare:
+		target, err := resolveTarget(n.path)
+		if err != nil {
+			return err
 		}
-		return fmt.Errorf("lock file: %w", err)
-	}
-	if !locked {
-		return fmt.Errorf("%w: %s", ErrFileBusy, target)
-	}
-	committed := false
-	defer func() {
-		if unlockErr := fileLock.Unlock(); unlockErr != nil {
-			if err == nil {
-				if committed {
-					err = &PostCommitError{Err: unlockErr}
-				} else {
-					err = unlockErr
-				}
-			} else {
-				err = errors.Join(err, unlockErr)
+		n.target = target
+		n.temp, err = prepareReplacement(target, n.content)
+		return err
+	case saveprotocol.Lock:
+		if n.lock == nil {
+			path, err := lockPath(n.target)
+			if err != nil {
+				return err
+			}
+			n.lock = flock.New(path)
+		}
+		locked, err := n.lock.TryLock()
+		if err != nil {
+			return fmt.Errorf("lock file: %w", err)
+		}
+		if !locked {
+			return fmt.Errorf("%w: %s", ErrFileBusy, n.target)
+		}
+	case saveprotocol.Validate:
+		current, content, _, err := readCurrentRevision(n.path)
+		if err != nil {
+			return err
+		}
+		// Re-resolve the logical path, not just the prepared target. This also
+		// rejects a symlink retarget during a force-save's preparation.
+		if current.target != n.target || (n.expected != nil && !n.expected.equal(current)) {
+			return &ConflictError{Path: n.path, DiskContent: content}
+		}
+		n.current, n.diskContent = current, content
+	case saveprotocol.CaptureBefore:
+		if n.current.exists && n.store.OnRead != nil {
+			if err := n.store.OnRead(n.target, n.diskContent); err != nil {
+				return fmt.Errorf("capture overwritten version: %w", err)
 			}
 		}
-	}()
-
-	current, diskContent, _, err := readCurrentRevision(target)
-	if err != nil {
-		return err
-	}
-	if expected != nil && !expected.equal(current) {
-		return &ConflictError{Path: target, DiskContent: diskContent}
-	}
-	if force && current.exists && store.OnRead != nil {
-		if err := store.OnRead(target, diskContent); err != nil {
-			return fmt.Errorf("capture overwritten version: %w", err)
+	case saveprotocol.Replace:
+		if err := renameFile(n.temp, n.target); err != nil {
+			return fmt.Errorf("replace file: %w", err)
 		}
-	}
-
-	if err := renameFile(tmpPath, target); err != nil {
-		return fmt.Errorf("replace file: %w", err)
-	}
-	committed = true
-	tmpPath = ""
-	if saveStageHook != nil {
-		saveStageHook("replaced")
-	}
-
-	newRevision := fileRevision{target: target, exists: true, hash: sha256.Sum256([]byte(content))}
-	var modTime time.Time
-	if info, statErr := os.Stat(target); statErr == nil {
-		modTime = info.ModTime()
-	}
-	if fm != nil {
-		fm.setRevision(newRevision, modTime)
-	}
-
-	var postCommitErr error
-	if syncErr := syncParentDirectory(filepath.Dir(target)); syncErr != nil {
-		postCommitErr = fmt.Errorf("sync parent directory: %w", syncErr)
-	}
-	if store.OnWrite != nil {
-		if hookErr := store.OnWrite(target, content); hookErr != nil {
-			postCommitErr = errors.Join(postCommitErr, hookErr)
+		n.temp = ""
+		// Replacement is the commit point, even if later sync/history/unlock fails.
+		if n.model != nil {
+			var modTime time.Time
+			if info, err := os.Stat(n.target); err == nil {
+				modTime = info.ModTime()
+			}
+			n.model.setRevision(fileRevision{target: n.target, exists: true, hash: sha256.Sum256([]byte(n.content))}, modTime)
 		}
-	}
-	if postCommitErr != nil {
-		return &PostCommitError{Err: postCommitErr}
+	case saveprotocol.SyncDirectory:
+		return syncParentDirectory(filepath.Dir(n.target))
+	case saveprotocol.CaptureAfter:
+		if n.store.OnWrite != nil {
+			return n.store.OnWrite(n.target, n.content)
+		}
+	case saveprotocol.Unlock:
+		return n.lock.Unlock()
+	case saveprotocol.Done:
+		return errors.New("completed save scheduled")
 	}
 	return nil
+}
+func (n *nativeSave) cleanup() error {
+	var err error
+	if n.temp != "" {
+		if removeErr := os.Remove(n.temp); !errors.Is(removeErr, fs.ErrNotExist) {
+			err = removeErr
+		}
+	}
+	if n.lock != nil {
+		err = errors.Join(err, n.lock.Close())
+	}
+	return err
+}
+
+func (store Store) writeContent(filePath, content string, expected *fileRevision, fm *FileModel, force bool) (err error) {
+	driver := &nativeSave{store: store, path: filePath, content: content, expected: expected, model: fm}
+	save := saveprotocol.New(force, lockWait)
+	started := time.Now()
+	defer func() {
+		err = errors.Join(err, driver.cleanup())
+		if err != nil && save.Outcome().Committed {
+			err = &PostCommitError{Err: err}
+		}
+	}()
+	for save.Phase() != saveprotocol.Done {
+		phase := save.Phase()
+		effectErr := driver.execute(phase)
+		save.Advance(effectErr, time.Since(started))
+		if effectErr == nil && saveStageHook != nil {
+			saveStageHook(stageName(phase))
+		}
+		if errors.Is(effectErr, ErrFileBusy) && save.Phase() == saveprotocol.Lock {
+			time.Sleep(lockRetry)
+		}
+	}
+	return save.Outcome().Err
+}
+func stageName(phase saveprotocol.Phase) string {
+	switch phase {
+	case saveprotocol.Prepare:
+		return "prepared"
+	case saveprotocol.Lock:
+		return "locked"
+	case saveprotocol.Validate:
+		return "validated"
+	case saveprotocol.CaptureBefore:
+		return "captured-before"
+	case saveprotocol.Replace:
+		return "replaced"
+	case saveprotocol.SyncDirectory:
+		return "synced"
+	case saveprotocol.CaptureAfter:
+		return "captured-after"
+	case saveprotocol.Unlock:
+		return "unlocked"
+	default:
+		return "done"
+	}
 }
 
 // HasUnsavedContent compares the editable document with its loaded disk revision.
