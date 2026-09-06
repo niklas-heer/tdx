@@ -28,7 +28,9 @@ class WindowsTerminal:
         self.output = bytearray()
         args = [str(binary), '--file', str(path)] + (['--read-only'] if readonly else [])
         if context:
-            args = [sys.executable, '-c', 'import os, sys; print(sys.argv[1], end="", flush=True); os.execv(sys.argv[2], sys.argv[2:])', context, *args]
+            # Keep ConPTY's root process alive until the application exits.
+            # Windows os.execv terminates that root instead of replacing it.
+            args = [sys.executable, '-c', 'import subprocess, sys; print(sys.argv[1], end="", flush=True); raise SystemExit(subprocess.call(sys.argv[2:]))', context, *args]
         self.proc = PtyProcess.spawn(args, env={**os.environ, 'XDG_CONFIG_HOME': str(config), 'TERM': 'xterm-256color', 'PYWINPTY_BACKEND': '0'}, dimensions=(32, 100), backend=0)
     def send(self, data): self.proc.write(data.decode('utf-8'))
     def resize(self, width, height):
