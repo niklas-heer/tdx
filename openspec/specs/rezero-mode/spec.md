@@ -1,7 +1,7 @@
 # rezero-mode Specification
 
 ## Purpose
-TBD - created by archiving change add-rezero-mode. Update Purpose after archive.
+Help users choose a manageable work batch through a complete readiness review, retaining inline terminal context and protecting Markdown when continuing unfinished work.
 
 ## Requirements
 
