@@ -616,6 +616,8 @@ Native saves and simulation share the same save protocol. The simulation control
 
 This models save ordering and I/O outcomes, not filesystem or SQLite internals, arbitrary external writes after final validation, or hardware guarantees. Native tests remain necessary. tdx has no network service, so no network implementation is simulated.
 
+[Native validation on September 6, 2026](https://github.com/niklas-heer/tdx/actions/runs/34028123499) passed on Linux, macOS and Windows. Each platform replayed 1,000 seeds with 200 scheduled effects, detected all three negative controls, and completed 1,000 recoveries. Trace digests and fault counts matched across all three platforms.
+
 ### Sustained-use testing
 
 `mise run test:usage` replays 100 simulated hours (36,000 actions) against an independent task oracle, real TUI updates and disk saves. Use `mise run test:usage-cli` for the executable contract and `mise run test:terminal` for actual terminal sessions. See the [harness, measured improvements and rewrite limitations](experiments/usage/README.md) for replay instructions and the distinction between simulated time and wall-clock endurance.
