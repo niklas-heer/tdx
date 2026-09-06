@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           go build -o dist/go-engine/tdx ./cmd/tdx
-          python3 scripts/usage-pty.py --binary dist/go-engine/tdx --output dist/usage/pty
+          bash scripts/test-terminal.sh --binary dist/go-engine/tdx --output dist/usage/pty
       - name: Retain terminal evidence
         if: always() && runner.os != 'Windows'
         uses: actions/upload-artifact@v6

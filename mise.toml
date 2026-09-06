@@ -175,7 +175,7 @@ run = 'go run ./cmd/tdx-usage -driver cli -binary ./tdx -sessions 2 -steps 100 -
 description = "Run real PTY contracts for editing, Unicode, history, resizing and read-only mode (macOS/Linux)"
 depends = ["build"]
 tools.python = "3.14.7"
-run = 'python3 scripts/usage-pty.py "$@"'
+run = 'bash scripts/test-terminal.sh "$@"'
 
 [tasks."profile:usage"]
 description = "Profile bounded TUI sessions and checkbox edits; write CPU/heap profiles to dist/usage/profile"
