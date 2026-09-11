@@ -30,8 +30,10 @@ def run(binary, output):
             args = [str(binary), "--file", str(path)]
             if manual:
                 args.append("--read-only")
+            # pywinpty 3.0.2 treats integer 0 as an omitted backend; its public
+            # spawn adapter accepts the string form and then converts to int.
             process = PtyProcess.spawn(args, env=env, dimensions=(25, 100),
-                                       backend=Backend.ConPTY)
+                                       backend=str(Backend.ConPTY))
             transcript = []
             queries = ""
 
