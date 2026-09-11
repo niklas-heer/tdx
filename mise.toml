@@ -69,7 +69,7 @@ run = "go test ./pipeline"
 
 [tasks.check]
 description = "Run formatting, vet, lint, tests, and workflow validation"
-run = [{ task = "fmt:check" }, { task = "vet" }, { task = "lint" }, { task = "test" }, { task = "test:pipeline" }, { task = "test:release-notes" }, { task = "ci-workflows" }]
+run = [{ task = "fmt:check" }, { task = "vet" }, { task = "lint" }, { task = "test" }, { task = "test:pipeline" }, { task = "test:release-notes" }, { task = "test:installer" }, { task = "ci-workflows" }]
 
 [tasks.ci]
 description = "Run full portable CI in Dagger (requires Docker)"
@@ -213,3 +213,7 @@ run = "python3 scripts/test_install.py"
 [tasks."test:terminal-windows"]
 description = "Run native Windows ConPTY smoke (requires pywinpty==3.0.2)"
 run = "python scripts/usage-conpty.py --binary ./tdx.exe"
+
+[tasks."test:usage-structural"]
+description = "Replay source-preserving structural edits and undo with minimized failure traces"
+run = 'go run ./cmd/tdx-usage -driver structural -sessions 2 -steps 100 -output dist/usage/structural "$@"'

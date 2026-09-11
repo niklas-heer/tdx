@@ -39,6 +39,8 @@ def run(binary, output):
 
             def pump():
                 nonlocal queries
+                # pywinpty forwards ConPTY output to a socket; fd is that
+                # socket's fileno, supported by Windows select (not a pipe).
                 if select.select([process.fd], [], [], 0.05)[0]:
                     try:
                         data = process.read(65536)

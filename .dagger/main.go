@@ -282,6 +282,7 @@ func (m *TdxCi) usageCheck(ctx context.Context, source *dagger.Directory) (strin
 	return m.goBase(source).
 		WithExec([]string{"go", "build", "-o", "/tmp/tdx-usage-binary", "./cmd/tdx"}).
 		WithExec([]string{"go", "run", "./cmd/tdx-usage", "-driver", "cli", "-binary", "/tmp/tdx-usage-binary", "-sessions", "1", "-steps", "40"}).
+		WithExec([]string{"go", "run", "./cmd/tdx-usage", "-driver", "structural", "-sessions", "1", "-steps", "60"}).
 		WithExec([]string{"sh", "-ec", "apt-get update -qq && apt-get install -y --no-install-recommends python3"}).
 		WithExec([]string{"python3", "scripts/usage-pty.py", "--binary", "/tmp/tdx-usage-binary"}).
 		WithExec([]string{"bash", "scripts/test_release_notes.sh"}).

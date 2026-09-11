@@ -33,6 +33,9 @@ jobs:
         run: |
           go build -o /tmp/tdx-campaign ./cmd/tdx
           go run ./cmd/tdx-usage -driver cli -binary /tmp/tdx-campaign -seed "$TDX_CAMPAIGN_SEED" -sessions 2 -steps 200 -output dist/usage/campaign/cli
+      - name: Replay rotating structural edits
+        if: always()
+        run: go run ./cmd/tdx-usage -driver structural -seed "$TDX_CAMPAIGN_SEED" -sessions 8 -steps 500 -output dist/usage/campaign/structural
       - name: Capture bounded diagnostic profiles
         if: always()
         run: |
