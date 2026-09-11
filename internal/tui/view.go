@@ -39,6 +39,9 @@ func (m Model) renderView() string {
 		return m.renderVersionsBrowser()
 	}
 
+	if m.ViewMode != "" {
+		return m.renderViews()
+	}
 	if m.SectionsMode {
 		return m.renderSections()
 	}
@@ -633,8 +636,11 @@ func (m Model) renderStatusBar() string {
 	} else {
 		// Normal status bar with mode indicators and help
 		var indicators []string
+		if m.ActiveView != "" {
+			indicators = append(indicators, m.activeViewLabel())
+		}
 		if m.ReadOnly {
-			indicators = append(indicators, "🔒READ ONLY")
+			indicators = append(indicators, "MANUAL SAVE · :save to write")
 		}
 		if m.FilterDone {
 			indicators = append(indicators, "⊘ FILTERED")
