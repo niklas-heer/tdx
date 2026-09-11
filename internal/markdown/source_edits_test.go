@@ -110,3 +110,65 @@ func TestStructuralBoundaryPreservesIndentedOutsideParagraph(t *testing.T) {
 		}
 	}
 }
+
+func TestOpaqueQuotedCheckboxDoesNotShiftTaskIndexes(t *testing.T) {
+	source := "# Work\n\n- [ ] outer\n  > - [ ] quoted example\n\n# Later\n\n- [ ] after\n\n# Tail\n"
+	for _, first := range []string{"headings", "todos", "edit"} {
+		t.Run(first, func(t *testing.T) {
+			doc, _ := ParseAST(source)
+			if first == "headings" {
+				headings := doc.ExtractHeadings()
+				if len(headings) != 3 || headings[1].BeforeTodoIndex != 1 || headings[2].BeforeTodoIndex != 2 {
+					t.Fatalf("heading task boundaries: %+v", headings)
+				}
+			}
+			if first == "todos" {
+				if len(doc.ExtractTodos()) != 2 {
+					t.Fatal("opaque example became an indexed task")
+				}
+			}
+			if err := doc.UpdateTodoText(1, "changed"); err != nil {
+				t.Fatal(err)
+			}
+			if got := SerializeAST(doc); got != strings.Replace(source, "[ ] after", "[ ] changed", 1) {
+				t.Fatalf("edit selected the wrong checkbox: %q", got)
+			}
+			if err := doc.ToggleTodo(1); err != nil {
+				t.Fatal(err)
+			}
+			if got := SerializeAST(doc); got != strings.Replace(source, "[ ] after", "[x] changed", 1) {
+				t.Fatalf("toggle selected the wrong checkbox: %q", got)
+			}
+			if err := doc.InsertTodoAfter(1, "new", false); err != nil {
+				t.Fatal(err)
+			}
+			if err := doc.DeleteTodo(1); err != nil {
+				t.Fatal(err)
+			}
+			if todos := doc.ExtractTodos(); len(todos) != 2 || todos[1].Text != "new" {
+				t.Fatalf("stale checkbox cache: %+v", todos)
+			}
+			if !strings.Contains(SerializeAST(doc), "> - [ ] quoted example") {
+				t.Fatal("changed opaque quoted example")
+			}
+		})
+	}
+}
+
+func TestEmptyHeadingOperationsRejectWithoutMutation(t *testing.T) {
+	source := "# Work\n\n- [ ] task\n\n#\n"
+	for _, op := range []func(*FileModel) error{
+		func(f *FileModel) error { _, err := f.AddTodoInSection(1, "new"); return err },
+		func(f *FileModel) error { _, err := f.CreateHeading(0, 1, "new"); return err },
+		func(f *FileModel) error { _, err := f.CreateHeading(1, 1, "new"); return err },
+		func(f *FileModel) error { return f.RenameHeading(1, "new") },
+	} {
+		f := ParseMarkdown(source)
+		if err := op(f); err == nil {
+			t.Fatal("expected missing source location error")
+		}
+		if got := SerializeMarkdown(f); got != source {
+			t.Fatalf("changed source: %q", got)
+		}
+	}
+}

@@ -72,11 +72,17 @@ func (fm *FileModel) CreateHeading(afterIndex, level int, title string) (int, er
 	index := len(headings)
 	if afterIndex >= 0 {
 		h := headings[afterIndex]
+		if h.Lines().Len() == 0 {
+			return -1, fmt.Errorf("empty heading source location unavailable")
+		}
 		if h.Parent() != fm.ast.AST {
 			return -1, fmt.Errorf("creating sections inside nested Markdown blocks is not supported")
 		}
 		for i := afterIndex + 1; i < len(headings); i++ {
 			if headings[i].Level <= h.Level {
+				if headings[i].Lines().Len() == 0 {
+					return -1, fmt.Errorf("empty heading source location unavailable")
+				}
 				at = fm.ast.lineStart(headings[i].Lines().At(0).Start)
 				index = i
 				break
@@ -108,6 +114,9 @@ func (fm *FileModel) AddTodoInSection(index int, title string) (int, error) {
 		return -1, fmt.Errorf("task title must be a single line")
 	}
 	h := headings[index]
+	if h.Lines().Len() == 0 {
+		return -1, fmt.Errorf("empty heading source location unavailable")
+	}
 	if h.Parent() != fm.ast.AST {
 		return -1, fmt.Errorf("adding tasks to nested Markdown sections is not supported")
 	}

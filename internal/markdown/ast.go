@@ -162,6 +162,15 @@ type Heading struct {
 
 // ExtractHeadings walks the AST and extracts all headings with their positions relative to todos
 func (doc *ASTDocument) ExtractHeadings() []Heading {
+	// Count the same exposed tasks as ExtractTodos. Checkboxes in opaque nested
+	// containers (for example a quoted example inside a task body) are not indexes.
+	if doc.checkboxes == nil {
+		doc.ExtractTodos()
+	}
+	indexed := make(map[ast.Node]bool, len(doc.checkboxes))
+	for _, checkbox := range doc.checkboxes {
+		indexed[checkbox] = true
+	}
 	var headings []Heading
 	nextTodoIndex := 0
 
@@ -194,7 +203,7 @@ func (doc *ASTDocument) ExtractHeadings() []Heading {
 		}
 
 		// Count todos as we encounter them
-		if node.Kind() == extast.KindTaskCheckBox {
+		if indexed[node] {
 			nextTodoIndex++
 		}
 
@@ -292,57 +301,32 @@ func (doc *ASTDocument) extractTodoText(listItem ast.Node, checkbox ast.Node) st
 
 // FindTodoNode finds the TodoNode for a given todo index
 func (doc *ASTDocument) FindTodoNode(todoIndex int) (*TodoNode, error) {
-	currentIndex := 0
-
-	var found *TodoNode
-	_ = ast.Walk(doc.AST, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering || found != nil {
-			return ast.WalkContinue, nil
-		}
-
-		if node.Kind() == extast.KindTaskCheckBox {
-			if currentIndex == todoIndex {
-				checkbox := node.(*extast.TaskCheckBox)
-				textBlock := checkbox.Parent()
-				if textBlock == nil {
-					return ast.WalkContinue, nil
-				}
-				listItem := textBlock.Parent()
-				if listItem == nil {
-					return ast.WalkContinue, nil
-				}
-
-				// Find the text node containing the checkbox text
-				var textNode *ast.Text
-				_ = ast.Walk(textBlock, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-					if entering {
-						if tn, ok := n.(*ast.Text); ok {
-							textNode = tn
-							return ast.WalkStop, nil
-						}
-					}
-					return ast.WalkContinue, nil
-				})
-
-				found = &TodoNode{
-					ListItem: listItem.(*ast.ListItem),
-					CheckBox: checkbox,
-					TextNode: textNode,
-					Checked:  checkbox.IsChecked,
-				}
-				return ast.WalkStop, nil
-			}
-			currentIndex++
-		}
-
-		return ast.WalkContinue, nil
-	})
-
-	if found == nil {
+	if doc.checkboxes == nil {
+		doc.ExtractTodos()
+	}
+	if todoIndex < 0 || todoIndex >= len(doc.checkboxes) {
 		return nil, fmt.Errorf("todo at index %d not found", todoIndex)
 	}
-
-	return found, nil
+	checkbox := doc.checkboxes[todoIndex]
+	container := checkbox.Parent()
+	if container == nil {
+		return nil, fmt.Errorf("task checkbox has no text container")
+	}
+	item, ok := container.Parent().(*ast.ListItem)
+	if !ok {
+		return nil, fmt.Errorf("task checkbox has no list item")
+	}
+	var textNode *ast.Text
+	_ = ast.Walk(container, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			if text, ok := node.(*ast.Text); ok {
+				textNode = text
+				return ast.WalkStop, nil
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return &TodoNode{ListItem: item, CheckBox: checkbox, TextNode: textNode, Checked: checkbox.IsChecked}, nil
 }
 
 // ToggleTodo toggles the checked state of a todo
