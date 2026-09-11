@@ -127,7 +127,9 @@ func TestClearSavedViewAndStorageError(t *testing.T) {
 		t.Fatal("clear failed")
 	}
 	bad := filepath.Join(t.TempDir(), "file")
-	os.WriteFile(bad, []byte("x"), 0600)
+	if err := os.WriteFile(bad, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	m.Config().Views = config.NewFileViewStore(bad)
 	m.openViews("save")
 	if m.Err == nil || m.ViewMode != "" {

@@ -9,7 +9,9 @@ import (
 func TestViewStoreCanonicalFilesAndIsolation(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "todo.md")
-	os.WriteFile(file, []byte("- [ ] task\n"), 0600)
+	if err := os.WriteFile(file, []byte("- [ ] task\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	store := FileViewStore{Dir: t.TempDir()}
 	state := &SavedViews{Active: "Work", Views: map[string]SavedView{"Work": {FilterDone: true}}}
 	if err := store.Save(file, state); err != nil {
@@ -37,7 +39,9 @@ func TestViewStoreCanonicalFilesAndIsolation(t *testing.T) {
 		t.Fatal("delete did not persist")
 	}
 	path, _ := store.path(file)
-	os.WriteFile(path, []byte("broken"), 0600)
+	if err := os.WriteFile(path, []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := store.Load(file); err == nil {
 		t.Fatal("corrupt views silently ignored")
 	}
@@ -53,7 +57,9 @@ func TestViewStoreValidationAndMissingCanonicalParent(t *testing.T) {
 	}
 	dir := t.TempDir()
 	real := filepath.Join(dir, "real")
-	os.Mkdir(real, 0700)
+	if err := os.Mkdir(real, 0700); err != nil {
+		t.Fatal(err)
+	}
 	alias := filepath.Join(dir, "alias")
 	if err := os.Symlink(real, alias); err != nil {
 		t.Skip(err)
