@@ -3,7 +3,6 @@ package editor
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
@@ -59,10 +58,10 @@ func Apply(doc *markdown.FileModel, action Action) (int, error) {
 	}
 	switch action.Kind {
 	case Add:
-		doc.AddTodoItem(action.Text, action.Checked)
-		return len(doc.Todos) - 1, nil
+		err := doc.AddTodoItemChecked(action.Text, action.Checked)
+		return len(doc.Todos) - 1, err
 	case Insert:
-		return doc.InsertTodoItemAfter(index, action.Text, action.Checked), nil
+		return doc.InsertTodoItemAfterChecked(index, action.Text, action.Checked)
 	case AddInSection:
 		return doc.AddTodoInSection(index, action.Text)
 	case Edit:
@@ -74,9 +73,11 @@ func Apply(doc *markdown.FileModel, action Action) (int, error) {
 	case Delete:
 		return index, doc.DeleteTodoItem(index)
 	case Move:
-		return action.Target, doc.MoveTodoItem(index, action.Target)
+		moved := moveResultIndex(doc.Todos, index, action.Target, index < action.Target)
+		return moved, doc.MoveTodoItem(index, action.Target)
 	case MoveToPosition:
-		return action.Target, doc.MoveTodoItemToPosition(index, action.Target, action.InsertAfter)
+		moved := moveResultIndex(doc.Todos, index, action.Target, action.InsertAfter)
+		return moved, doc.MoveTodoItemToPosition(index, action.Target, action.InsertAfter)
 	case Indent:
 		return index, doc.IndentTodoItem(index)
 	case Outdent:
@@ -95,37 +96,58 @@ func Apply(doc *markdown.FileModel, action Action) (int, error) {
 		}
 		return index, nil
 	case ClearDone:
+		snapshot := doc.Clone()
 		for i := len(doc.Todos) - 1; i >= 0; i-- {
 			if doc.Todos[i].Checked {
 				if _, err := Apply(doc, Action{Kind: Delete, Index: i}); err != nil {
+					doc.RestoreContent(snapshot)
 					return -1, err
 				}
 			}
 		}
 		return index, nil
 	case SortDone, SortDue, SortPriority:
-		SortTodosInSections(doc.Todos, doc.GetHeadings(), func(todos []markdown.Todo) {
-			sort.SliceStable(todos, func(i, j int) bool {
-				a, b := todos[i], todos[j]
-				switch action.Kind {
-				case SortDone:
-					return !a.Checked && b.Checked
-				case SortDue:
-					if a.DueDate == nil {
-						return false
-					}
-					return b.DueDate == nil || a.DueDate.Before(*b.DueDate)
-				default:
-					if a.Priority == 0 {
-						return false
-					}
-					return b.Priority == 0 || a.Priority < b.Priority
+		return index, doc.SortTodos(func(a, b markdown.Todo) bool {
+			switch action.Kind {
+			case SortDone:
+				return !a.Checked && b.Checked
+			case SortDue:
+				if a.DueDate == nil {
+					return false
 				}
-			})
+				return b.DueDate == nil || a.DueDate.Before(*b.DueDate)
+			default:
+				if a.Priority == 0 {
+					return false
+				}
+				return b.Priority == 0 || a.Priority < b.Priority
+			}
 		})
-		markdown.RebuildFileStructure(doc)
-		return index, nil
 	default:
 		return -1, fmt.Errorf("unknown editor action: %q", action.Kind)
 	}
+}
+
+func moveResultIndex(todos []markdown.Todo, from, target int, after bool) int {
+	if from == target {
+		return from
+	}
+	if from < 0 || target < 0 || from >= len(todos) || target >= len(todos) {
+		return -1
+	}
+	end := from + 1
+	for end < len(todos) && todos[end].Depth > todos[from].Depth {
+		end++
+	}
+	insert := target
+	if after {
+		insert++
+		for insert < len(todos) && todos[insert].Depth > todos[target].Depth {
+			insert++
+		}
+	}
+	if insert > from {
+		insert -= end - from
+	}
+	return insert
 }
