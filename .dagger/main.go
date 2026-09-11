@@ -285,5 +285,6 @@ func (m *TdxCi) usageCheck(ctx context.Context, source *dagger.Directory) (strin
 		WithExec([]string{"sh", "-ec", "apt-get update -qq && apt-get install -y --no-install-recommends python3"}).
 		WithExec([]string{"python3", "scripts/usage-pty.py", "--binary", "/tmp/tdx-usage-binary"}).
 		WithExec([]string{"bash", "scripts/test_release_notes.sh"}).
+		WithExec([]string{"python3", "scripts/test_install.py"}).
 		Stdout(ctx)
 }

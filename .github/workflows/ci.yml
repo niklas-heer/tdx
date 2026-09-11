@@ -11,60 +11,13 @@ permissions:
   contents: read
 
 jobs:
-  portable:
-    name: Portable
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7.0.1
-
-      - uses: jdx/mise-action@v4.3.0
-      - name: Run portable CI
-        run: mise run ci
-
-  native:
-    name: Native (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7.0.1
-
-      - name: Set up Go
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-
-      - name: Build native binary
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            go build -v -o tdx.exe ./cmd/tdx
-          else
-            go build -v -o tdx ./cmd/tdx
-          fi
-
-      - name: Run native filesystem tests
-        run: go test -v ./internal/markdown ./internal/versioning
-
-      - name: Test native binary execution
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            ./tdx.exe --version
-          else
-            ./tdx --version
-          fi
+  validate:
+    uses: ./.github/workflows/validate.yml
 
   coverage-badge:
     name: Coverage badge
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: portable
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -204,3 +204,12 @@ go test ./internal/markdown -run '^$' -bench BenchmarkLoadedCheckbox -benchmem -
 description = "Verify reviewed release notes offline"
 tools.python = "3.14.7"
 run = "bash scripts/test_release_notes.sh"
+
+[tasks."test:installer"]
+description = "Verify installs and checksum/download failures against offline fixtures"
+tools.python = "3.14.7"
+run = "python3 scripts/test_install.py"
+
+[tasks."test:terminal-windows"]
+description = "Run native Windows ConPTY smoke (requires pywinpty==3.0.2)"
+run = "python scripts/usage-conpty.py --binary ./tdx.exe"
