@@ -1,0 +1,468 @@
+{
+  "schema_version": 1,
+  "data_kind": "synthetic_usability_rehearsal",
+  "synthetic": true,
+  "seed": 20260912,
+  "real_participants": 0,
+  "generated_for": "Rehearsing a five-person study, its recording format and analysis only",
+  "warning": "All profiles, task outcomes, timings and observations are invented. No humans were recruited or observed. These values are not measurements, forecasts, testimonials or evidence that the implementation improves usability. Do not merge with real study results or automated benchmark measurements.",
+  "conditions": {
+    "baseline": "Hypothetical manual-filter workflow; not an observed baseline",
+    "proposed": "Hypothetical saved-view workflow; not observed implementation behavior"
+  },
+  "method": "Seeded Gaussian illustrative timings with task-specific centers and explicit hypothetical assistance/failure cases. Centers encode assumptions, not findings.",
+  "participants": [
+    {
+      "id": "S01",
+      "hypothetical_profile": "CLI-focused developer",
+      "hypothetical_experience": "Daily terminal use; new to tdx",
+      "synthetic": true,
+      "tasks": [
+        {
+          "task": "capture",
+          "scenario": "Capture a new project task",
+          "baseline_seconds": 29,
+          "proposed_seconds": 27,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "save_view",
+          "scenario": "Prepare a reusable Today/project task subset",
+          "baseline_seconds": 59,
+          "proposed_seconds": 76,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false,
+          "baseline_scenario": "Configure filters and record their recipe outside the app",
+          "proposed_scenario": "Configure filters and save a named view"
+        },
+        {
+          "task": "reopen_view",
+          "scenario": "Return to that task subset in a later session",
+          "baseline_seconds": 37,
+          "proposed_seconds": 5,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false,
+          "baseline_scenario": "Reapply recorded filters manually in a later session",
+          "proposed_scenario": "Load the named view in a later session"
+        },
+        {
+          "task": "nested_edit",
+          "scenario": "Edit a nested task without affecting its notes",
+          "baseline_seconds": 28,
+          "proposed_seconds": 29,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "clear_filters",
+          "scenario": "Return to all tasks",
+          "baseline_seconds": 23,
+          "proposed_seconds": 16,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "recover",
+          "scenario": "Undo an accidental edit",
+          "baseline_seconds": 16,
+          "proposed_seconds": 13,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        }
+      ],
+      "illustrative_observation": "Hypothesis: a CLI-first user may prefer query flags and completion over the view picker."
+    },
+    {
+      "id": "S02",
+      "hypothetical_profile": "Occasional terminal user",
+      "hypothetical_experience": "Comfortable with Markdown; rarely uses modal editors",
+      "synthetic": true,
+      "tasks": [
+        {
+          "task": "capture",
+          "scenario": "Capture a new project task",
+          "baseline_seconds": 18,
+          "proposed_seconds": 21,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": true
+        },
+        {
+          "task": "save_view",
+          "scenario": "Prepare a reusable Today/project task subset",
+          "baseline_seconds": 46,
+          "proposed_seconds": 54,
+          "proposed_success": false,
+          "proposed_assistance": true,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": true,
+          "baseline_scenario": "Configure filters and record their recipe outside the app",
+          "proposed_scenario": "Configure filters and save a named view"
+        },
+        {
+          "task": "reopen_view",
+          "scenario": "Return to that task subset in a later session",
+          "baseline_seconds": 58,
+          "proposed_seconds": 5,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": false,
+          "baseline_assistance": false,
+          "baseline_scenario": "Reapply recorded filters manually in a later session",
+          "proposed_scenario": "Load the named view in a later session"
+        },
+        {
+          "task": "nested_edit",
+          "scenario": "Edit a nested task without affecting its notes",
+          "baseline_seconds": 39,
+          "proposed_seconds": 43,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "clear_filters",
+          "scenario": "Return to all tasks",
+          "baseline_seconds": 33,
+          "proposed_seconds": 17,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "recover",
+          "scenario": "Undo an accidental edit",
+          "baseline_seconds": 14,
+          "proposed_seconds": 19,
+          "proposed_success": true,
+          "proposed_assistance": true,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": true
+        }
+      ],
+      "illustrative_observation": "Hypothesis: first-time view creation may need clearer help; explicit save-mode wording may still need explanation."
+    },
+    {
+      "id": "S03",
+      "hypothetical_profile": "Vim user",
+      "hypothetical_experience": "Uses keyboard navigation; manages nested project notes",
+      "synthetic": true,
+      "tasks": [
+        {
+          "task": "capture",
+          "scenario": "Capture a new project task",
+          "baseline_seconds": 21,
+          "proposed_seconds": 25,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "save_view",
+          "scenario": "Prepare a reusable Today/project task subset",
+          "baseline_seconds": 51,
+          "proposed_seconds": 65,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false,
+          "baseline_scenario": "Configure filters and record their recipe outside the app",
+          "proposed_scenario": "Configure filters and save a named view"
+        },
+        {
+          "task": "reopen_view",
+          "scenario": "Return to that task subset in a later session",
+          "baseline_seconds": 47,
+          "proposed_seconds": 26,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false,
+          "baseline_scenario": "Reapply recorded filters manually in a later session",
+          "proposed_scenario": "Load the named view in a later session"
+        },
+        {
+          "task": "nested_edit",
+          "scenario": "Edit a nested task without affecting its notes",
+          "baseline_seconds": 40,
+          "proposed_seconds": 49,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "clear_filters",
+          "scenario": "Return to all tasks",
+          "baseline_seconds": 24,
+          "proposed_seconds": 20,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "recover",
+          "scenario": "Undo an accidental edit",
+          "baseline_seconds": 19,
+          "proposed_seconds": 32,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        }
+      ],
+      "illustrative_observation": "Hypothesis: keyboard familiarity helps navigation, while confidence depends on preserving nested notes."
+    },
+    {
+      "id": "S04",
+      "hypothetical_profile": "Windows developer",
+      "hypothetical_experience": "PowerShell user; switches between GUI and terminal",
+      "synthetic": true,
+      "tasks": [
+        {
+          "task": "capture",
+          "scenario": "Capture a new project task",
+          "baseline_seconds": 20,
+          "proposed_seconds": 26,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "save_view",
+          "scenario": "Prepare a reusable Today/project task subset",
+          "baseline_seconds": 57,
+          "proposed_seconds": 64,
+          "proposed_success": true,
+          "proposed_assistance": true,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false,
+          "baseline_scenario": "Configure filters and record their recipe outside the app",
+          "proposed_scenario": "Configure filters and save a named view"
+        },
+        {
+          "task": "reopen_view",
+          "scenario": "Return to that task subset in a later session",
+          "baseline_seconds": 44,
+          "proposed_seconds": 18,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false,
+          "baseline_scenario": "Reapply recorded filters manually in a later session",
+          "proposed_scenario": "Load the named view in a later session"
+        },
+        {
+          "task": "nested_edit",
+          "scenario": "Edit a nested task without affecting its notes",
+          "baseline_seconds": 37,
+          "proposed_seconds": 45,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "clear_filters",
+          "scenario": "Return to all tasks",
+          "baseline_seconds": 30,
+          "proposed_seconds": 14,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": true
+        },
+        {
+          "task": "recover",
+          "scenario": "Undo an accidental edit",
+          "baseline_seconds": 23,
+          "proposed_seconds": 23,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        }
+      ],
+      "illustrative_observation": "Hypothesis: clipboard availability and path handling may influence trust independently of saved views."
+    },
+    {
+      "id": "S05",
+      "hypothetical_profile": "Returning checklist user",
+      "hypothetical_experience": "Uses tdx weekly; values temporary checklist changes",
+      "synthetic": true,
+      "tasks": [
+        {
+          "task": "capture",
+          "scenario": "Capture a new project task",
+          "baseline_seconds": 22,
+          "proposed_seconds": 26,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "save_view",
+          "scenario": "Prepare a reusable Today/project task subset",
+          "baseline_seconds": 52,
+          "proposed_seconds": 75,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false,
+          "baseline_scenario": "Configure filters and record their recipe outside the app",
+          "proposed_scenario": "Configure filters and save a named view"
+        },
+        {
+          "task": "reopen_view",
+          "scenario": "Return to that task subset in a later session",
+          "baseline_seconds": 53,
+          "proposed_seconds": 24,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false,
+          "baseline_scenario": "Reapply recorded filters manually in a later session",
+          "proposed_scenario": "Load the named view in a later session"
+        },
+        {
+          "task": "nested_edit",
+          "scenario": "Edit a nested task without affecting its notes",
+          "baseline_seconds": 40,
+          "proposed_seconds": 45,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "clear_filters",
+          "scenario": "Return to all tasks",
+          "baseline_seconds": 22,
+          "proposed_seconds": 5,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        },
+        {
+          "task": "recover",
+          "scenario": "Undo an accidental edit",
+          "baseline_seconds": 12,
+          "proposed_seconds": 15,
+          "proposed_success": true,
+          "proposed_assistance": false,
+          "synthetic": true,
+          "baseline_success": true,
+          "baseline_assistance": false
+        }
+      ],
+      "illustrative_observation": "Hypothesis: reopening a saved checklist view may help repeated use, but initial setup has a learning cost."
+    }
+  ],
+  "illustrative_summary": [
+    {
+      "task": "capture",
+      "baseline_median_seconds": 21,
+      "proposed_median_seconds": 26,
+      "proposed_successes": 5,
+      "assisted_attempts": 0,
+      "baseline_successes": 5,
+      "baseline_assisted_attempts": 1
+    },
+    {
+      "task": "save_view",
+      "baseline_median_seconds": 52,
+      "proposed_median_seconds": 65,
+      "proposed_successes": 4,
+      "assisted_attempts": 2,
+      "baseline_successes": 5,
+      "baseline_assisted_attempts": 1
+    },
+    {
+      "task": "reopen_view",
+      "baseline_median_seconds": 47,
+      "proposed_median_seconds": 18,
+      "proposed_successes": 5,
+      "assisted_attempts": 0,
+      "baseline_successes": 4,
+      "baseline_assisted_attempts": 0
+    },
+    {
+      "task": "nested_edit",
+      "baseline_median_seconds": 39,
+      "proposed_median_seconds": 45,
+      "proposed_successes": 5,
+      "assisted_attempts": 0,
+      "baseline_successes": 5,
+      "baseline_assisted_attempts": 0
+    },
+    {
+      "task": "clear_filters",
+      "baseline_median_seconds": 24,
+      "proposed_median_seconds": 16,
+      "proposed_successes": 5,
+      "assisted_attempts": 0,
+      "baseline_successes": 5,
+      "baseline_assisted_attempts": 1
+    },
+    {
+      "task": "recover",
+      "baseline_median_seconds": 16,
+      "proposed_median_seconds": 19,
+      "proposed_successes": 5,
+      "assisted_attempts": 1,
+      "baseline_successes": 5,
+      "baseline_assisted_attempts": 1
+    }
+  ],
+  "next_step": "Replace synthetic records with consented observations before drawing usability conclusions."
+}
