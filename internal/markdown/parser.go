@@ -224,9 +224,16 @@ func (fm *FileModel) syncTodosToAST() {
 
 // AddTodoItem adds a new todo at the end of the file
 func (fm *FileModel) AddTodoItem(text string, checked bool) {
+	_ = fm.AddTodoItemChecked(text, checked)
+}
+
+// AddTodoItemChecked reports unsupported source edits to interactive/CLI callers.
+func (fm *FileModel) AddTodoItemChecked(text string, checked bool) error {
 	if fm.ast != nil {
 		// Use AST for adding
-		_ = fm.ast.AddTodo(text, checked)
+		if err := fm.ast.AddTodo(text, checked); err != nil {
+			return err
+		}
 		// Re-extract todos to keep cache in sync
 		fm.Todos = fm.ast.ExtractTodos()
 	} else {
@@ -240,26 +247,38 @@ func (fm *FileModel) AddTodoItem(text string, checked bool) {
 		fm.Todos = append(fm.Todos, newTodo)
 		fm.Lines = append(fm.Lines, fmt.Sprintf("- [%s] %s", map[bool]string{true: "x", false: " "}[checked], text))
 	}
+	return nil
 }
 
 // InsertTodoItemAfter inserts a new todo after the specified index
 // If afterIndex is -1, inserts at the beginning
 // Returns the index of the newly inserted todo
 func (fm *FileModel) InsertTodoItemAfter(afterIndex int, text string, checked bool) int {
+	index, _ := fm.InsertTodoItemAfterChecked(afterIndex, text, checked)
+	return index
+}
+
+// InsertTodoItemAfterChecked returns the actual index after the selected subtree.
+func (fm *FileModel) InsertTodoItemAfterChecked(afterIndex int, text string, checked bool) (int, error) {
 	if fm.ast != nil {
+		insert := afterIndex + 1
+		if afterIndex >= 0 && afterIndex < len(fm.Todos) {
+			for insert < len(fm.Todos) && fm.Todos[insert].Depth > fm.Todos[afterIndex].Depth {
+				insert++
+			}
+		}
 		// Use AST for inserting
-		_ = fm.ast.InsertTodoAfter(afterIndex, text, checked)
+		if err := fm.ast.InsertTodoAfter(afterIndex, text, checked); err != nil {
+			return -1, err
+		}
 		// Re-extract todos to keep cache in sync
 		fm.Todos = fm.ast.ExtractTodos()
 		// Return the new index (afterIndex + 1, or 0 if inserting at beginning)
-		if afterIndex < 0 {
-			return 0
-		}
-		return afterIndex + 1
+		return insert, nil
 	}
 	// Legacy fallback - just append
 	fm.AddTodoItem(text, checked)
-	return len(fm.Todos) - 1
+	return len(fm.Todos) - 1, nil
 }
 
 // UpdateTodoItem updates an existing todo
