@@ -20,7 +20,8 @@ A fast, single-binary CLI todo manager focused on developer experience. Features
 - ⌨️ **Vim-style navigation** - `j/k`, relative jumps (`5j`), number keys
 - 🖥️ **Interactive TUI** - Toggle, create, edit, delete, undo, move, copy
 - 🎯 **Command Palette** - Helix-style `:` commands with fuzzy search
-- 📋 **Read-Only Mode** - Prevent auto-save, check/uncheck all, filter done
+- 📋 **Manual Save** - Reuse checklists without automatic writes; legacy read-only options remain supported
+- 🔖 **Saved Views** - Save per-file filters and section focus; optionally restore the last view
 - 🔧 **Scriptable** - Filtered JSON output and `list`, `add`, `toggle`, `edit`, `delete` commands
 - 🔄 **Smart Conflict Handling** - Atomic saves, external-change detection, visual conflict diffs
 - 🕘 **Version History** - Automatic snapshots with visual diffs and safe restore
@@ -43,7 +44,7 @@ Press **s** to open the section overview. It lists every Markdown heading, inclu
 | a | Show all tasks and clear folds |
 | Esc | Return to the task list |
 
-While focused, **n** adds a task after the selection; in an empty section it creates that section's first task. **N** adds to the focused section's own task list. Press **S** to return to all sections. Tag, priority, due-date, completed-task filters, and search respect the current section. Focus and folds last for the current session and reset when a file is reloaded, headings change, or an edit is undone. **u** undoes up to 100 edits during the session.
+While focused, **n** adds a task after the selection; in an empty section it creates that section's first task. **N** adds to the focused section's own task list. Press **S** to return to all sections. Tag, priority, due-date, completed-task filters, and search respect the current section. Focus and folds last for the current session and reset when a file is reloaded, headings change, or an edit is undone. Save a named view to recall them later. **u** undoes up to 100 edits during the session.
 
 Section editing uses the same guarded saves and version history as task editing. Read-only files support section browsing and focus without permitting heading edits.
 
@@ -61,6 +62,21 @@ Section editing uses the same guarded saves and version history as task editing.
 - Use mise for reproducible development tools and tasks. `mise tasks` lists available commands; `mise run check` runs local validation.
 - Installation defaults to `~/.local/bin`; set `TDX_INSTALL_DIR` to choose another directory. Existing todo files and global configuration remain compatible.
 
+## Saved views
+
+Set your tag (`t`), priority (`p`), due-date (`D`), completed-task and section filters, then run `:save-view`. Enter a name such as `Today` or `Backend`. Use `:views` to select a saved view, `:delete-view` to remove one, and `:clear-view` to show all tasks and stop restoring that view. Replacing or deleting a view requires confirmation; `Esc` cancels.
+
+The status bar shows the active view and marks it modified if you change its filters. Views include heading visibility, section focus and folds. Section references follow heading ancestry and repeated-title occurrence; removed or renamed headings are skipped when loading a view. Task text and Markdown files are never changed by saving a view.
+
+Views are stored per canonical file path in the configuration directory, so opening a file through a symlink shares its views. To reopen the last saved/selected view automatically, opt in through `~/.config/tdx/config.toml`:
+
+```toml
+[views]
+restore = true
+```
+
+Without this setting, views are loaded only when requested. Changes to an active view are not saved until `:save-view` is used again.
+
 ## Scripting and editor integrations
 
 Query a project without opening the TUI or writing history:
@@ -71,11 +87,16 @@ tdx tasks.md list --status done
 tdx tasks.md list --json | jq -r '.[] | select(.priority == 1) | .text'
 tdx add -- --read-only          # Add literal flag-like text
 tdx --read-only tasks.md list   # Reads work; CLI writes are rejected
+# Query a heading and its descendants without renumbering tasks
+tdx tasks.md list --json --section Backend --priority 1 --due week
+# Explicit completion is safe to retry
+tdx tasks.md done 2
+tdx tasks.md undone 2
 ```
 
 `--file` (or `-f`) accepts any filename, including paths with spaces or without a `.md` extension. The positional `tdx tasks.md …` syntax still works. Options may appear before or after the command; use `--` before task text that starts with a dash. Shell quoting is preserved as received, including intentional quote characters in task text.
 
-`list` supports `--status all|open|done` (default `all`) and exact, case-sensitive `--tag` filters, with or without the leading `#`. Repeat `--tag` to require every tag. Filters apply to both text and JSON output. An empty JSON result is `[]`, including when the todo file does not exist; listing does not create that file or require a writable history directory.
+`list` supports `--status all|open|done` (default `all`) and exact, case-sensitive `--tag` filters, with or without the leading `#`. Repeat `--tag` to require every tag. Filters apply to both text and JSON output. `--priority N` matches an exact priority (`0` means unset). `--due` accepts `all` (has a due date), `none`, `overdue`, `today`, `week` (today through seven days ahead), or an exact `YYYY-MM-DD` date. Relative dates use the local calendar. `--section "Heading title"` matches the exact Markdown heading title and includes its subsections; repeated titles select all matching sections. These filters compose with status and tags. An empty JSON result is `[]`, including when the todo file does not exist; listing does not create that file or require a writable history directory.
 
 Each JSON task contains:
 
@@ -87,7 +108,41 @@ Each JSON task contains:
 | `tags`, `priority` | Tag array (empty is `[]`); priority `0` means unset |
 | `due_date` | `YYYY-MM-DD` or `null` |
 
-Indexes are positions, **not persistent IDs**: re-query after inserting, deleting, reordering, or externally editing tasks before using an index in a write command. JSON goes only to stdout; errors go to stderr with exit code 1. Successful commands exit 0. The schema remains subject to change during pre-1.0 development.
+Indexes are positions, **not persistent IDs**: re-query after inserting, deleting, reordering, or externally editing tasks before using an index in a write command. JSON goes only to stdout; errors go to stderr with exit code 1. Successful commands exit 0. The existing array shape and field meanings are retained. Consumers should ignore additional fields. Removing or changing a field's type or meaning requires an explicitly versioned contract and migration guidance, including during pre-1.0 development.
+
+### Guard scripts against intervening edits
+
+Use `list --with-revision` for one consistent snapshot of both the query result and the document revision:
+
+```json
+{"schema_version": 1, "revision": "sha256:<64 lowercase hex digits>", "tasks": []}
+```
+
+`--with-revision` implies JSON and changes the top-level shape to this envelope; ordinary `--json` continues to return an array. The revision covers the entire file, including frontmatter and line endings. A nonexistent file returns `missing`, which differs from an existing empty file. `tdx tasks.md revision` prints only the revision token and does not create history or configuration files.
+
+```bash
+snapshot=$(tdx tasks.md list --with-revision --status open --tag backend)
+revision=$(printf '%s' "$snapshot" | jq -r .revision)
+index=$(printf '%s' "$snapshot" | jq -r '.tasks[0].index // empty')
+if [ -n "$index" ]; then
+  tdx tasks.md done "$index" --if-revision "$revision"
+fi
+```
+
+All task mutation commands support `--if-revision`. A stale revision fails before changing the document; query again and reconsider the selected task. Changes that arrive after loading are still caught by the normal locked save. `done` and `undone` leave an already-correct file unchanged, but a supplied stale revision still fails. Revision tokens detect intervening content changes; they are not persistent task identities or authentication tokens.
+
+### Shell completion
+
+```bash
+# Bash: add to ~/.bashrc
+source <(tdx completion bash)
+# Zsh: after autoload -Uz compinit && compinit
+source <(tdx completion zsh)
+# Fish: create its completions directory first if needed
+tdx completion fish > ~/.config/fish/completions/tdx.fish
+```
+
+Completion generation is static and never reads your tasks or history.
 
 ## Installation
 
@@ -104,6 +159,10 @@ To upgrade an existing Homebrew installation, run `brew update` and `brew upgrad
 ```bash
 curl -fsSL https://niklas-heer.github.io/tdx/install.sh | bash
 ```
+
+The installer verifies the selected executable against the release's `SHA256SUMS` before replacing an existing installation. It requires `sha256sum` or `shasum`, uses a temporary download directory, and installs to `~/.local/bin` by default. Set `TDX_INSTALL_DIR` or `TDX_VERSION` to choose the destination or release. Releases predating checksum manifests cannot be installed with the verified script; use the Homebrew formula or download that historical binary directly from its release page. The script never silently bypasses verification.
+
+New releases also publish a signed provenance bundle. With GitHub CLI installed, verify a downloaded executable using `gh attestation verify <binary> --repo niklas-heer/tdx`. Checksum verification detects mismatched bytes; attestation verification separately checks the build's provenance.
 
 The installer writes to `~/.local/bin` by default. Add that directory to `PATH`, or set `TDX_INSTALL_DIR` when running the script. To pin a release, use `curl -fsSL https://niklas-heer.github.io/tdx/install.sh | TDX_VERSION=0.14.0 bash`. Check `command -v tdx` if an older installation exists elsewhere.
 
@@ -195,7 +254,9 @@ Press `:` to open the command palette with fuzzy search. Available commands:
 | `filter-today` | Toggle showing only todos due today |
 | `filter-week` | Toggle showing only todos due this week |
 | `clear-done` | Delete all completed todos |
-| `read-only` | Toggle read-only mode (changes not saved) |
+| `manual-save` | Toggle automatic saving (`read-only` remains an alias) |
+| `save-view` / `views` | Save the current filters / open a saved view |
+| `delete-view` / `clear-view` | Delete a saved view / clear filters and active view |
 | `save` | Save current state to file |
 | `force-save` | Force save even if file was modified externally |
 | `reload` | Reload file from disk (discards unsaved changes) |
@@ -207,15 +268,15 @@ Press `:` to open the command palette with fuzzy search. Available commands:
 | `set-max-visible` | Set max visible items for this session |
 | `show-headings` | Toggle displaying markdown headings between tasks |
 
-**Read-Only Mode:**
+**Manual Save (compatible with read-only mode):**
 
-Start tdx with `-r` or `--read-only` flag for workflows where you don't want changes saved automatically:
+Start tdx with `--manual-save`, `-r`, or `--read-only` for workflows where you want temporary checklist edits without automatic saving:
 
 ```bash
 tdx -r checklist.md
 ```
 
-Use `:save` to manually save when ready, or `:read-only` to turn auto-save back on.
+The status bar displays `MANUAL SAVE`. Use `:save` to save when ready, or `:manual-save` (legacy alias `:read-only`) to enable automatic saving. This mode permits temporary task edits; CLI mutation commands are rejected when either flag is present. The preferred global setting is `[defaults] manual_save = true`; an explicitly set `manual_save` overrides the legacy `read_only` setting.
 
 **Vim-style navigation:**
 - `5j` - Move down 5 lines
@@ -348,6 +409,10 @@ tdx ~/notes/work.md list
 tdx project.md add "Task"
 ```
 
+### Clipboard
+
+Copy uses `pbcopy` on macOS, `wl-copy`/`wl-paste` in Wayland sessions, `xclip` or `xsel` in X11 sessions, and PowerShell on Windows. Clipboard commands run outside the input loop with a bounded timeout. Successful copies show confirmation; missing helpers, desktop connection failures and timeouts show an error. Terminal paste remains available in input fields, including over SSH; a headless remote process may have no desktop clipboard to copy into.
+
 ### Recent Files
 
 tdx automatically tracks recently opened files and restores your cursor position when you reopen them.
@@ -474,10 +539,12 @@ You only need to include the settings you want to change from the defaults.
 | `[defaults]` | `max_visible` | number | 0 | Limit visible tasks (0 = unlimited) |
 | `[defaults]` | `word_wrap` | boolean | true | Enable word wrapping for long lines |
 | `[defaults]` | `show_headings` | boolean | false | Show markdown headings between tasks |
-| `[defaults]` | `read_only` | boolean | false | Disable automatic TUI saves; reject CLI mutations |
+| `[defaults]` | `manual_save` | boolean | unset | Preferred setting; explicitly overrides `read_only` |
+| `[defaults]` | `read_only` | boolean | false | Legacy setting: disable automatic TUI saves; reject CLI mutations |
 | `[defaults]` | `filter_done` | boolean | false | Hide completed tasks by default |
 | `[recent]` | `max_files` | number | 20 | Maximum recent files to track |
 | `[versioning]` | `max_versions` | number | 100 | Versions retained per file (0 = unlimited) |
+| `[views]` | `restore` | boolean | false | Restore the last saved/selected view when opening its file |
 
 #### Per-File Configuration
 
@@ -545,7 +612,7 @@ tdx --show-headings todo.md
 
 [Goldmark](https://github.com/yuin/goldmark) identifies tasks and headings using task-list, table and strikethrough extensions. The CLI and TUI apply shared document actions through `internal/editor`; each application instance owns its configuration, styles and persistence callbacks.
 
-A checkbox edit uses the AST's exact source location and updates cached checked state without extracting all task metadata again. While a document has only checkbox changes, serialization retains its source bytes. Structural changes invalidate that source path and use the custom Markdown serializer. This distinction matters: tdx preserves checkbox edits exactly, but does not promise byte-for-byte preservation of arbitrary Markdown after structural editing.
+A checkbox edit uses the AST's exact source location and updates cached checked state without extracting all task metadata again. Text and structural edits patch affected source ranges, validate the resulting task structure, and reparse before committing. Unrelated source bytes—including reference definitions, HTML, tables and line endings—stay intact. Moving or sorting a parent carries its subtree and attached body. Unsupported boundaries, including structural rearrangement inside blockquotes or tab-indented continuations, return an error instead of rewriting the document. Checkbox toggles and supported localized edits remain available where their source ranges can be identified.
 
 Undo retains up to 100 committed snapshots, with provisional input stored separately until confirmed. File saves compare the loaded disk revision, acquire a file lock and atomically replace the target. Watcher reloads defer during pending input so a concurrent editor's changes cannot silently become the revision used by a later save. Explicit conflict recovery and version history remain available in the TUI.
 
@@ -553,7 +620,7 @@ Undo retains up to 100 committed snapshots, with provisional input stored separa
 
 Checkbox nodes and headings are cached. Search is debounced for 50 ms, while immediate Enter and navigation use the current query. The [measured 100-hour simulated campaign](experiments/usage/README.md) covers 36,000 actions, real disk saves, conflicts, cancellation and reload, with separate executable and PTY contracts.
 
-The report includes loaded-document checkbox benchmarks, complete action latency, allocation profiles, exact source revisions and reproduction commands. These measurements are workload-specific; they do not establish an application-wide comparison with other tools. Simulated hours are accelerated actions rather than wall-clock endurance. See the [Rust evaluation](experiments/rust-eval/README.md) for the narrower parser experiment and its limitations.
+The report includes loaded-document checkbox benchmarks, complete action latency, allocation profiles, exact source revisions and reproduction commands. `mise run test:usage-structural` exercises rich documents and nested structural actions; failed campaigns retain a replayable prefix, reduced trace and reduction diagnostic. Weekly CI rotates recorded seeds and retains replay/profile artifacts. These measurements are workload-specific; they do not establish an application-wide comparison with other tools. Simulated hours are accelerated actions rather than wall-clock endurance. See the [Rust evaluation](experiments/rust-eval/README.md) for the narrower parser experiment and its limitations.
 
 ### Project Structure
 
