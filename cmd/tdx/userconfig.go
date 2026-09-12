@@ -238,6 +238,7 @@ func DefaultConfig() *UserConfig {
 		Recent: RecentConfig{
 			MaxFiles: 20, // default max recent files
 		},
+		Views: ViewsConfig{Restore: false},
 		Versioning: VersioningConfig{
 			MaxVersions: 100, // default max versions per file
 		},
