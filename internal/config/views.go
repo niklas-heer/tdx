@@ -140,11 +140,8 @@ func validateViews(state *SavedViews) error {
 		if len(ref.Path) == 0 || ref.Occurrence < 1 {
 			return false
 		}
-		for _, part := range ref.Path {
-			if strings.TrimSpace(part) == "" {
-				return false
-			}
-		}
+		// Empty heading labels are valid Markdown and remain part of the
+		// ancestry; path length and occurrence identify the section.
 		return true
 	}
 	for name, view := range state.Views {

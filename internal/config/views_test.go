@@ -70,3 +70,23 @@ func TestViewStoreValidationAndMissingCanonicalParent(t *testing.T) {
 		t.Fatal("nonexistent file under symlink parent not canonical")
 	}
 }
+
+func TestViewStoreAllowsEmptySectionLabels(t *testing.T) {
+	store := FileViewStore{Dir: t.TempDir()}
+	file := filepath.Join(t.TempDir(), "todo.md")
+	state := &SavedViews{Active: "Blank", Views: map[string]SavedView{"Blank": {
+		Focus:  &SectionRef{Path: []string{"", "Child"}, Occurrence: 1},
+		Folded: []SectionRef{{Path: []string{""}, Occurrence: 2}},
+	}}}
+	if err := store.Save(file, state); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := store.Load(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := restored.Views["Blank"]
+	if view.Focus.Path[0] != "" || len(view.Focus.Path) != 2 || view.Folded[0].Path[0] != "" || view.Folded[0].Occurrence != 2 {
+		t.Fatalf("blank labels changed: %+v", view)
+	}
+}
