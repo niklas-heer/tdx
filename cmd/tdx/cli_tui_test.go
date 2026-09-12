@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -107,6 +108,9 @@ func testMain(m *testing.M) int {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	testBinary = filepath.Join(tmpDir, "tdx")
+	if runtime.GOOS == "windows" {
+		testBinary += ".exe"
+	}
 	buildCmd := exec.Command("go", "build", "-o", testBinary, ".")
 	if output, err := buildCmd.CombinedOutput(); err != nil {
 		panic(string(output) + err.Error())
