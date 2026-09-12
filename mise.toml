@@ -217,3 +217,15 @@ run = "python scripts/usage-conpty.py --binary ./tdx.exe"
 [tasks."test:usage-structural"]
 description = "Replay source-preserving structural edits and undo with minimized failure traces"
 run = 'go run ./cmd/tdx-usage -driver structural -sessions 2 -steps 100 -output dist/usage/structural "$@"'
+
+[tasks."test:terminal-visual"]
+description = "Verify inline terminal screens and scrollback in an isolated pyte test environment (macOS/Linux)"
+depends = ["build"]
+tools.python = "3.14.7"
+run = '''
+visual_test_env=$(mktemp -d)
+trap 'rm -rf "$visual_test_env"' EXIT
+python3 -m venv "$visual_test_env"
+"$visual_test_env/bin/python" -m pip install pyte==0.8.2 wcwidth==0.8.3
+"$visual_test_env/bin/python" scripts/visual-pty.py "$@"
+'''

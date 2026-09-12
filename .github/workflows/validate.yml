@@ -50,6 +50,12 @@ jobs:
       - name: Run POSIX terminal contracts
         if: runner.os != 'Windows'
         run: python scripts/usage-pty.py --binary ./tdx
+      - name: Install POSIX visual terminal test dependencies
+        if: runner.os != 'Windows'
+        run: python -m pip install pyte==0.8.2 wcwidth==0.8.3
+      - name: Run inline terminal screen and scrollback regressions
+        if: runner.os != 'Windows'
+        run: python scripts/visual-pty.py --binary ./tdx
       - name: Install Windows terminal test dependency
         if: runner.os == 'Windows'
         run: python -m pip install pywinpty==3.0.2
