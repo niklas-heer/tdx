@@ -16,4 +16,3 @@ The TUI SHALL describe edits that require explicit saving as manual-save mode an
 #### Scenario: An existing read-only checklist is opened
 - **WHEN** an existing read-only checklist is opened
 - **THEN** temporary edits remain possible and only an explicit save writes them
-

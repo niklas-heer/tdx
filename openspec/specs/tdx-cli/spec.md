@@ -267,4 +267,3 @@ The CLI SHALL generate documented shell completions without reading task files o
 #### Scenario: A user requests shell completion
 - **WHEN** a user requests shell completion
 - **THEN** completion output is produced without task-file side effects
-

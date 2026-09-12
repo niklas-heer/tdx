@@ -13,4 +13,3 @@ Releases SHALL include a SHA-256 checksum manifest and build provenance. The ins
 #### Scenario: A downloaded artifact has an incorrect checksum
 - **WHEN** a downloaded artifact has an incorrect checksum
 - **THEN** installation fails and the previous executable remains intact
-

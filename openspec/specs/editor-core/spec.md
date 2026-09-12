@@ -66,4 +66,3 @@ Task and heading edits SHALL retain unrelated Markdown content, including refere
 #### Scenario: A task is renamed near a reference link
 - **WHEN** a task is renamed near a reference link
 - **THEN** the reference definition and unrelated content remain intact through saving and undo
-

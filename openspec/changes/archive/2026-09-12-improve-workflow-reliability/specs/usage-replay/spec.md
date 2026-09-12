@@ -13,4 +13,3 @@ CI SHALL exercise CLI contracts on supported native macOS and Windows runners an
 #### Scenario: Native verification runs
 - **WHEN** native verification runs
 - **THEN** argument handling, paths, Unicode, configuration isolation and terminal lifecycle are checked on their native platforms
-

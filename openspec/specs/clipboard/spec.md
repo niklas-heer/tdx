@@ -9,4 +9,3 @@ Clipboard operations SHALL support macOS, Linux and Windows through available pl
 #### Scenario: The clipboard backend is unavailable
 - **WHEN** the clipboard backend is unavailable
 - **THEN** the document remains unchanged and an error is displayed
-
