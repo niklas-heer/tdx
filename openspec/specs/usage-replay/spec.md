@@ -30,6 +30,10 @@ Regression checks SHALL cover nested/ordered tasks, sections, multiline bodies, 
 - **WHEN** a generated edit sequence loses unrelated content
 - **THEN** the campaign fails and retains a reproducible regression artifact
 
+#### Scenario: Structural content changes ownership
+- **WHEN** an edit unexpectedly relocates a protected block, detaches a descendant, or attaches a task body to the wrong task
+- **THEN** the structural campaign SHALL reject the resulting state even if content occurrence counts remain unchanged
+
 ### Requirement: Native executable coverage
 CI SHALL exercise CLI contracts on supported native macOS and Windows runners and terminal contracts on macOS and Linux, with Windows terminal checks where supported by ConPTY.
 

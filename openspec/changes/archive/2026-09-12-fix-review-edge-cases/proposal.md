@@ -7,5 +7,5 @@ Final PR review identified edge cases in saved section references, recent-file c
 - Clarify opt-in view restoration and CLI read-only scenarios; initialize centralized view defaults explicitly.
 
 ## Impact
-- Affected specs: saved-views and usage-replay; existing editor contracts remain authoritative.
+- Affected specs: saved-views, usage-replay and editor-core; existing editor contracts remain authoritative.
 - Scope authorized by the user request to finish, test and shepherd PR #24 to completion.
