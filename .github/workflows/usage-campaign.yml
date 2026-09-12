@@ -43,7 +43,7 @@ jobs:
           go test ./internal/usage -run TestSeededSessions -count=1 -cpuprofile=dist/usage/campaign/profile/cpu.pprof -memprofile=dist/usage/campaign/profile/heap.pprof -o dist/usage/campaign/profile/usage.test
       - name: Retain replay traces, reduced failures and profiles
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: usage-campaign-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist/usage/campaign
