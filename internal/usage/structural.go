@@ -25,7 +25,7 @@ func GenerateStructural(seed uint64, count int) Trace {
 		"<!-- preserve this comment exactly -->\n\n| A | B |\n| :--- | ---: |\n| café | `code` |\n\n~~~md\n- [ ] example only\n~~~\n\n",
 		"[guide]: <https://example.com/guide>\n  \"Do not normalize\"\n",
 	}
-	source := "# Work\n\n" + protected[0] + "- [ ] Parent !p2 #work\n  continuation with [guide].\n\n  Body paragraph with **bold**.\n\n  - [x] Child done !p1\n  - [ ] Child open !p3\n- [ ] Sibling !p1\n\n## Ordered\n\n9. [ ] Nine\n   1) [ ] Nested\n   2) [x] Nested done\n10. [ ] Ten\n\n" + protected[1]
+	source := "# Work\n\n" + protected[0] + "- [ ] Parent !p2 #work\n  continuation with [guide].\n\n  Body paragraph with **bold**.\n\n  ~~~text\n  Parent owned code.\n  ~~~\n\n  - [x] Child done !p1\n  - [ ] Child open !p3\n- [ ] Sibling !p1\n\n  ~~~text\n  Sibling owned code.\n  ~~~\n\n## Ordered\n\n9. [ ] Nine\n   1) [ ] Nested\n   2) [x] Nested done\n10. [ ] Ten\n\n" + protected[1]
 	if seed%2 == 1 {
 		source = strings.ReplaceAll(source, "\n", "\r\n")
 		for i := range protected {
@@ -148,6 +148,9 @@ func ReplayStructural(trace Trace) (result Result, err error) {
 			} else {
 				if err = checkTaskConservation(beforeTodos, doc.Todos, *step.Action); err != nil {
 					return result, fail(i, "task conservation", err.Error())
+				}
+				if err = checkStructuralOwnership(before, markdown.SerializeMarkdown(doc), *step.Action, trace.Protected); err != nil {
+					return result, fail(i, "structural ownership", err.Error())
 				}
 				history.Commit()
 				past = append(past, before)

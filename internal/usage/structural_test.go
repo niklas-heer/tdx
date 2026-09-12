@@ -2,13 +2,16 @@ package usage
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/niklas-heer/tdx/internal/editor"
+	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
 func TestStructuralCampaign(t *testing.T) {
@@ -33,6 +36,87 @@ func TestStructuralCampaign(t *testing.T) {
 				t.Fatalf("incomplete campaign: %+v", result)
 			}
 		})
+	}
+}
+
+func TestStructuralOracleRejectsOwnershipCorruption(t *testing.T) {
+	source := "# Work\n\n<!-- protected -->\n\n- [ ] Parent\n\n  ```text\n  Parent body.\n  ```\n\n  - [ ] Child\n- [ ] Sibling\n\n  ```text\n  Sibling body.\n  ```\n\n# Later\n\n- [ ] Last\n"
+	for name, corrupted := range map[string]string{
+		"lost depth":       strings.Replace(source, "  - [ ] Child", "- [ ] Child", 1),
+		"changed parent":   strings.Replace(strings.Replace(source, "  - [ ] Child\n", "", 1), "  ```text\n  Sibling body.\n  ```\n", "  ```text\n  Sibling body.\n  ```\n\n  - [ ] Child\n", 1),
+		"swapped bodies":   strings.NewReplacer("Parent body.", "Sibling body.", "Sibling body.", "Parent body.").Replace(source),
+		"body deleted":     strings.Replace(source, "  ```text\n  Parent body.\n  ```\n", "", 1),
+		"protected region": strings.Replace(strings.Replace(source, "<!-- protected -->\n", "", 1), "# Later\n", "# Later\n\n<!-- protected -->\n", 1),
+		"task section":     strings.Replace(strings.Replace(source, "- [ ] Last\n", "", 1), "# Later\n", "- [ ] Last\n\n# Later\n", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			action := editor.Action{Kind: editor.SetChecked, Index: 0, Checked: false}
+			// These corruptions all pass the old multiset oracle.
+			if err := checkTaskConservation(markdown.ParseMarkdown(source).Todos, markdown.ParseMarkdown(corrupted).Todos, action); err != nil {
+				t.Fatalf("fixture must retain all task titles and completion states: %v", err)
+			}
+			if err := checkStructuralOwnership(source, corrupted, action, []string{"<!-- protected -->\n"}); err == nil {
+				t.Fatal("ownership corruption escaped the structural oracle")
+			}
+		})
+	}
+}
+
+func TestStructuralOracleAcceptsAuthorizedOwnershipChanges(t *testing.T) {
+	source := "# Work\n\n- [x] Parent\n\n  ~~~text\n  Owned code.\n  ~~~\n\n  - [ ] Child\n  - [x] Other child\n- [ ] Sibling\n\n# Later\n\n- [ ] Last\n"
+	for _, action := range []editor.Action{
+		{Kind: editor.Move, Index: 0, Target: 4},
+		{Kind: editor.MoveToPosition, Index: 0, Target: 4, InsertAfter: true},
+		{Kind: editor.Move, Index: 0, Target: 0},
+		{Kind: editor.Indent, Index: 3},
+		{Kind: editor.Outdent, Index: 1},
+		{Kind: editor.Delete, Index: 0},
+		{Kind: editor.ClearDone},
+		{Kind: editor.SortDone},
+		{Kind: editor.Edit, Index: 3, Text: "Last"}, // Duplicate title remains a valid edit.
+		{Kind: editor.CreateHeading, Index: 0, Level: 1, Text: "Work"},
+	} {
+		t.Run(fmt.Sprintf("%s-%d-%d", action.Kind, action.Index, action.Target), func(t *testing.T) {
+			doc := markdown.ParseMarkdown(source)
+			if _, err := editor.Apply(doc, action); err != nil {
+				t.Fatal(err)
+			}
+			if err := checkStructuralOwnership(source, markdown.SerializeMarkdown(doc), action, nil); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestStructuralOracleRejectsImpossibleSuccessWithoutPanic(t *testing.T) {
+	for _, action := range []editor.Action{
+		{Kind: editor.Edit, Index: -1},
+		{Kind: editor.Move, Index: 0, Target: 1},
+		{Kind: editor.Outdent, Index: 0},
+	} {
+		if err := checkStructuralOwnership("- [ ] task\n", "- [ ] task\n", action, nil); err == nil {
+			t.Fatalf("accepted impossible success: %+v", action)
+		}
+	}
+}
+
+func TestStructuralOracleRejectsIncorrectActionResults(t *testing.T) {
+	source := "# A\n\n- [ ] one\n- [ ] two\n\n# B\n"
+	for _, tc := range []struct {
+		action editor.Action
+		after  string
+	}{
+		{editor.Action{Kind: editor.Move, Index: 0, Target: 1}, source},
+		{editor.Action{Kind: editor.Edit, Index: 0, Text: "changed"}, source},
+		{editor.Action{Kind: editor.AddInSection, Index: 0, Text: "new"}, source + "\n- [ ] new\n"},
+		{editor.Action{Kind: editor.Insert, Index: 0, Text: "new"}, strings.Replace(source, "- [ ] two\n", "- [ ] two\n- [ ] new\n", 1)},
+	} {
+		if err := checkTaskConservation(markdown.ParseMarkdown(source).Todos, markdown.ParseMarkdown(tc.after).Todos, tc.action); err != nil {
+			t.Fatalf("fixture must pass the former multiset oracle: %v", err)
+		}
+		if err := checkStructuralOwnership(source, tc.after, tc.action, nil); err == nil {
+			t.Fatalf("accepted incorrect action result: %+v", tc.action)
+		}
 	}
 }
 
