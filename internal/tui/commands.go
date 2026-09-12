@@ -199,7 +199,7 @@ func InitCommands(cfg ...*ConfigType) []Command {
 		},
 		{
 			Name:        "read-only",
-			Description: "Toggle read-only mode (changes not saved)",
+			Description: "Alias for manual-save (edits need :save)",
 			Handler: func(m *Model) {
 				m.ReadOnly = !m.ReadOnly
 			},
@@ -241,6 +241,11 @@ func InitCommands(cfg ...*ConfigType) []Command {
 				m.CursorPos = 0
 			},
 		},
+		{Name: "manual-save", Description: "Toggle manual saving (temporary edits; :save writes)", Handler: func(m *Model) { m.ReadOnly = !m.ReadOnly }},
+		{Name: "save-view", Description: "Save current filters and sections as a named view", Handler: func(m *Model) { m.openViews("save") }},
+		{Name: "views", Description: "List and load saved views for this file", Handler: func(m *Model) { m.openViews("load") }},
+		{Name: "delete-view", Description: "Delete a saved view for this file", Handler: func(m *Model) { m.openViews("delete") }},
+		{Name: "clear-view", Description: "Clear all filters, section focus and folds", Handler: func(m *Model) { m.clearSavedView() }},
 		{Name: "sections", Description: "Browse, edit, focus, and fold Markdown sections", Handler: func(m *Model) { m.openSections() }},
 		{Name: "all-sections", Description: "Clear section focus and unfold all sections", Handler: func(m *Model) { m.clearSections() }},
 

@@ -53,6 +53,9 @@ func initialSource(tasks []Task) string {
 // Replay exercises real TUI Update and disk saves, or an independent executable's CLI.
 // Think time is accounted for, not slept. Timers and terminal I/O have a separate PTY suite.
 func Replay(trace Trace, binary string) (result Result, err error) {
+	if trace.Driver == "structural" {
+		return ReplayStructural(trace)
+	}
 	start := time.Now()
 	result = Result{Seed: trace.Seed, Driver: trace.Driver, Counts: map[string]int{}}
 	encoded, marshalErr := json.Marshal(trace)

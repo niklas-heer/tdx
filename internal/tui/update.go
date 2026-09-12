@@ -25,12 +25,32 @@ type FileChangedMsg struct{}
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		resized := m.TermWidth > 0 && m.TermHeight > 0 && (m.TermWidth != msg.Width || m.TermHeight != msg.Height)
 		m.TermWidth = msg.Width
 		m.TermHeight = msg.Height
 		if m.ConflictDiffMode {
 			m.clampConflictDiffScroll(len(m.conflictDiffLines()))
 		}
+		if resized {
+			return m, tea.ClearScreen
+		}
 		return m, nil
+	case clipboardCopiedMsg:
+		m.CopyFeedback = msg.err == nil
+		m.Err = msg.err
+		if msg.err != nil {
+			return m, nil
+		}
+		return m, tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg { return ClearCopyFeedbackMsg{} })
+	case clipboardPastedMsg:
+		if msg.file != m.FilePath || msg.mode != m.clipboardInputMode() || msg.buffer != m.InputBuffer || msg.cursor != m.CursorPos {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.Err = msg.err
+			return m, nil
+		}
+		return m.handlePaste(msg.text)
 	case ClearCopyFeedbackMsg:
 		m.CopyFeedback = false
 		return m, nil
@@ -84,6 +104,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Version browser mode takes priority over all other modes.
 	if m.VersionsMode {
 		return m.handleVersionsKey(msg)
+	}
+
+	if m.ViewMode != "" {
+		return m.handleViewKey(msg)
 	}
 
 	if m.HeadingInput != "" {
@@ -256,11 +280,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		if len(m.FileModel.Todos) > 0 {
-			util.CopyToClipboard(m.FileModel.Todos[m.SelectedIndex].Text)
-			m.CopyFeedback = true
-			return m, tea.Tick(1500*time.Millisecond, func(t time.Time) tea.Msg {
-				return ClearCopyFeedbackMsg{}
-			})
+			clipboard := m.clipboard()
+			text := m.FileModel.Todos[m.SelectedIndex].Text
+			m.CopyFeedback = false
+			return m, func() tea.Msg { return clipboardCopiedMsg{clipboard.Copy(text)} }
 		}
 
 	case "m":
@@ -483,7 +506,9 @@ func (m Model) handleInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.CursorPos = len(m.InputBuffer)
 
 	case "ctrl+v", "ctrl+shift+v", "ctrl+y":
-		return m.handlePaste(util.PasteFromClipboard())
+		clipboard := m.clipboard()
+		result := clipboardPastedMsg{file: m.FilePath, mode: m.clipboardInputMode(), buffer: m.InputBuffer, cursor: m.CursorPos}
+		return m, func() tea.Msg { result.text, result.err = clipboard.Paste(); return result }
 
 	}
 
@@ -550,81 +575,61 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
 	switch key {
-	case "j", "down":
+	case "j", "down", "k", "up":
+		down := key == "j" || key == "down"
+		action := editor.Action{Kind: editor.Move, Index: m.SelectedIndex}
 		if m.hasActiveFilters() || m.ShowHeadings {
-			// Use document tree to calculate visible-list-based movement
 			tree := m.GetDocumentTree()
-			selectedNode := tree.GetSelectedNode()
-			if selectedNode == nil || selectedNode.Type != DocNodeTodo {
+			selected := tree.GetSelectedNode()
+			if selected == nil || selected.Type != DocNodeTodo {
 				break
 			}
-
-			// Remember the todo text so we can find it after the move
-			movedTodoText := m.FileModel.Todos[selectedNode.TodoIndex].Text
-
-			fromIndex, targetIndex, insertAfter := tree.MoveDown()
-			if fromIndex != -1 && targetIndex != -1 {
-				// Move the todo via AST to achieve the visual position
-				if err := m.applyAction(editor.Action{Kind: editor.MoveToPosition, Index: fromIndex, Target: targetIndex, InsertAfter: insertAfter}); err == nil {
-					// Rebuild tree and headings from updated AST
-					m.InvalidateHeadingsCache() // Heading positions may have changed
-					m.InvalidateDocumentTree()
-
-					// Find where the moved todo ended up by matching text
-					for i, todo := range m.FileModel.Todos {
-						if todo.Text == movedTodoText {
-							m.SelectedIndex = i
-							break
-						}
-					}
-				}
+			var from, target int
+			var after bool
+			if down {
+				from, target, after = tree.MoveDown()
+			} else {
+				from, target, after = tree.MoveUp()
 			}
-		} else {
-			// No filters: simple insertion move
-			if m.SelectedIndex < len(m.FileModel.Todos)-1 {
-				if err := m.applyAction(editor.Action{Kind: editor.Move, Index: m.SelectedIndex, Target: m.SelectedIndex + 1}); err == nil {
-					m.SelectedIndex++
-				}
-			}
-		}
-
-	case "k", "up":
-		if m.hasActiveFilters() || m.ShowHeadings {
-			// Use document tree to calculate visible-list-based movement
-			tree := m.GetDocumentTree()
-			selectedNode := tree.GetSelectedNode()
-			if selectedNode == nil || selectedNode.Type != DocNodeTodo {
+			if from < 0 || target < 0 {
 				break
 			}
-
-			// Remember the todo text so we can find it after the move
-			movedTodoText := m.FileModel.Todos[selectedNode.TodoIndex].Text
-
-			fromIndex, targetIndex, insertAfter := tree.MoveUp()
-			if fromIndex != -1 && targetIndex != -1 {
-				// Move the todo via AST to achieve the visual position
-				if err := m.applyAction(editor.Action{Kind: editor.MoveToPosition, Index: fromIndex, Target: targetIndex, InsertAfter: insertAfter}); err == nil {
-					// Rebuild tree and headings from updated AST
-					m.InvalidateHeadingsCache() // Heading positions may have changed
-					m.InvalidateDocumentTree()
-
-					// Find where the moved todo ended up by matching text
-					for i, todo := range m.FileModel.Todos {
-						if todo.Text == movedTodoText {
-							m.SelectedIndex = i
-							break
-						}
-					}
-				}
-			}
+			action = editor.Action{Kind: editor.MoveToPosition, Index: from, Target: target, InsertAfter: after}
 		} else {
-			// No filters: simple insertion move
-			if m.SelectedIndex > 0 {
-				if err := m.applyAction(editor.Action{Kind: editor.Move, Index: m.SelectedIndex, Target: m.SelectedIndex - 1}); err == nil {
-					m.SelectedIndex--
+			if action.Index < 0 || action.Index >= len(m.FileModel.Todos) {
+				break
+			}
+			depth := m.FileModel.Todos[action.Index].Depth
+			target := action.Index - 1
+			if down {
+				target = action.Index + 1
+				for target < len(m.FileModel.Todos) && m.FileModel.Todos[target].Depth > depth {
+					target++
+				}
+			} else {
+				for target >= 0 && m.FileModel.Todos[target].Depth > depth {
+					target--
 				}
 			}
+			if target < 0 || target >= len(m.FileModel.Todos) {
+				break
+			}
+			// Reordering a subtree must not implicitly outdent it. A shallower
+			// target is the boundary of its parent's children; nesting changes
+			// remain explicit through indent/outdent commands.
+			if m.FileModel.Todos[target].Depth != depth {
+				break
+			}
+			action.Target = target
 		}
+		index, err := editor.Apply(&m.FileModel, action)
+		if err != nil {
+			m.Err = err
+			break
+		}
+		m.SelectedIndex = index
+		m.InvalidateHeadingsCache()
+		m.InvalidateDocumentTree()
 
 	case "enter":
 		m.history.Commit()
@@ -1554,7 +1559,7 @@ func (m *Model) ProcessPipedInput(input []byte) {
 
 		// Check for quit in normal mode (q or esc without other modes active)
 		if !m.InputMode && !m.EditMode && !m.SearchMode && !m.CommandMode &&
-			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode && !m.SectionsMode && m.HeadingInput == "" {
+			!m.MoveMode && !m.FilterMode && !m.MaxVisibleInputMode && !m.HelpMode && !m.RecentFilesMode && !m.SectionsMode && m.HeadingInput == "" && m.ViewMode == "" {
 			if msg.String() == "q" || msg.Code == tea.KeyEsc {
 				return
 			}
@@ -1646,29 +1651,34 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 			// Update model with new file
 			m.FilePath = selectedFile.Path
 			m.FileModel = *fm
-			m.clearSections()
+			m.SelectedIndex = 0
+			m.SectionFocus = 0
+			m.FoldedSections = nil
 			m.history.Clear()
 			m.RecentFilesMode = false
 			m.RecentFilesSearch = ""
 
-			// Try to restore cursor position from recent files
-			if recentFiles, err := m.Config().Recent.Load(); err == nil {
-				if savedPos := recentFiles.GetCursorPosition(selectedFile.Path); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
-					m.SelectedIndex = savedPos
-				} else {
-					m.SelectedIndex = 0
-				}
-			} else {
-				m.SelectedIndex = 0
-			}
-
-			// Ensure cursor is within bounds
-			if m.SelectedIndex >= len(m.FileModel.Todos) {
-				m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
-			}
-
+			m.FilteredTags = nil
+			m.FilteredPriorities = nil
+			m.FilteredDueDate = ""
+			m.FilterDone = m.Config().Defaults.FilterDone
+			m.applyFileMetadata()
+			m.RefreshAvailableTags()
+			m.ActiveView = ""
+			m.activeViewState = nil
 			// Invalidate caches to refresh AST, headings, and tree
 			m.InvalidateHeadingsCache()
+			m.InvalidateDocumentTree()
+			m.restoreSavedView()
+			m.adjustSelectionForFilter()
+
+			// Restore only after the destination's metadata and saved view have
+			// established visibility; otherwise keep the first visible fallback.
+			if recentFiles, err := m.Config().Recent.Load(); err == nil {
+				if savedPos := recentFiles.GetCursorPosition(selectedFile.Path); savedPos >= 0 && savedPos < len(m.FileModel.Todos) && m.isTodoVisible(savedPos) {
+					m.SelectedIndex = savedPos
+				}
+			}
 			m.InvalidateDocumentTree()
 
 			return m, nil
@@ -1724,7 +1734,7 @@ func (runtime Runtime) RunPiped(filePath string, input []byte, readOnly bool) st
 
 	// Try to restore cursor position from recent files (if file content hasn't changed)
 	if recentFiles, err := m.Config().Recent.Load(); err == nil {
-		if savedPos := recentFiles.GetCursorPosition(filePath); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
+		if savedPos := recentFiles.GetCursorPosition(filePath); savedPos >= 0 && savedPos < len(m.FileModel.Todos) && m.isTodoVisible(savedPos) {
 			m.SelectedIndex = savedPos
 			// Invalidate tree to ensure correct positioning
 			m.InvalidateDocumentTree()
@@ -1768,7 +1778,7 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 
 	// Try to restore cursor position from recent files (if file content hasn't changed)
 	if recentFiles, err := m.Config().Recent.Load(); err == nil {
-		if savedPos := recentFiles.GetCursorPosition(filePath); savedPos >= 0 && savedPos < len(m.FileModel.Todos) {
+		if savedPos := recentFiles.GetCursorPosition(filePath); savedPos >= 0 && savedPos < len(m.FileModel.Todos) && m.isTodoVisible(savedPos) {
 			m.SelectedIndex = savedPos
 			// Invalidate tree to ensure correct positioning
 			m.InvalidateDocumentTree()
@@ -1788,6 +1798,7 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 	}
 
 	// Normal TTY - use Bubbletea (no alt screen to keep context visible)
+	m.waitForSize = true
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {

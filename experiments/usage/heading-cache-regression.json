@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "seed": 100,
+  "driver": "structural",
+  "source": "# Work\n\n- [ ] parent\n  - [ ] child\n\n[guide]: /kept\n",
+  "protected": [
+    "[guide]: /kept\n"
+  ],
+  "steps": [
+    {
+      "op": "action",
+      "seconds": 10,
+      "action": {
+        "Kind": "rename-heading",
+        "Index": 0,
+        "Text": "Longer heading"
+      }
+    }
+  ]
+}

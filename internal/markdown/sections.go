@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
-	extast "github.com/yuin/goldmark/extension/ast"
-	"github.com/yuin/goldmark/text"
 )
 
 func (fm *FileModel) headingNodes() []*ast.Heading {
@@ -33,29 +31,32 @@ func validHeading(title string, level int) error {
 	return nil
 }
 
-func (fm *FileModel) setHeadingText(h *ast.Heading, title string) {
-	fm.ast.invalidateSource()
-	h.RemoveChildren(h)
-	start := len(fm.ast.Source)
-	fm.ast.Source = append(fm.ast.Source, title...)
-	h.AppendChild(h, ast.NewTextSegment(text.NewSegment(start, len(fm.ast.Source))))
-}
-
-// RenameHeading changes exactly the selected heading, even when titles repeat.
+// RenameHeading changes exactly the selected heading and preserves its source style.
 func (fm *FileModel) RenameHeading(index int, title string) error {
 	headings := fm.headingNodes()
 	if index < 0 || index >= len(headings) {
 		return fmt.Errorf("section no longer exists")
 	}
-	if err := validHeading(title, headings[index].Level); err != nil {
+	h := headings[index]
+	if err := validHeading(title, h.Level); err != nil {
 		return err
 	}
-	fm.setHeadingText(headings[index], strings.TrimSpace(title))
+	if h.Lines().Len() == 0 {
+		return fmt.Errorf("heading source location unavailable")
+	}
+	start := h.Lines().At(0).Start
+	end := h.Lines().At(h.Lines().Len() - 1).Stop
+	for end > start && (fm.ast.Source[end-1] == '\n' || fm.ast.Source[end-1] == '\r') {
+		end--
+	}
+	if err := fm.ast.patch([]sourceEdit{{start, end, strings.TrimSpace(title)}}, fm.ast.ExtractTodos(), -1); err != nil {
+		return err
+	}
+	fm.Todos = fm.ast.ExtractTodos()
 	return nil
 }
 
-// CreateHeading inserts a heading after a selected section and its descendants.
-// An index of -1 appends a new top-level section to the document.
+// CreateHeading inserts after a selected section and its descendants, or appends.
 func (fm *FileModel) CreateHeading(afterIndex, level int, title string) (int, error) {
 	if err := validHeading(title, level); err != nil {
 		return -1, err
@@ -67,67 +68,94 @@ func (fm *FileModel) CreateHeading(afterIndex, level int, title string) (int, er
 	if afterIndex < -1 || afterIndex >= len(headings) {
 		return -1, fmt.Errorf("section no longer exists")
 	}
-	h := ast.NewHeading(level)
-	fm.setHeadingText(h, strings.TrimSpace(title))
-	if afterIndex == -1 {
-		fm.ast.AST.AppendChild(fm.ast.AST, h)
-	} else {
-		selected := headings[afterIndex]
-		parent := selected.Parent()
-		var before ast.Node
-		for n := selected.NextSibling(); n != nil; n = n.NextSibling() {
-			if next, ok := n.(*ast.Heading); ok && next.Level <= selected.Level {
-				before = n
+	at := len(fm.ast.Source)
+	index := len(headings)
+	if afterIndex >= 0 {
+		h := headings[afterIndex]
+		if h.Lines().Len() == 0 {
+			return -1, fmt.Errorf("empty heading source location unavailable")
+		}
+		if h.Parent() != fm.ast.AST {
+			return -1, fmt.Errorf("creating sections inside nested Markdown blocks is not supported")
+		}
+		for i := afterIndex + 1; i < len(headings); i++ {
+			if headings[i].Level <= h.Level {
+				if headings[i].Lines().Len() == 0 {
+					return -1, fmt.Errorf("empty heading source location unavailable")
+				}
+				at = fm.ast.lineStart(headings[i].Lines().At(0).Start)
+				index = i
 				break
 			}
 		}
-		if before != nil {
-			parent.InsertBefore(parent, before, h)
-		} else {
-			parent.AppendChild(parent, h)
+	}
+	newline := fm.ast.newline()
+	text := strings.Repeat("#", level) + " " + strings.TrimSpace(title) + newline + newline
+	if at > 0 {
+		text = newline + text
+		if fm.ast.Source[at-1] != '\n' {
+			text = newline + text
 		}
 	}
-	for i, node := range fm.headingNodes() {
-		if node == h {
-			return i, nil
-		}
+	if err := fm.ast.patch([]sourceEdit{{at, at, text}}, fm.ast.ExtractTodos(), -1); err != nil {
+		return -1, err
 	}
-	return -1, fmt.Errorf("could not create section")
+	fm.Todos = fm.ast.ExtractTodos()
+	return index, nil
 }
 
-// AddTodoInSection inserts into the section's own task list, including empty sections.
+// AddTodoInSection appends to the section's immediate list, including empty sections.
 func (fm *FileModel) AddTodoInSection(index int, title string) (int, error) {
 	headings := fm.headingNodes()
 	if index < 0 || index >= len(headings) {
 		return -1, fmt.Errorf("section no longer exists")
 	}
-	fm.ast.invalidateSource()
-	h := headings[index]
-	list, ok := h.NextSibling().(*ast.List)
-	if !ok || list.IsOrdered() {
-		list = ast.NewList('-')
-		h.Parent().InsertAfter(h.Parent(), h, list)
+	if strings.ContainsAny(title, "\r\n") {
+		return -1, fmt.Errorf("task title must be a single line")
 	}
-	start := len(fm.ast.Source)
-	fm.ast.Source = append(fm.ast.Source, title...)
-	item := ast.NewListItem(0)
-	para := ast.NewParagraph()
-	para.AppendChild(para, extast.NewTaskCheckBox(false))
-	para.AppendChild(para, ast.NewTextSegment(text.NewSegment(start, len(fm.ast.Source))))
-	item.AppendChild(item, para)
-	list.AppendChild(list, item)
-	fm.Todos = fm.ast.ExtractTodos()
-	// The inserted task is the last task in this immediate list, before any later section.
-	count := 0
-	found := -1
-	_ = ast.Walk(fm.ast.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if entering && n.Kind() == extast.KindTaskCheckBox {
-			if n.Parent() == para {
-				found = count
-			}
-			count++
+	h := headings[index]
+	if h.Lines().Len() == 0 {
+		return -1, fmt.Errorf("empty heading source location unavailable")
+	}
+	if h.Parent() != fm.ast.AST {
+		return -1, fmt.Errorf("adding tasks to nested Markdown sections is not supported")
+	}
+	at := fm.ast.lineEnd(h.Lines().At(h.Lines().Len()-1).Stop - 1)
+	// Setext headings have an extra underline line after the text lines.
+	if at < len(fm.ast.Source) {
+		next := strings.TrimSpace(string(fm.ast.Source[at:fm.ast.lineEnd(at)]))
+		if next != "" && strings.Trim(next, "=-") == "" {
+			at = fm.ast.lineEnd(at)
 		}
-		return ast.WalkContinue, nil
-	})
-	return found, nil
+	}
+	prefix := "- "
+	if list, ok := h.NextSibling().(*ast.List); ok && list.LastChild() != nil {
+		span, err := fm.ast.itemSource(list.LastChild().(*ast.ListItem))
+		if err != nil {
+			return -1, err
+		}
+		at = span.end
+		prefix = span.indent + span.marker + span.space
+	}
+	todos := fm.ast.ExtractTodos()
+	insert := 0
+	for insert < len(todos) && todos[insert].LineNo < at {
+		insert++
+	}
+	expected := append([]Todo{}, todos[:insert]...)
+	expected = append(expected, Todo{Text: title})
+	expected = append(expected, todos[insert:]...)
+	newline := fm.ast.newline()
+	text := prefix + "[ ] " + title + newline
+	if _, ok := h.NextSibling().(*ast.List); !ok {
+		text = newline + text + newline
+	}
+	if at > 0 && fm.ast.Source[at-1] != '\n' {
+		text = newline + text
+	}
+	if err := fm.ast.patch([]sourceEdit{{at, at, text}}, expected, insert); err != nil {
+		return -1, err
+	}
+	fm.Todos = fm.ast.ExtractTodos()
+	return insert, nil
 }

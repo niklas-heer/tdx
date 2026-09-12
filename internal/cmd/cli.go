@@ -15,10 +15,11 @@ import (
 // Service owns the output and persistence dependencies for a CLI instance.
 // Its zero value uses stdout, plain styling, and a hook-free Markdown store.
 type Service struct {
-	Store       markdown.Store
-	Out         io.Writer
-	GreenStyle  func(string) string
-	CheckSymbol string
+	Store            markdown.Store
+	Out              io.Writer
+	GreenStyle       func(string) string
+	CheckSymbol      string
+	ExpectedRevision string
 }
 
 func (s Service) output() io.Writer {
@@ -47,7 +48,7 @@ func (s Service) ListTodos(filePath string) error {
 
 // AddTodo adds a new todo to a file
 func (s Service) AddTodo(filePath string, text string) error {
-	fm, err := s.Store.ReadFile(filePath)
+	fm, err := s.readForMutation(filePath)
 	if err != nil {
 		return err
 	}
@@ -66,7 +67,7 @@ func (s Service) AddTodo(filePath string, text string) error {
 
 // ToggleTodo toggles the completion status of a todo
 func (s Service) ToggleTodo(filePath string, index int) error {
-	fm, err := s.Store.ReadFile(filePath)
+	fm, err := s.readForMutation(filePath)
 	if err != nil {
 		return err
 	}
@@ -94,7 +95,7 @@ func (s Service) ToggleTodo(filePath string, index int) error {
 
 // EditTodo edits the text of a todo
 func (s Service) EditTodo(filePath string, index int, text string) error {
-	fm, err := s.Store.ReadFile(filePath)
+	fm, err := s.readForMutation(filePath)
 	if err != nil {
 		return err
 	}
@@ -117,7 +118,7 @@ func (s Service) EditTodo(filePath string, index int, text string) error {
 
 // DeleteTodo deletes a todo by index
 func (s Service) DeleteTodo(filePath string, index int) error {
-	fm, err := s.Store.ReadFile(filePath)
+	fm, err := s.readForMutation(filePath)
 	if err != nil {
 		return err
 	}
@@ -151,7 +152,7 @@ func ValidateCommand(command string, args []string) error {
 		if len(args) < 1 {
 			return fmt.Errorf("add requires text argument")
 		}
-	case "toggle", "delete":
+	case "toggle", "delete", "done", "undone":
 		if len(args) != 1 {
 			return fmt.Errorf("%s requires exactly one index argument", command)
 		}
@@ -162,7 +163,7 @@ func ValidateCommand(command string, args []string) error {
 	default:
 		return fmt.Errorf("unknown command: %s", command)
 	}
-	if command == "toggle" || command == "delete" || command == "edit" {
+	if command == "toggle" || command == "delete" || command == "edit" || command == "done" || command == "undone" {
 		index, err := strconv.Atoi(args[0])
 		if err != nil || index < 1 {
 			return fmt.Errorf("invalid index: use a positive integer")
@@ -187,9 +188,53 @@ func (s Service) HandleCommand(command string, cmdArgs []string, filePath string
 	case "edit":
 		idx, _ := strconv.Atoi(cmdArgs[0])
 		return s.EditTodo(filePath, idx, strings.Join(cmdArgs[1:], " "))
+	case "done", "undone":
+		idx, _ := strconv.Atoi(cmdArgs[0])
+		return s.SetTodoChecked(filePath, idx, command == "done")
 	case "delete":
 		idx, _ := strconv.Atoi(cmdArgs[0])
 		return s.DeleteTodo(filePath, idx)
 	}
 	return fmt.Errorf("unknown command: %s", command)
+}
+
+// readForMutation checks the supplied revision against the same snapshot that
+// will be edited, avoiding a separate-read race before the guarded save.
+func (s Service) readForMutation(path string) (*markdown.FileModel, error) {
+	fm, err := s.Store.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if s.ExpectedRevision != "" {
+		if err := fm.RequireRevision(s.ExpectedRevision); err != nil {
+			return nil, err
+		}
+	}
+	return fm, nil
+}
+
+// SetTodoChecked is idempotent: a retry does not toggle the task back or rewrite
+// an already-correct file. Supplied revision preconditions still apply.
+func (s Service) SetTodoChecked(path string, index int, checked bool) error {
+	fm, err := s.readForMutation(path)
+	if err != nil {
+		return err
+	}
+	if index < 1 || index > len(fm.Todos) {
+		return fmt.Errorf("invalid index %d", index)
+	}
+	if fm.Todos[index-1].Checked != checked {
+		if _, err := editor.Apply(fm, editor.Action{Kind: editor.SetChecked, Index: index - 1, Checked: checked}); err != nil {
+			return err
+		}
+		if err := s.Store.WriteFile(path, fm); err != nil {
+			return err
+		}
+	}
+	state := "open"
+	if checked {
+		state = "done"
+	}
+	_, err = fmt.Fprintf(s.output(), "%s: %s\n", state, fm.Todos[index-1].Text)
+	return err
 }

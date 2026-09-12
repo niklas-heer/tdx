@@ -71,7 +71,7 @@ func canonicalHistoryPath(path string) (string, error) {
 
 func commandUsesVersioning(command string, args []string) bool {
 	switch command {
-	case "", "add", "toggle", "edit", "delete", "last":
+	case "", "add", "toggle", "edit", "delete", "done", "undone", "last":
 		return true
 	case "recent":
 		return len(args) > 0 && args[0] != "clear"
@@ -96,6 +96,8 @@ func run() (exitCode int) {
 	tuiCfg := &tui.ConfigType{}
 	recentDir, _ := config.GetConfigDir()
 	tuiCfg.Recent = config.RecentStore{Dir: recentDir, Limit: appConfig.Recent.MaxFiles}
+	tuiCfg.Views = config.NewFileViewStore("")
+	tuiCfg.ViewsRestore = appConfig.Views.Restore
 	tuiCfg.Display.CheckSymbol = appConfig.Display.CheckSymbol
 	tuiCfg.Display.SelectMarker = appConfig.Display.SelectMarker
 	tuiCfg.Display.MaxVisible = appConfig.Defaults.MaxVisible
@@ -158,7 +160,7 @@ func run() (exitCode int) {
 	filePath, command, cmdArgs := opts.File, opts.Command, opts.Args
 	readOnly, showHeadings, maxVisible := opts.ReadOnly, opts.ShowHeadings, opts.MaxVisible
 	switch command {
-	case "list", "add", "toggle", "edit", "delete":
+	case "list", "add", "toggle", "edit", "delete", "done", "undone":
 		if err := cmd.ValidateCommand(command, cmdArgs); err != nil {
 			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
 			return 1
@@ -168,6 +170,12 @@ func run() (exitCode int) {
 			return 1
 		}
 	}
+
+	if command == "revision" && len(cmdArgs) != 0 {
+		fmt.Fprintln(os.Stderr, "tdx: revision takes no arguments")
+		return 1
+	}
+	cli.ExpectedRevision = opts.ExpectedRevision
 
 	// Resolve file path (expand ~ and make absolute)
 	filePath = resolveFilePath(filePath)
@@ -213,7 +221,28 @@ func run() (exitCode int) {
 			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
 			return 1
 		}
-	case "add", "toggle", "edit", "delete":
+	case "revision":
+		fm, err := (markdown.Store{}).ReadFile(filePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
+		token, err := fm.RevisionToken()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
+		fmt.Println(token)
+	case "completion":
+		if len(cmdArgs) != 1 {
+			fmt.Fprintln(os.Stderr, "tdx: completion requires bash, zsh, or fish")
+			return 1
+		}
+		if err := cmd.WriteCompletion(os.Stdout, cmdArgs[0]); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
+	case "add", "toggle", "edit", "delete", "done", "undone":
 		if err := cli.HandleCommand(command, cmdArgs, filePath); err != nil {
 			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
 			return 1
@@ -241,7 +270,9 @@ Usage:
 
 Options:
   -f, --file <path>       Select any file path (including paths without .md)
-  -r, --read-only         Don't save changes to disk (read-only mode)
+  -r, --read-only         Manual save in TUI; reject CLI mutations
+      --manual-save     Alias for --read-only
+      --if-revision <R> Reject a mutation unless the loaded revision matches
       --show-headings    Display markdown headings between tasks
   -m, --max-visible <N>   Set max visible items (0 = unlimited)
       --                 Treat remaining arguments as literal text
@@ -250,12 +281,20 @@ List options:
       --json             Emit a JSON array for scripts and editor integrations
       --status <value>   Filter by all (default), open, or done
       --tag <tag>        Filter by exact tag; repeat to require every tag
+      --priority <N>     Filter by priority (0 means unset)
+      --due <value>      all, none, overdue, today, week, or YYYY-MM-DD
+      --section <title>  Exact heading title, including its subsections
+      --with-revision    JSON envelope with schema_version, revision, tasks
 
 Commands:
   (none)              Launch interactive TUI
-  list                List todos (supports --json, --status, --tag)
+  list                List todos with composable filters
   add "text"          Add a new todo
   toggle <index>      Toggle todo completion
+  done <index>        Mark complete (safe to retry)
+  undone <index>      Mark open (safe to retry)
+  revision            Print current document revision
+  completion <shell>  Generate bash, zsh, or fish completion
   edit <index> "text" Edit todo text
   delete <index>      Delete a todo
   last                Open the most recently used file

@@ -8,6 +8,7 @@ import (
 	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/editor"
 	"github.com/niklas-heer/tdx/internal/markdown"
+	"github.com/niklas-heer/tdx/internal/util"
 )
 
 // StyleFuncsType holds style functions for rendering
@@ -38,6 +39,9 @@ type VersionInfo struct {
 
 // ConfigType holds display configuration
 type ConfigType struct {
+	Views            config.ViewStore
+	ViewsRestore     bool
+	Clipboard        util.Clipboard
 	Recent           config.RecentStore
 	Store            markdown.Store
 	AvailableThemes  []string
@@ -71,11 +75,17 @@ type Runtime struct {
 
 // Model holds the TUI application state
 type Model struct {
-	SectionsMode   bool
-	SectionCursor  int
-	SectionFocus   int // One-based heading index; zero means all sections.
-	FoldedSections map[int]bool
-	HeadingInput   string
+	ViewMode        string
+	ViewNames       []string
+	ViewCursor      int
+	ViewConfirm     bool
+	ActiveView      string
+	activeViewState *config.SavedView
+	SectionsMode    bool
+	SectionCursor   int
+	SectionFocus    int // One-based heading index; zero means all sections.
+	FoldedSections  map[int]bool
+	HeadingInput    string
 
 	FilePath            string
 	FileModel           markdown.FileModel
@@ -109,6 +119,7 @@ type Model struct {
 	WordWrap           bool
 	TermWidth          int
 	TermHeight         int
+	waitForSize        bool
 	HideLineNumbers    bool
 	MaxVisibleOverride int
 	ShowHeadings       bool
@@ -233,6 +244,7 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 	m.FilterDone = config.Defaults.FilterDone
 	m.WordWrap = config.Defaults.WordWrap
 	m.applyFileMetadata()
+	m.restoreSavedView()
 
 	// Position cursor on first visible item if filters are active
 	if m.hasActiveFilters() || m.ShowHeadings {

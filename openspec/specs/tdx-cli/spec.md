@@ -2,9 +2,7 @@
 
 ## Purpose
 Provide a standalone Go CLI and Bubble Tea TUI for managing Markdown tasks, with consistent storage, styling, and guarded atomic saves.
-
 ## Requirements
-
 ### Requirement: Go CLI entry point
 The system SHALL provide a Go command-line tool named tdx with entry point cmd/tdx/main.go, built with the toolchain pinned in mise.toml and metadata from tdx.toml.
 #### Scenario: Build and run tdx CLI
@@ -15,57 +13,30 @@ The system SHALL provide a Go command-line tool named tdx with entry point cmd/t
 ---
 
 ### Requirement: Markdown todo storage in todo.md
-The system SHALL store and manage todos in a markdown file named `todo.md` located in the current working directory.
+The system SHALL use the configured file, defaulting to ./todo.md, as the task source of truth. Missing files SHALL be treated as empty documents without being created by listing or revision queries; a successful mutation SHALL create the file. Actual Goldmark task-list nodes, including supported unordered, ordered and nested containers, SHALL determine task indexes. Mutations SHALL preserve unrelated document bytes and use guarded atomic replacement. Unsupported operations SHALL fail without modifying the document.
 
-- The primary todo storage file SHALL be `./todo.md` relative to the process working directory.
-- If `todo.md` does not exist when any todo-related command is invoked, the system SHALL create it automatically with a simple markdown header and an empty task list (e.g., `# Todos` followed by a blank line).
-- A todo item SHALL be represented only by lines that start with one of the following exact prefixes:
-  - `- [ ] ` (unchecked)
-  - `- [x] ` (checked, using lowercase `x`)
-- Todo text SHALL be defined as all content after the checkbox prefix on the same line.
-- The system SHALL preserve:
-  - The content of unrelated Markdown nodes (including headers, paragraphs, and comments).
-  - The original ordering of all lines (todo and non-todo).
-- On write, the system SHALL:
-  - Update the selected task or heading without changing other tasks or heading titles.
-  - Preserve unrelated Markdown content while permitting serializer whitespace normalization.
+#### Scenario: Query a missing file
+- **WHEN** a user lists tasks or requests a revision for a nonexistent file
+- **THEN** no file SHALL be created and the result SHALL represent an empty/missing document
 
-- All modifications to `todo.md` SHALL be performed as safe atomic writes:
-  - Write to a temporary file in the same directory.
-  - Flush and close the temporary file.
-  - Replace the original file with the temporary file using an atomic rename, where supported by the platform.
+#### Scenario: First successful edit
+- **WHEN** a user adds a task to a nonexistent file
+- **THEN** the file SHALL be created through the guarded save with the new task
 
-#### Scenario: Create missing todo.md
-- **WHEN** the user runs any `tdx` command that reads or writes todos  
-- **AND** `todo.md` does not exist in the current working directory  
-- **THEN** the system SHALL create `todo.md` with a simple markdown header (e.g., `# Todos`) and no tasks  
-- **AND** the command SHALL continue using this new file without failing.
-
-#### Scenario: Preserve non-todo markdown content
-- **WHEN** `todo.md` contains a mix of markdown headings, paragraphs, blank lines, comments, and todo lines  
-- **AND WHEN** the user toggles or edits one todo through any CLI or TUI operation  
-- **THEN** only the corresponding todo line in `todo.md` SHALL be modified  
-- **AND** all unrelated Markdown content SHALL remain in document order; serializer whitespace normalization is permitted.
-
-#### Scenario: Atomic write on modification
-- **WHEN** any command or TUI interaction changes todo state or text  
-- **THEN** the system SHALL write the new file contents to a temporary file in the same directory as `todo.md`  
-- **AND** then replace `todo.md` with the temporary file in a single rename operation  
-- **AND** at no point SHALL a partially written `todo.md` be visible on disk.
-
----
+#### Scenario: Preserve non-task Markdown
+- **WHEN** a supported edit changes a task near reference definitions, HTML or tables
+- **THEN** unrelated source bytes SHALL remain intact
 
 ### Requirement: AST-based Markdown parser and writer
-The system SHALL parse Markdown using Goldmark and perform task and heading edits through its AST. Serialization SHALL preserve unrelated content semantically; normalizing Markdown spacing is permitted.
+The system SHALL use Goldmark to identify tasks and headings and validate source patches before committing edits. It SHALL preserve unrelated Markdown source and reject unsupported operations without mutation. The legacy serializer SHALL NOT silently rewrite unsupported source during normal editing.
+
 #### Scenario: Round-trip consistency with no changes
 - **WHEN** a document is parsed and serialized without edits
-- **THEN** its tasks, headings, and other Markdown content SHALL remain equivalent
-#### Scenario: Correct parsing of todos and non-todos
-- **WHEN** a document includes headings, ordinary lists, fenced code, and checkboxes
-- **THEN** only actual task-list nodes SHALL be treated as todos
-- **AND** unrelated Markdown constructs SHALL be retained
+- **THEN** source content SHALL remain identical
 
----
+#### Scenario: Correct parsing of examples
+- **WHEN** a document includes fenced examples that resemble tasks
+- **THEN** only actual task-list nodes SHALL be editable
 
 ### Requirement: TUI layout and styling
 The system SHALL present an interactive terminal UI (TUI) using Bubble Tea that renders todos with a specific layout and styling.
@@ -282,3 +253,29 @@ The CLI SHALL support `--file`/`-f`, retain positional Markdown paths, honor `--
 #### Scenario: Read-only script tries to mutate a file
 - **WHEN** a developer runs a mutating command with read-only mode enabled
 - **THEN** the command SHALL fail on stderr without changing the task file or opening history storage
+
+### Requirement: Extended automation contracts
+The CLI SHALL support composable due-date, priority and section queries, explicit idempotent done/undone commands, and optional revision-bearing queries and guarded mutations. Existing JSON array output SHALL remain compatible and unfiltered indexes SHALL be preserved.
+
+#### Scenario: A script attempts a mutation using a stale revision
+- **WHEN** a script attempts a mutation using a stale revision
+- **THEN** the mutation fails without changing the document
+
+### Requirement: Shell completion and schema policy
+The CLI SHALL generate documented shell completions without reading task files or opening history. The JSON compatibility policy SHALL distinguish additive changes from breaking schema changes.
+
+#### Scenario: A user requests shell completion
+- **WHEN** a user requests shell completion
+- **THEN** completion output is produced without task-file side effects
+
+### Requirement: Bounded inline terminal frames
+The interactive TUI SHALL keep each rendered frame within the measured terminal width and height, reserving a row for the inline cursor and keeping frame height stable across modes at the current terminal size. Actual terminal resizes SHALL reset the inline redraw origin. Headings, wrapped task content, section banners and status rows SHALL count toward the height budget. The selected task or text cursor SHALL remain in the visible task viewport. Before terminal dimensions arrive, the interactive application SHALL defer document rendering.
+
+#### Scenario: Focus after an overflowing document
+- **WHEN** a user navigates a document with many headings and wrapped tasks and focuses a section
+- **THEN** prior frames SHALL NOT leave repeated headings in terminal scrollback
+- **AND** the focused section and selected task SHALL remain visible
+
+#### Scenario: Resize with an active editor or overlay
+- **WHEN** the terminal becomes narrower or shorter during editing or an overlay
+- **THEN** the frame SHALL fit the new dimensions without terminal soft wrapping or excess rows

@@ -574,7 +574,7 @@ func TestResolveFilePath_RelativePath(t *testing.T) {
 }
 
 func TestResolveFilePath_AbsolutePathUnchanged(t *testing.T) {
-	absPath := "/tmp/my-todos.md"
+	absPath := filepath.Join(t.TempDir(), "my-todos.md")
 	result := resolveFilePath(absPath)
 
 	if result != absPath {
@@ -600,5 +600,29 @@ func TestResolveFilePath_CustomFilename(t *testing.T) {
 				t.Errorf("resolveFilePath(%q) = %q, want %q", filename, result, expected)
 			}
 		})
+	}
+}
+
+func TestSavedViewsConfigAndManualSaveAlias(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	configDir := filepath.Join(dir, "tdx")
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(configDir, "config.toml")
+	if err := os.WriteFile(path, []byte("[defaults]\nread_only = true\nmanual_save = false\n[views]\nrestore = true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := LoadConfig()
+	if cfg.Defaults.ReadOnly || !cfg.Views.Restore {
+		t.Fatalf("aliases/settings not applied: %+v", cfg)
+	}
+	if err := SaveTheme("tokyo-night"); err != nil {
+		t.Fatal(err)
+	}
+	cfg = LoadConfig()
+	if cfg.Defaults.ManualSave == nil || *cfg.Defaults.ManualSave || !cfg.Views.Restore {
+		t.Fatal("theme change dropped workflow settings")
 	}
 }

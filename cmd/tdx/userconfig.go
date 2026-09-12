@@ -14,6 +14,7 @@ var themesFS embed.FS
 
 // UserConfig holds user configuration
 type UserConfig struct {
+	Views      ViewsConfig      `toml:"views"`
 	Theme      ThemeConfig      `toml:"theme"`
 	Colors     ColorsConfig     // Populated from builtin theme, not from config file
 	Display    DisplayConfig    `toml:"display"`
@@ -60,12 +61,17 @@ type DisplayConfig struct {
 
 // DefaultsConfig holds default behavior settings
 type DefaultsConfig struct {
-	File         string `toml:"file"`          // default file path (default: "todo.md", use absolute/~ for central file)
-	MaxVisible   int    `toml:"max_visible"`   // max todos to show (0 = unlimited)
-	WordWrap     bool   `toml:"word_wrap"`     // enable word wrapping (default: true)
-	ShowHeadings bool   `toml:"show_headings"` // show headings between tasks (default: false)
-	ReadOnly     bool   `toml:"read_only"`     // open in read-only mode (default: false)
-	FilterDone   bool   `toml:"filter_done"`   // filter out completed tasks (default: false)
+	ManualSave   *bool  `toml:"manual_save,omitempty"` // preferred alias, overrides read_only when set
+	File         string `toml:"file"`                  // default file path (default: "todo.md", use absolute/~ for central file)
+	MaxVisible   int    `toml:"max_visible"`           // max todos to show (0 = unlimited)
+	WordWrap     bool   `toml:"word_wrap"`             // enable word wrapping (default: true)
+	ShowHeadings bool   `toml:"show_headings"`         // show headings between tasks (default: false)
+	ReadOnly     bool   `toml:"read_only"`             // manual-save mode: temporary edits until explicit save
+	FilterDone   bool   `toml:"filter_done"`           // filter out completed tasks (default: false)
+}
+
+type ViewsConfig struct {
+	Restore bool `toml:"restore"`
 }
 
 // RecentConfig holds recent files settings
@@ -232,6 +238,7 @@ func DefaultConfig() *UserConfig {
 		Recent: RecentConfig{
 			MaxFiles: 20, // default max recent files
 		},
+		Views: ViewsConfig{Restore: false},
 		Versioning: VersioningConfig{
 			MaxVersions: 100, // default max versions per file
 		},
@@ -375,6 +382,9 @@ func LoadConfig() *UserConfig {
 		}
 	}
 
+	if config.Defaults.ManualSave != nil {
+		config.Defaults.ReadOnly = *config.Defaults.ManualSave
+	}
 	return config
 }
 
@@ -509,6 +519,7 @@ func getConfigPath() (string, error) {
 
 // minimalSaveConfig is used for saving config without colors (colors come from theme)
 type minimalSaveConfig struct {
+	Views *ViewsConfig `toml:"views,omitempty"`
 	Theme struct {
 		Name string `toml:"name"`
 	} `toml:"theme"`
@@ -535,6 +546,9 @@ func SaveTheme(themeName string) error {
 	// Create config with theme name and preserve other settings
 	minConfig := &minimalSaveConfig{}
 	minConfig.Theme.Name = themeName
+	if existingConfig.Views.Restore {
+		minConfig.Views = &existingConfig.Views
+	}
 
 	// Preserve display settings if they were customized
 	defaults := DefaultConfig()
@@ -544,7 +558,7 @@ func SaveTheme(themeName string) error {
 	}
 
 	// Preserve defaults settings if any were customized
-	if existingConfig.Defaults.File != defaults.Defaults.File ||
+	if existingConfig.Defaults.ManualSave != nil || existingConfig.Defaults.File != defaults.Defaults.File ||
 		existingConfig.Defaults.MaxVisible != defaults.Defaults.MaxVisible ||
 		existingConfig.Defaults.WordWrap != defaults.Defaults.WordWrap ||
 		existingConfig.Defaults.ShowHeadings != defaults.Defaults.ShowHeadings ||

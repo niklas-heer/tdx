@@ -22,7 +22,7 @@ func run(args []string) error {
 	sessions := flags.Int("sessions", 20, "number of independent sessions")
 	steps := flags.Int("steps", 1800, "actions per session; each represents 10 simulated seconds")
 	seed := flags.Uint64("seed", 100, "first deterministic seed")
-	driver := flags.String("driver", "tui", "tui or cli")
+	driver := flags.String("driver", "tui", "tui, cli or structural")
 	binary := flags.String("binary", "", "CLI executable under test (Go or alternative implementation)")
 	replay := flags.String("replay", "", "replay a saved JSON trace instead of generating")
 	output := flags.String("output", "dist/usage", "trace and report directory")
@@ -59,7 +59,7 @@ func run(args []string) error {
 		} else {
 			trace = usage.Generate(*seed+uint64(n), *steps, *driver)
 		}
-		if trace.Driver != "tui" && trace.Driver != "cli" {
+		if trace.Driver != "tui" && trace.Driver != "cli" && trace.Driver != "structural" {
 			return fmt.Errorf("unsupported driver %q", trace.Driver)
 		}
 		name := fmt.Sprintf("%s-%d", trace.Driver, trace.Seed)
@@ -77,6 +77,14 @@ func run(args []string) error {
 			if err := writeJSON(filepath.Join(*output, name+"-failure.json"), trace); err != nil {
 				return err
 			}
+			minimal, diagnostic := usage.MinimizeFailure(trace, *binary, runErr, 64)
+			if err := writeJSON(filepath.Join(*output, name+"-minimized.json"), minimal); err != nil {
+				return err
+			}
+			if err := writeJSON(filepath.Join(*output, name+"-reduction.json"), map[string]string{"diagnostic": diagnostic}); err != nil {
+				return err
+			}
+			fmt.Fprintln(os.Stderr, diagnostic)
 			return runErr
 		}
 		if *replay != "" {

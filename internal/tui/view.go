@@ -9,15 +9,22 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
-	"github.com/niklas-heer/tdx/internal/util"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // View renders the TUI
 func (m Model) View() tea.View {
-	return tea.NewView(m.renderView())
+	if m.waitForSize && (m.TermWidth <= 0 || m.TermHeight <= 0) {
+		return tea.NewView("")
+	}
+	content := fitFrame(m.renderView(), m.TermWidth, m.frameHeight())
+	if height := m.frameHeight(); height > 0 {
+		content += strings.Repeat("\n", max(0, height-lipgloss.Height(content)))
+	}
+	return tea.NewView(content)
 }
 
 func compositeOverlay(foreground, background string) string {
@@ -39,18 +46,18 @@ func (m Model) renderView() string {
 		return m.renderVersionsBrowser()
 	}
 
+	if m.ViewMode != "" {
+		return m.renderViews()
+	}
 	if m.SectionsMode {
 		return m.renderSections()
 	}
 
-	// Render main content and status bar
-	mainContent := m.renderMainContent()
-	statusBar := m.renderStatusBar()
-
-	// Combine main content and status bar
-	background := mainContent + "\n" + statusBar
+	// Reserve actual rows for chrome before laying out the task viewport.
+	statusBar := fitFrame(m.renderStatusBar(), m.TermWidth, 0)
+	header := ""
 	if m.SectionFocus > 0 && m.SectionFocus <= len(m.GetHeadings()) {
-		background = styles.Cyan("Section: "+m.GetHeadings()[m.SectionFocus-1].Text) + styles.Dim("  S all tasks · s sections") + "\n\n" + background
+		header = styles.Cyan("Section: "+m.GetHeadings()[m.SectionFocus-1].Text) + styles.Dim("  S all tasks · s sections")
 	} else if len(m.FoldedSections) > 0 {
 		var names []string
 		for i, h := range m.GetHeadings() {
@@ -58,105 +65,51 @@ func (m Model) renderView() string {
 				names = append(names, h.Text)
 			}
 		}
-		background = styles.Dim("Folded: "+strings.Join(names, ", ")+" · s sections · S show all") + "\n\n" + background
+		header = styles.Dim("Folded: " + strings.Join(names, ", ") + " · s sections · S show all")
 	}
-
-	// If there's an overlay active, composite it on top
-	if m.RecentFilesMode {
-		// Ensure there's space for overlay positioning
-		contentLines := strings.Count(mainContent, "\n")
-		minLines := 10 // Minimum lines to ensure overlay positioning works well
-		if contentLines < minLines {
-			for i := contentLines; i < minLines; i++ {
-				background += "\n"
-			}
-		}
-
-		overlayContent := m.renderRecentFilesOverlay()
-		// Position overlay just above status bar
-		return compositeOverlay(overlayContent, background)
+	if header != "" {
+		header = fitFrame(header, m.TermWidth, 1) + "\n\n"
 	}
-
-	if m.FilterMode {
-		// Ensure there's space for overlay positioning
-		contentLines := strings.Count(mainContent, "\n")
-		minLines := 10 // Minimum lines to ensure overlay positioning works well
-		if contentLines < minLines {
-			for i := contentLines; i < minLines; i++ {
-				background += "\n"
-			}
-		}
-
-		overlayContent := m.renderFilterOverlayCompact()
-		// Position overlay just above status bar
-		return compositeOverlay(overlayContent, background)
+	mainContent, anchor := m.renderMainContentWithAnchor()
+	if height := m.frameHeight(); height > 0 {
+		statusBar = fitFrame(statusBar, m.TermWidth, max(1, height/3))
+		rows := height - strings.Count(header, "\n") - lipgloss.Height(statusBar)
+		mainContent = taskViewport(mainContent, anchor, max(1, rows))
+		mainContent += strings.Repeat("\n", max(0, rows-lipgloss.Height(mainContent)))
 	}
+	background := header + mainContent + "\n" + statusBar
 
-	if m.PriorityFilterMode {
-		// Ensure there's space for overlay positioning
-		contentLines := strings.Count(mainContent, "\n")
-		minLines := 10 // Minimum lines to ensure overlay positioning works well
-		if contentLines < minLines {
-			for i := contentLines; i < minLines; i++ {
-				background += "\n"
-			}
-		}
-
-		overlayContent := m.renderPriorityFilterOverlayCompact()
-		// Position overlay just above status bar
-		return compositeOverlay(overlayContent, background)
+	var overlay string
+	switch {
+	case m.RecentFilesMode:
+		overlay = m.renderRecentFilesOverlay()
+	case m.FilterMode:
+		overlay = m.renderFilterOverlayCompact()
+	case m.PriorityFilterMode:
+		overlay = m.renderPriorityFilterOverlayCompact()
+	case m.DueFilterMode:
+		overlay = m.renderDueFilterOverlayCompact()
+	case m.ThemeMode:
+		overlay = m.renderThemeOverlayCompact()
+	case m.CommandMode:
+		overlay = m.renderCommandOverlayCompact()
 	}
-
-	if m.DueFilterMode {
-		// Ensure there's space for overlay positioning
-		contentLines := strings.Count(mainContent, "\n")
-		minLines := 10 // Minimum lines to ensure overlay positioning works well
-		if contentLines < minLines {
-			for i := contentLines; i < minLines; i++ {
-				background += "\n"
-			}
+	if overlay != "" {
+		overlay = fitFrame(overlay, m.TermWidth, m.frameHeight())
+		minHeight := max(11, lipgloss.Height(background), lipgloss.Height(overlay)+1)
+		if height := m.frameHeight(); height > 0 {
+			minHeight = min(minHeight, height)
 		}
-
-		overlayContent := m.renderDueFilterOverlayCompact()
-		// Position overlay just above status bar
-		return compositeOverlay(overlayContent, background)
-	}
-
-	if m.ThemeMode {
-		// Ensure there's space for overlay positioning
-		contentLines := strings.Count(mainContent, "\n")
-		minLines := 10 // Minimum lines to ensure overlay positioning works well
-		if contentLines < minLines {
-			for i := contentLines; i < minLines; i++ {
-				background += "\n"
-			}
-		}
-
-		overlayContent := m.renderThemeOverlayCompact()
-		// Position overlay just above status bar
-		return compositeOverlay(overlayContent, background)
-	}
-
-	if m.CommandMode {
-		// Ensure there's space for overlay positioning
-		contentLines := strings.Count(mainContent, "\n")
-		minLines := 10 // Minimum lines to ensure overlay positioning works well
-		if contentLines < minLines {
-			for i := contentLines; i < minLines; i++ {
-				background += "\n"
-			}
-		}
-
-		overlayContent := m.renderCommandOverlayCompact()
-		// Position overlay just above status bar
-		return compositeOverlay(overlayContent, background)
+		background += strings.Repeat("\n", max(0, minHeight-lipgloss.Height(background)))
+		return compositeOverlay(overlay, background)
 	}
 
 	return background
 }
 
-// renderMainContent renders the main todo list (without status bar)
-func (m Model) renderMainContent() string {
+// renderMainContentWithAnchor renders task rows and the selected task/cursor row.
+func (m Model) renderMainContentWithAnchor() (string, int) {
+	anchor := 0
 	var b strings.Builder
 	styles := m.Styles()
 	config := m.Config()
@@ -350,6 +303,10 @@ func (m Model) renderMainContent() string {
 			relIndex = (startIdx + displayIdx) - selectedVisiblePos
 		}
 
+		if isSelected {
+			anchor = strings.Count(b.String(), "\n")
+		}
+
 		// Relative index
 		var indexStr string
 		if m.HideLineNumbers {
@@ -388,7 +345,7 @@ func (m Model) renderMainContent() string {
 		// Add indentation based on nesting depth (2 spaces per level)
 		indent := strings.Repeat("  ", todo.Depth)
 		prefix := fmt.Sprintf("%s%s%s%s ", indent, styles.Dim(indexStr), arrow, checkbox)
-		prefixWidth := (todo.Depth * 2) + 3 + 3 + 3 + 1 // indent + index(3) + arrow(3) + checkbox(3) + space(1)
+		prefixWidth := lipgloss.Width(prefix)
 
 		// Text with inline code rendering and tag colorization
 		var text string
@@ -405,37 +362,11 @@ func (m Model) renderMainContent() string {
 			text = ColorizeDueDates(text, styles.DueUrgent, styles.DueSoon, styles.DueFuture)
 		}
 
-		// Show edit cursor if in edit mode on this item
 		if m.EditMode && isSelected && !m.SearchMode {
-			plainText = m.InputBuffer
-
-			// If wrapping is enabled, insert cursor and wrap the text
-			if m.WordWrap && m.TermWidth > 0 {
-				before := m.InputBuffer[:m.CursorPos]
-				after := m.InputBuffer[m.CursorPos:]
-				cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-				textWithCursor := before + cursor + after
-
-				// Wrap text with cursor included
-				availWidth := m.TermWidth - prefixWidth
-				indent := strings.Repeat(" ", prefixWidth)
-				wrappedLines := util.WrapText(textWithCursor, availWidth, indent)
-
-				// Render wrapped lines
-				for i, line := range wrappedLines {
-					if i == 0 {
-						b.WriteString(prefix + line + "\n")
-					} else {
-						b.WriteString(line + "\n")
-					}
-				}
-				continue // Skip normal rendering
-			} else {
-				// No wrapping - simple cursor insertion
-				before := m.InputBuffer[:m.CursorPos]
-				after := m.InputBuffer[m.CursorPos:]
-				text = before + lipgloss.NewStyle().Reverse(true).Render(" ") + after
-			}
+			line, cursorRow := m.renderEditorLine(prefix)
+			anchor += cursorRow
+			b.WriteString(line)
+			continue
 		}
 
 		// Render the todo line
@@ -448,14 +379,18 @@ func (m Model) renderMainContent() string {
 
 		// If in input mode with insert-after-cursor, show input line after selected item
 		if m.InputMode && m.InsertAfterCursor && isSelected {
-			b.WriteString(m.renderInputLine(styles, config))
+			line, cursorRow := m.renderEditorLine(m.inputPrefix(styles, config))
+			anchor = strings.Count(b.String(), "\n") + cursorRow
+			b.WriteString(line)
 		}
 	}
 
 	// Input mode at end - show new task at end when not inserting after cursor
 	// Also handles the case when inserting after cursor but there are no todos
 	if m.InputMode && (!m.InsertAfterCursor || len(todosToShow) == 0) {
-		b.WriteString(m.renderInputLine(styles, config))
+		line, cursorRow := m.renderEditorLine(m.inputPrefix(styles, config))
+		anchor = strings.Count(b.String(), "\n") + cursorRow
+		b.WriteString(line)
 	}
 
 	// Show indicator for items below (when scrolling is active)
@@ -479,7 +414,7 @@ func (m Model) renderMainContent() string {
 			first, last := sectionBounds(m.GetHeadings(), m.SectionFocus-1, len(m.FileModel.Todos))
 			if first == last {
 				b.WriteString(styles.Dim("No tasks in this section. Press n to add one, or S for all tasks.") + "\n")
-				return b.String()
+				return b.String(), anchor
 			}
 		}
 		b.WriteString(styles.Dim("  No todos match current filters."))
@@ -512,47 +447,12 @@ func (m Model) renderMainContent() string {
 
 	b.WriteString("\n")
 
-	return b.String()
+	return b.String(), anchor
 }
 
-// renderInputLine renders the new task input line with word wrap support
-func (m Model) renderInputLine(styles *StyleFuncsType, config *ConfigType) string {
-	var b strings.Builder
-
-	arrow := styles.Cyan(" " + config.Display.SelectMarker + " ")
-	checkbox := styles.Dim("[ ]")
-	indexStr := styles.Dim("  0")
-
-	// Build prefix
-	prefix := fmt.Sprintf("%s%s%s ", indexStr, arrow, checkbox)
-	prefixWidth := 3 + 3 + 3 + 1 // index(3) + arrow(3) + checkbox(3) + space(1)
-
-	before := m.InputBuffer[:m.CursorPos]
-	after := m.InputBuffer[m.CursorPos:]
-	cursor := lipgloss.NewStyle().Reverse(true).Render(" ")
-
-	// Apply word wrap if enabled
-	if m.WordWrap && m.TermWidth > 0 {
-		textWithCursor := before + cursor + after
-		availWidth := m.TermWidth - prefixWidth
-		if availWidth > 10 {
-			indent := strings.Repeat(" ", prefixWidth)
-			wrappedLines := util.WrapText(textWithCursor, availWidth, indent)
-
-			for i, line := range wrappedLines {
-				if i == 0 {
-					b.WriteString(prefix + line + "\n")
-				} else {
-					b.WriteString(line + "\n")
-				}
-			}
-			return b.String()
-		}
-	}
-
-	// No wrapping - simple output
-	fmt.Fprintf(&b, "%s%s%s%s\n", prefix, before, cursor, after)
-	return b.String()
+// inputPrefix renders the new task marker and checkbox.
+func (m Model) inputPrefix(styles *StyleFuncsType, config *ConfigType) string {
+	return styles.Dim("  0") + styles.Cyan(" "+config.Display.SelectMarker+" ") + styles.Dim("[ ]") + " "
 }
 
 // renderStatusBar renders the status bar at the bottom
@@ -633,8 +533,11 @@ func (m Model) renderStatusBar() string {
 	} else {
 		// Normal status bar with mode indicators and help
 		var indicators []string
+		if m.ActiveView != "" {
+			indicators = append(indicators, m.activeViewLabel())
+		}
 		if m.ReadOnly {
-			indicators = append(indicators, "🔒READ ONLY")
+			indicators = append(indicators, "MANUAL SAVE · :save to write")
 		}
 		if m.FilterDone {
 			indicators = append(indicators, "⊘ FILTERED")
@@ -1263,12 +1166,16 @@ func (m Model) renderConflictDiff() string {
 	if width < 34 {
 		width = 34
 	}
+	contentWidth := width - 4 // Width includes both borders and horizontal padding.
+	for i, line := range visible {
+		visible[i] = ansi.Truncate(line, contentWidth, "…")
+	}
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#f7768e")).
 		Render("FILE CONFLICT - LOCAL -> DISK [" + filepath.Base(m.FilePath) + "]")
 	legend := styles.Dim("struck: local only  |  green: authoritative disk")
 	footer := styles.Dim("[PgUp/PgDn] Scroll  |  [Esc] Close  |  then :reload or :force-save")
-	body := title + "\n" + legend + "\n" + strings.Repeat("─", width) + "\n" +
-		strings.Join(visible, "\n") + "\n" + strings.Repeat("─", width) + "\n" + footer
+	body := ansi.Truncate(title, contentWidth, "…") + "\n" + ansi.Truncate(legend, contentWidth, "…") + "\n" + strings.Repeat("─", contentWidth) + "\n" +
+		strings.Join(visible, "\n") + "\n" + strings.Repeat("─", contentWidth) + "\n" + ansi.Truncate(footer, contentWidth, "…")
 
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -1288,7 +1195,7 @@ func (m Model) conflictDiffLines() []string {
 }
 
 func (m Model) conflictDiffHeight() int {
-	height := m.TermHeight - 7
+	height := m.TermHeight - 8
 	if height < 3 {
 		height = 3
 	}
@@ -1320,14 +1227,14 @@ func (m Model) renderVersionsBrowser() string {
 		browserWidth = 40
 	}
 
-	// innerWidth is the Width() argument passed to outerStyle (content+padding, excluding borders).
-	// outerStyle uses Padding(0, 1), so the actual text area = innerWidth - 2.
-	// All content (left pane, right pane, dividers) must fit in contentWidth to prevent wrapping.
-	innerWidth := browserWidth - 4 // subtract 2 border chars + 2 to keep box inside terminal
-	if innerWidth < 22 {
-		innerWidth = 22
+	// Lipgloss Width includes borders and padding. Leave four terminal columns
+	// outside the box, then reserve its two border and two padding columns.
+	// Pane rows and dividers must fit the remaining text area without reflow.
+	outerWidth := browserWidth - 4
+	if outerWidth < 22 {
+		outerWidth = 22
 	}
-	contentWidth := innerWidth - 2 // subtract left+right padding (1 each)
+	contentWidth := outerWidth - 4
 	if contentWidth < 20 {
 		contentWidth = 20
 	}
@@ -1414,6 +1321,7 @@ func (m Model) renderVersionsBrowser() string {
 	}
 	var rightLines []string
 	for _, line := range visible {
+		line = ansi.Truncate(line, rightWidth, "…")
 		// Use lipgloss.Width to measure visible width (strips ANSI codes correctly),
 		// then pad manually. Avoid Width().Render() which may reflow ANSI-coded text
 		// at space boundaries and produce spurious spacing inside colored segments.
@@ -1447,8 +1355,8 @@ func (m Model) renderVersionsBrowser() string {
 	headerRendered := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#7aa2f7")).
 		Bold(true).
-		Render(title)
-	footerRendered := styles.Dim(footer)
+		Render(ansi.Truncate(title, contentWidth, "…"))
+	footerRendered := styles.Dim(ansi.Truncate(footer, contentWidth, "…"))
 
 	fullContent := headerRendered + "\n" + divider + "\n" +
 		body + "\n" +
@@ -1467,7 +1375,7 @@ func (m Model) renderVersionsBrowser() string {
 			BottomRight: "┘",
 		}).
 		BorderForeground(lipgloss.Color("#7aa2f7")).
-		Width(innerWidth).
+		Width(outerWidth).
 		Padding(0, 1)
 
 	return outerStyle.Render(fullContent)

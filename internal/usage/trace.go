@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+
+	"github.com/niklas-heer/tdx/internal/editor"
 )
 
 const Schema = 1
@@ -14,18 +16,21 @@ type Task struct {
 	Checked bool   `json:"checked"`
 }
 type Step struct {
-	Op       string `json:"op"`
-	Index    int    `json:"index"`
-	Text     string `json:"text,omitempty"`
-	Seconds  int    `json:"seconds"`
-	Expected []Task `json:"expected"`
+	Action   *editor.Action `json:"action,omitempty"`
+	Op       string         `json:"op"`
+	Index    int            `json:"index"`
+	Text     string         `json:"text,omitempty"`
+	Seconds  int            `json:"seconds"`
+	Expected []Task         `json:"expected"`
 }
 type Trace struct {
-	Schema  int    `json:"schema"`
-	Seed    uint64 `json:"seed"`
-	Driver  string `json:"driver"`
-	Initial []Task `json:"initial"`
-	Steps   []Step `json:"steps"`
+	Source    string   `json:"source,omitempty"`
+	Protected []string `json:"protected,omitempty"`
+	Schema    int      `json:"schema"`
+	Seed      uint64   `json:"seed"`
+	Driver    string   `json:"driver"`
+	Initial   []Task   `json:"initial"`
+	Steps     []Step   `json:"steps"`
 }
 
 // Oracle deliberately uses only flat value slices, never the editor or Markdown parser.
@@ -79,6 +84,9 @@ func (o *Oracle) Apply(s Step) error {
 }
 
 func Generate(seed uint64, count int, driver string) Trace {
+	if driver == "structural" {
+		return GenerateStructural(seed, count)
+	}
 	r := rand.New(rand.NewPCG(seed, seed^0x746478))
 	trace := Trace{Schema: Schema, Seed: seed, Driver: driver}
 	for i := 0; i < 24; i++ {

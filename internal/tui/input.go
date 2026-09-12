@@ -20,13 +20,16 @@ func singleLineText(text string) string {
 }
 
 func (m Model) handlePaste(text string) (tea.Model, tea.Cmd) {
+	if m.ViewConfirm {
+		return m, nil
+	}
 	text = singleLineText(text)
 	if text == "" {
 		return m, nil
 	}
 
 	switch {
-	case m.HeadingInput != "" || m.InputMode || m.EditMode || m.SearchMode || m.CommandMode:
+	case m.ViewMode == "save" || m.HeadingInput != "" || m.InputMode || m.EditMode || m.SearchMode || m.CommandMode:
 		m.insertInputText(text)
 		if m.SearchMode {
 			m.searchPending = true

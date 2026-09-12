@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 
 	"dagger/tdx-ci/internal/dagger"
 	"dagger/tdx-ci/pipeline"
@@ -24,8 +23,8 @@ type TdxCi struct{}
 
 // Ci runs every portable validation used by GitHub CI.
 func (m *TdxCi) Ci(ctx context.Context, source *dagger.Directory) (string, error) {
-	// golangci-lint has the highest peak memory use, so keep it out of the
-	// concurrent group to make local runs reliable on smaller Docker VMs.
+	// Keep memory-intensive checks sequential so a developer's small Docker
+	// VM does not run multiple Go/Rust compilers alongside terminal contracts.
 	if _, err := m.Lint(ctx, source); err != nil {
 		return "", fmt.Errorf("lint: %w", err)
 	}
@@ -55,26 +54,10 @@ func (m *TdxCi) Ci(ctx context.Context, source *dagger.Directory) (string, error
 		}},
 	}
 
-	type result struct {
-		name string
-		err  error
-	}
-	results := make(chan result, len(checks))
-	var wg sync.WaitGroup
-	for _, check := range checks {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results <- result{name: check.name, err: check.run()}
-		}()
-	}
-	wg.Wait()
-	close(results)
-
 	var failures []error
-	for result := range results {
-		if result.err != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", result.name, result.err))
+	for _, check := range checks {
+		if err := check.run(); err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", check.name, err))
 		}
 	}
 	if err := errors.Join(failures...); err != nil {
@@ -282,8 +265,10 @@ func (m *TdxCi) usageCheck(ctx context.Context, source *dagger.Directory) (strin
 	return m.goBase(source).
 		WithExec([]string{"go", "build", "-o", "/tmp/tdx-usage-binary", "./cmd/tdx"}).
 		WithExec([]string{"go", "run", "./cmd/tdx-usage", "-driver", "cli", "-binary", "/tmp/tdx-usage-binary", "-sessions", "1", "-steps", "40"}).
+		WithExec([]string{"go", "run", "./cmd/tdx-usage", "-driver", "structural", "-sessions", "1", "-steps", "60"}).
 		WithExec([]string{"sh", "-ec", "apt-get update -qq && apt-get install -y --no-install-recommends python3"}).
 		WithExec([]string{"python3", "scripts/usage-pty.py", "--binary", "/tmp/tdx-usage-binary"}).
 		WithExec([]string{"bash", "scripts/test_release_notes.sh"}).
+		WithExec([]string{"python3", "scripts/test_install.py"}).
 		Stdout(ctx)
 }

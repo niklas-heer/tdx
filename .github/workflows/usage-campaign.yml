@@ -1,0 +1,50 @@
+name: Scheduled usage campaign
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Record replay seed and commit
+        run: |
+          mkdir -p dist/usage/campaign
+          seed=$(date -u +%Y%m%d)
+          echo "TDX_CAMPAIGN_SEED=$seed" >> "$GITHUB_ENV"
+          printf 'seed=%s\ncommit=%s\n' "$seed" "$GITHUB_SHA" > dist/usage/campaign/environment.txt
+          go version >> dist/usage/campaign/environment.txt
+      - name: Replay rotating TUI sessions
+        run: go run ./cmd/tdx-usage -seed "$TDX_CAMPAIGN_SEED" -sessions 10 -steps 1800 -output dist/usage/campaign/tui
+      - name: Replay rotating executable sessions
+        if: always()
+        run: |
+          go build -o /tmp/tdx-campaign ./cmd/tdx
+          go run ./cmd/tdx-usage -driver cli -binary /tmp/tdx-campaign -seed "$TDX_CAMPAIGN_SEED" -sessions 2 -steps 200 -output dist/usage/campaign/cli
+      - name: Replay rotating structural edits
+        if: always()
+        run: go run ./cmd/tdx-usage -driver structural -seed "$TDX_CAMPAIGN_SEED" -sessions 8 -steps 500 -output dist/usage/campaign/structural
+      - name: Capture bounded diagnostic profiles
+        if: always()
+        run: |
+          mkdir -p dist/usage/campaign/profile
+          go test ./internal/usage -run TestSeededSessions -count=1 -cpuprofile=dist/usage/campaign/profile/cpu.pprof -memprofile=dist/usage/campaign/profile/heap.pprof -o dist/usage/campaign/profile/usage.test
+      - name: Retain replay traces, reduced failures and profiles
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: usage-campaign-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/usage/campaign
+          retention-days: 30

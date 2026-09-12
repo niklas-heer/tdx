@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -107,6 +109,9 @@ func testMain(m *testing.M) int {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	testBinary = filepath.Join(tmpDir, "tdx")
+	if runtime.GOOS == "windows" {
+		testBinary += ".exe"
+	}
 	buildCmd := exec.Command("go", "build", "-o", testBinary, ".")
 	if output, err := buildCmd.CombinedOutput(); err != nil {
 		panic(string(output) + err.Error())
@@ -117,9 +122,16 @@ func testMain(m *testing.M) int {
 
 // Helper to run CLI command
 func runCLI(t *testing.T, file string, args ...string) string {
+	t.Helper()
 	cmdArgs := append([]string{file}, args...)
 	cmd := exec.Command(testBinary, cmdArgs...)
-	out, _ := cmd.CombinedOutput() // Some commands may fail, that's okay
+	out, err := cmd.CombinedOutput()
+	// Nonzero command exits are intentional in invalid-input tests, but failure
+	// to start the test executable must not masquerade as empty output.
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		t.Fatalf("start test CLI: %v\n%s", err, out)
+	}
 	return strings.TrimSpace(string(out))
 }
 
@@ -497,9 +509,9 @@ func TestTUI_ReadOnlyMode(t *testing.T) {
 	// The toggle should not persist because read-only mode is on
 	output := testRuntime.RunPiped(file, []byte(":read-only\r "), false)
 
-	// Check that output shows READ ONLY indicator
-	if !strings.Contains(output, "READ ONLY") {
-		t.Errorf("Expected READ ONLY indicator in output")
+	// Check that output shows MANUAL SAVE indicator
+	if !strings.Contains(output, "MANUAL SAVE") {
+		t.Errorf("Expected MANUAL SAVE indicator in output")
 	}
 
 	// File should still have unchecked todo (change not persisted)
