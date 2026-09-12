@@ -219,3 +219,112 @@ func TestMoveSubtreeKeepsSelectionWithDuplicateText(t *testing.T) {
 		t.Fatalf("up subtree selection/content: %d %+v", m.SelectedIndex, m.FileModel.Todos)
 	}
 }
+
+func TestRecentSwitchRestoresCursorUsingDestinationView(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		metadata    bool
+		savedView   bool
+		savedCursor int
+		want        int
+	}{
+		{name: "outgoing filters do not reject saved cursor", savedCursor: 2, want: 2},
+		{name: "metadata hides saved cursor", metadata: true, savedCursor: 0, want: 1},
+		{name: "saved view hides saved cursor", savedView: true, savedCursor: 0, want: 1},
+		{name: "saved view accepts later cursor", savedView: true, savedCursor: 2, want: 2},
+		{name: "missing cursor retains visible fallback", metadata: true, savedCursor: -1, want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			source := filepath.Join(dir, "source.md")
+			destination := filepath.Join(dir, "destination.md")
+			sourceText := "# Old section\n- [ ] Source #old !p1 @due(2030-01-01)\n"
+			destinationText := "# Destination\n- [x] Hidden #new !p2\n- [ ] First visible #new !p2\n- [ ] Saved cursor #new !p2\n"
+			if tc.metadata {
+				destinationText = "---\nfilter-done: true\n---\n" + destinationText
+			}
+			for path, content := range map[string]string{source: sourceText, destination: destinationText} {
+				if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cfg := testConfig()
+			cfg.Recent = config.RecentStore{Dir: t.TempDir()}
+			cfg.Views = config.NewFileViewStore(t.TempDir())
+			cfg.ViewsRestore = tc.savedView
+			if tc.savedCursor >= 0 {
+				if err := cfg.Recent.SaveFile(destination, tc.savedCursor); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.savedView {
+				if err := cfg.Views.Save(destination, &config.SavedViews{Active: "Open", Views: map[string]config.SavedView{"Open": {FilterDone: true, Tags: []string{"new"}}}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			m := New(source, markdown.ParseMarkdown(sourceText), true, true, -1, cfg, testStyles(), "test")
+			m.FilteredTags = []string{"old"}
+			m.FilteredPriorities = []int{1}
+			m.FilteredDueDate = "all"
+			m.SectionFocus = 1
+			m.RecentFiles = []config.RecentFile{{Path: destination}}
+			m.RecentFilesMode = true
+			m = viewKey(m, tea.KeyEnter)
+			if m.Err != nil {
+				t.Fatal(m.Err)
+			}
+			if m.SelectedIndex != tc.want || !m.isTodoVisible(m.SelectedIndex) {
+				t.Fatalf("selected %d, want visible %d", m.SelectedIndex, tc.want)
+			}
+			tree := m.GetDocumentTree()
+			if selected := tree.GetSelectedNode(); selected == nil || selected.TodoIndex != tc.want {
+				t.Fatalf("tree selection stale: %+v", selected)
+			}
+			actual, err := os.ReadFile(destination)
+			if err != nil || string(actual) != destinationText {
+				t.Fatal("switch modified destination", err)
+			}
+		})
+	}
+}
+
+func TestSavedViewsPreserveEmptyHeadingLabels(t *testing.T) {
+	for _, tc := range []struct {
+		name, content string
+		focus         int
+		fold          int
+	}{
+		{"blank focus", "#\n- [ ] Task\n", 1, -1},
+		{"blank folded heading", "#\n- [ ] Task\n", 0, 0},
+		{"blank ancestor", "#\n## Child\n- [ ] Task\n", 2, 0},
+		{"repeated blank headings", "#\n- [ ] First\n#\n- [ ] Second\n", 2, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New(filepath.Join(t.TempDir(), "todo.md"), markdown.ParseMarkdown(tc.content), true, true, -1, testConfig(), testStyles(), "test")
+			m.Config().Views = config.NewFileViewStore(t.TempDir())
+			m.Config().ViewsRestore = true
+			m.SectionFocus = tc.focus
+			if tc.fold >= 0 {
+				m.FoldedSections = map[int]bool{tc.fold: true}
+			}
+			expected := m.captureView()
+			m.openViews("save")
+			m.InputBuffer = "Blank heading view"
+			m.CursorPos = len(m.InputBuffer)
+			m = viewKey(m, tea.KeyEnter)
+			if m.Err != nil {
+				t.Fatal(m.Err)
+			}
+			restored := New(m.FilePath, markdown.ParseMarkdown(tc.content), true, true, -1, m.Config(), testStyles(), "test")
+			if restored.Err != nil {
+				t.Fatal(restored.Err)
+			}
+			if restored.SectionFocus != tc.focus || (tc.fold >= 0 && !restored.FoldedSections[tc.fold]) {
+				t.Fatalf("heading state not restored: focus=%d folds=%v expected=%+v", restored.SectionFocus, restored.FoldedSections, expected)
+			}
+			if restored.ActiveView != "Blank heading view" {
+				t.Fatal("saved view not restored")
+			}
+		})
+	}
+}

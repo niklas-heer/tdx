@@ -1645,26 +1645,12 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 			// Update model with new file
 			m.FilePath = selectedFile.Path
 			m.FileModel = *fm
-			m.clearSections()
+			m.SelectedIndex = 0
+			m.SectionFocus = 0
+			m.FoldedSections = nil
 			m.history.Clear()
 			m.RecentFilesMode = false
 			m.RecentFilesSearch = ""
-
-			// Try to restore cursor position from recent files
-			if recentFiles, err := m.Config().Recent.Load(); err == nil {
-				if savedPos := recentFiles.GetCursorPosition(selectedFile.Path); savedPos >= 0 && savedPos < len(m.FileModel.Todos) && m.isTodoVisible(savedPos) {
-					m.SelectedIndex = savedPos
-				} else {
-					m.SelectedIndex = 0
-				}
-			} else {
-				m.SelectedIndex = 0
-			}
-
-			// Ensure cursor is within bounds
-			if m.SelectedIndex >= len(m.FileModel.Todos) {
-				m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
-			}
 
 			m.FilteredTags = nil
 			m.FilteredPriorities = nil
@@ -1678,6 +1664,16 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 			m.InvalidateHeadingsCache()
 			m.InvalidateDocumentTree()
 			m.restoreSavedView()
+			m.adjustSelectionForFilter()
+
+			// Restore only after the destination's metadata and saved view have
+			// established visibility; otherwise keep the first visible fallback.
+			if recentFiles, err := m.Config().Recent.Load(); err == nil {
+				if savedPos := recentFiles.GetCursorPosition(selectedFile.Path); savedPos >= 0 && savedPos < len(m.FileModel.Todos) && m.isTodoVisible(savedPos) {
+					m.SelectedIndex = savedPos
+				}
+			}
+			m.InvalidateDocumentTree()
 
 			return m, nil
 		}
