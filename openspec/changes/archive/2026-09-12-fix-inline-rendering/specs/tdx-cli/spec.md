@@ -1,6 +1,6 @@
 ## ADDED Requirements
 ### Requirement: Bounded inline terminal frames
-The interactive TUI SHALL keep each rendered frame within the measured terminal width and height, reserving a row for the inline cursor. Headings, wrapped task content, section banners and status rows SHALL count toward the height budget. The selected task or text cursor SHALL remain in the visible task viewport. Before terminal dimensions arrive, the interactive application SHALL defer document rendering.
+The interactive TUI SHALL keep each rendered frame within the measured terminal width and height, reserving a row for the inline cursor and keeping frame height stable across modes at the current terminal size. Actual terminal resizes SHALL reset the inline redraw origin. Headings, wrapped task content, section banners and status rows SHALL count toward the height budget. The selected task or text cursor SHALL remain in the visible task viewport. Before terminal dimensions arrive, the interactive application SHALL defer document rendering.
 
 #### Scenario: Focus after an overflowing document
 - **WHEN** a user navigates a document with many headings and wrapped tasks and focuses a section
