@@ -37,6 +37,21 @@ func TestQuerySnapshotAndCombinedFilters(t *testing.T) {
 	}
 }
 
+func TestSectionQueryUsesExposedTaskIndexes(t *testing.T) {
+	path := writeTodoFile(t, "# Work\n\n- [ ] outer\n  > - [ ] quoted\n\n# Later\n\n- [ ] after\n\n# Tail\n")
+	var out bytes.Buffer
+	if err := WriteList(&out, path, ListOptions{JSON: true, Section: "Later"}); err != nil {
+		t.Fatal(err)
+	}
+	var tasks []Task
+	if err := json.Unmarshal(out.Bytes(), &tasks); err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].Text != "after" || tasks[0].Index != 2 {
+		t.Fatalf("query selected a hidden or unrelated task: %s", out.String())
+	}
+}
+
 func TestGuardedCompletionAndRetry(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	path := writeTodoFile(t, "---\ntitle: Project\n---\n- [ ] First\n- [ ] Second\n")
