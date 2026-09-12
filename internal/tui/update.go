@@ -25,10 +25,14 @@ type FileChangedMsg struct{}
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		resized := m.TermWidth > 0 && m.TermHeight > 0 && (m.TermWidth != msg.Width || m.TermHeight != msg.Height)
 		m.TermWidth = msg.Width
 		m.TermHeight = msg.Height
 		if m.ConflictDiffMode {
 			m.clampConflictDiffScroll(len(m.conflictDiffLines()))
+		}
+		if resized {
+			return m, tea.ClearScreen
 		}
 		return m, nil
 	case clipboardCopiedMsg:
@@ -1792,6 +1796,7 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 	}
 
 	// Normal TTY - use Bubbletea (no alt screen to keep context visible)
+	m.waitForSize = true
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {

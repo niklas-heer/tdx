@@ -119,6 +119,7 @@ type Model struct {
 	WordWrap           bool
 	TermWidth          int
 	TermHeight         int
+	waitForSize        bool
 	HideLineNumbers    bool
 	MaxVisibleOverride int
 	ShowHeadings       bool
