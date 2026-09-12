@@ -56,10 +56,20 @@ def run(binary, output):
 
             def until(predicate, label):
                 deadline = time.monotonic() + 10
+                last_read_error = None
                 while time.monotonic() < deadline:
                     pump()
-                    if predicate():
-                        return
+                    try:
+                        if predicate():
+                            return
+                        last_read_error = None
+                    except PermissionError as exc:
+                        # Atomic replacement briefly denies new readers on
+                        # Windows. Each read_bytes call closes its own handle;
+                        # retry within the original deadline, never hold it.
+                        last_read_error = exc
+                if last_read_error is not None:
+                    raise last_read_error
                 raise AssertionError(f"timeout: {label}; output={''.join(transcript)[-600:]!r}")
 
             label = "manual-save" if manual else "editing"
