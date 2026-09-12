@@ -574,7 +574,7 @@ func TestResolveFilePath_RelativePath(t *testing.T) {
 }
 
 func TestResolveFilePath_AbsolutePathUnchanged(t *testing.T) {
-	absPath := "/tmp/my-todos.md"
+	absPath := filepath.Join(t.TempDir(), "my-todos.md")
 	result := resolveFilePath(absPath)
 
 	if result != absPath {

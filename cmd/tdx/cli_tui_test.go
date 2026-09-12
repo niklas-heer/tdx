@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -121,9 +122,16 @@ func testMain(m *testing.M) int {
 
 // Helper to run CLI command
 func runCLI(t *testing.T, file string, args ...string) string {
+	t.Helper()
 	cmdArgs := append([]string{file}, args...)
 	cmd := exec.Command(testBinary, cmdArgs...)
-	out, _ := cmd.CombinedOutput() // Some commands may fail, that's okay
+	out, err := cmd.CombinedOutput()
+	// Nonzero command exits are intentional in invalid-input tests, but failure
+	// to start the test executable must not masquerade as empty output.
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		t.Fatalf("start test CLI: %v\n%s", err, out)
+	}
 	return strings.TrimSpace(string(out))
 }
 
