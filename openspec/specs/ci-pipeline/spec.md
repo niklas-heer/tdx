@@ -2,9 +2,7 @@
 
 ## Purpose
 Define the portable Dagger CI pipeline, native platform verification, reproducible release artifacts, GitHub orchestration, and coverage-badge responsibilities.
-
 ## Requirements
-
 ### Requirement: Locally reproducible portable CI
 
 The project SHALL provide a version-pinned Dagger pipeline written in Go that runs the same portable formatting, vet, lint, race-test, coverage, workflow-lint, and build logic locally and in hosted CI.
@@ -98,3 +96,18 @@ The pipeline SHALL validate the version configured in tdx.toml using synchronize
 #### Scenario: Build a release candidate
 - **WHEN** release artifacts are built
 - **THEN** all target binaries SHALL embed the version from tdx.toml
+
+### Requirement: Exact-commit release validation
+Tagged release publication SHALL depend on successful portable and native validation of the exact tagged commit, even when the tag was created outside the release helper.
+
+#### Scenario: A tag points at a failing commit
+- **WHEN** a tag points at a failing commit
+- **THEN** publication is blocked
+
+### Requirement: Verified release installation
+Releases SHALL include a SHA-256 checksum manifest and build provenance. The installer SHALL verify the selected artifact before replacing the destination, and checksum/download failures SHALL leave existing installations unchanged.
+
+#### Scenario: A downloaded artifact has an incorrect checksum
+- **WHEN** a downloaded artifact has an incorrect checksum
+- **THEN** installation fails and the previous executable remains intact
+

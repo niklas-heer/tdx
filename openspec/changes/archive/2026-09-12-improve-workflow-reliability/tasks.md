@@ -15,5 +15,5 @@
 - [x] 4.3 Publish/verify checksums and provenance; test installer failures.
 ## 5. Integration
 - [x] 5.1 Update user documentation and prepare the five-participant usability protocol.
-- [ ] 5.2 Run formatting, vet, tests/race, replay and terminal checks plus available pipeline checks.
-- [ ] 5.3 Review, commit, archive the approved spec change and push the implementation branch.
+- [x] 5.2 Run formatting, vet, tests/race, replay and terminal checks plus available pipeline checks.
+- [x] 5.3 Review, commit, archive the approved spec change and push the implementation branch.

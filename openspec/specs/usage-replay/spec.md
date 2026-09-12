@@ -2,9 +2,7 @@
 
 ## Purpose
 Provide reproducible sustained-use contracts that expose editing and persistence regressions and support comparisons with future tdx implementations.
-
 ## Requirements
-
 ### Requirement: Reproducible sustained usage
 The developer harness SHALL generate versioned language-neutral traces with deterministic seeds, independent expected task states, and explicit simulated durations. It SHALL report actual elapsed time separately and fail on state, persistence or replay-contract violations.
 
@@ -24,3 +22,18 @@ Normal tests SHALL include bounded seeded replay and regression cases discovered
 #### Scenario: Cancellation and conflicts
 - **WHEN** input is cancelled at undo capacity or a save meets an external edit
 - **THEN** earlier undo entries and external disk content remain protected
+
+### Requirement: Structural regression campaigns
+Regression checks SHALL cover nested/ordered tasks, sections, multiline bodies, unrelated Markdown preservation and exact undo. Failing generated campaigns SHALL retain replayable reduced cases or clearly report why reduction is unavailable. Scheduled campaigns SHALL record rotating seeds and retain failure artifacts.
+
+#### Scenario: A generated edit sequence loses unrelated content
+- **WHEN** a generated edit sequence loses unrelated content
+- **THEN** the campaign fails and retains a reproducible regression artifact
+
+### Requirement: Native executable coverage
+CI SHALL exercise CLI contracts on supported native macOS and Windows runners and terminal contracts on macOS and Linux, with Windows terminal checks where supported by ConPTY.
+
+#### Scenario: Native verification runs
+- **WHEN** native verification runs
+- **THEN** argument handling, paths, Unicode, configuration isolation and terminal lifecycle are checked on their native platforms
+

@@ -2,9 +2,7 @@
 
 ## Purpose
 Keep document actions, undo, and application dependencies independent of terminal input while preserving consistent editing behavior.
-
 ## Requirements
-
 ### Requirement: Shared document actions
 The CLI and TUI SHALL express task and heading mutations as actions in a UI-independent editor package, sharing index validation and document mutation behavior. Invalid actions SHALL return errors without changing document content. UI selection and filter navigation SHALL remain outside the editor package.
 #### Scenario: Same edit from two interfaces
@@ -42,9 +40,11 @@ Toggling a task in a freshly parsed document SHALL change only the AST-identifie
 - **WHEN** a checkbox is toggled in a file with HTML, multiline paragraphs, tables, fenced examples or unknown frontmatter
 - **THEN** unrelated bytes remain identical through save and undo
 
-#### Scenario: Structural edit fallback
+#### Scenario: Structural source patches
 - **WHEN** a task is added, removed, moved or renamed
-- **THEN** the AST serializer remains the structural editing path and subsequent checkbox edits reflect the current tree rather than stale source offsets
+- **THEN** validated patches SHALL update only affected source ranges and reparse the candidate document before committing
+- **AND** unsupported source boundaries SHALL produce an error without mutation
+- **AND** subsequent checkbox edits SHALL use the reparsed source locations
 
 ### Requirement: Derived task metadata stays current
 Available tag and priority options SHALL reflect current task content after editing, undo and reload, removing active filters for metadata no longer present.
@@ -59,3 +59,11 @@ Structural task edits SHALL retain HTML blocks, valid table syntax and ordinary 
 #### Scenario: Add a task after rich content
 - **WHEN** a task is added to a document containing HTML, a table and a multiline paragraph
 - **THEN** those blocks remain present and the saved file can be reopened with all tasks intact
+
+### Requirement: Safe structural Markdown editing
+Task and heading edits SHALL retain unrelated Markdown content, including reference definitions, HTML, tables, multiline bodies and line-ending boundaries. Unsupported operations SHALL fail without changing document content.
+
+#### Scenario: A task is renamed near a reference link
+- **WHEN** a task is renamed near a reference link
+- **THEN** the reference definition and unrelated content remain intact through saving and undo
+
