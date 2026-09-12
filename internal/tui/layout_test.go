@@ -268,3 +268,40 @@ func TestInlineLayoutVerySmallTerminalStillBoundsFrame(t *testing.T) {
 		assertInlineFrameBounds(t, m)
 	}
 }
+
+func TestInlineLayoutVersionDiffKeepsTitleAndRestoreFooter(t *testing.T) {
+	for _, confirm := range []bool{false, true} {
+		t.Run(fmt.Sprintf("confirm%t", confirm), func(t *testing.T) {
+			m := testModelWithMarkdown("- [ ] " + strings.Repeat("Original世界", 120) + "\n")
+			m.TermWidth, m.TermHeight = 120, 20
+			m.VersionsMode, m.VersionsConfirmMode = true, confirm
+			m.VersionsList = []VersionInfo{{ID: 1, CreatedAt: time.Unix(0, 0)}}
+			m.styles.Dim = func(s string) string { return "\x1b[2m" + s + "\x1b[0m" }
+			m.Config().ReadVersionFunc = func(string, int64) (string, error) {
+				return "- [ ] " + strings.Repeat("Changedcafé", 120) + "\n", nil
+			}
+			plain := assertInlineFrameBounds(t, m)
+			for _, want := range []string{"FILE VERSION HISTORY", "[Enter] Restore"} {
+				if !strings.Contains(plain, want) {
+					raw := m.renderVersionsBrowser()
+					t.Errorf("missing %q in final view; raw browser %dx%d:\n%s", want, lipgloss.Width(raw), lipgloss.Height(raw), ansi.Strip(raw))
+				}
+			}
+		})
+	}
+}
+
+func TestInlineLayoutConflictDiffKeepsResolutionFooter(t *testing.T) {
+	m := testModelWithMarkdown("- [ ] task\n")
+	m.TermWidth, m.TermHeight = 120, 20
+	m.ConflictDiffMode, m.ConflictPending = true, true
+	m.ConflictLocalContent = "- [ ] " + strings.Repeat("Local世界", 120) + "\n"
+	m.ConflictDiskContent = "- [ ] " + strings.Repeat("Diskcafé", 120) + "\n"
+	plain := assertInlineFrameBounds(t, m)
+	for _, want := range []string{"FILE CONFLICT", ":reload or :force-save"} {
+		if !strings.Contains(plain, want) {
+			raw := m.renderConflictDiff()
+			t.Errorf("missing %q in final view; raw conflict %dx%d:\n%s", want, lipgloss.Width(raw), lipgloss.Height(raw), ansi.Strip(raw))
+		}
+	}
+}

@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -1165,12 +1166,16 @@ func (m Model) renderConflictDiff() string {
 	if width < 34 {
 		width = 34
 	}
+	contentWidth := width - 4 // Width includes both borders and horizontal padding.
+	for i, line := range visible {
+		visible[i] = ansi.Truncate(line, contentWidth, "…")
+	}
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#f7768e")).
 		Render("FILE CONFLICT - LOCAL -> DISK [" + filepath.Base(m.FilePath) + "]")
 	legend := styles.Dim("struck: local only  |  green: authoritative disk")
 	footer := styles.Dim("[PgUp/PgDn] Scroll  |  [Esc] Close  |  then :reload or :force-save")
-	body := title + "\n" + legend + "\n" + strings.Repeat("─", width) + "\n" +
-		strings.Join(visible, "\n") + "\n" + strings.Repeat("─", width) + "\n" + footer
+	body := ansi.Truncate(title, contentWidth, "…") + "\n" + ansi.Truncate(legend, contentWidth, "…") + "\n" + strings.Repeat("─", contentWidth) + "\n" +
+		strings.Join(visible, "\n") + "\n" + strings.Repeat("─", contentWidth) + "\n" + ansi.Truncate(footer, contentWidth, "…")
 
 	return lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -1190,7 +1195,7 @@ func (m Model) conflictDiffLines() []string {
 }
 
 func (m Model) conflictDiffHeight() int {
-	height := m.TermHeight - 7
+	height := m.TermHeight - 8
 	if height < 3 {
 		height = 3
 	}
@@ -1222,14 +1227,14 @@ func (m Model) renderVersionsBrowser() string {
 		browserWidth = 40
 	}
 
-	// innerWidth is the Width() argument passed to outerStyle (content+padding, excluding borders).
-	// outerStyle uses Padding(0, 1), so the actual text area = innerWidth - 2.
-	// All content (left pane, right pane, dividers) must fit in contentWidth to prevent wrapping.
-	innerWidth := browserWidth - 4 // subtract 2 border chars + 2 to keep box inside terminal
-	if innerWidth < 22 {
-		innerWidth = 22
+	// Lipgloss Width includes borders and padding. Leave four terminal columns
+	// outside the box, then reserve its two border and two padding columns.
+	// Pane rows and dividers must fit the remaining text area without reflow.
+	outerWidth := browserWidth - 4
+	if outerWidth < 22 {
+		outerWidth = 22
 	}
-	contentWidth := innerWidth - 2 // subtract left+right padding (1 each)
+	contentWidth := outerWidth - 4
 	if contentWidth < 20 {
 		contentWidth = 20
 	}
@@ -1316,6 +1321,7 @@ func (m Model) renderVersionsBrowser() string {
 	}
 	var rightLines []string
 	for _, line := range visible {
+		line = ansi.Truncate(line, rightWidth, "…")
 		// Use lipgloss.Width to measure visible width (strips ANSI codes correctly),
 		// then pad manually. Avoid Width().Render() which may reflow ANSI-coded text
 		// at space boundaries and produce spurious spacing inside colored segments.
@@ -1349,8 +1355,8 @@ func (m Model) renderVersionsBrowser() string {
 	headerRendered := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#7aa2f7")).
 		Bold(true).
-		Render(title)
-	footerRendered := styles.Dim(footer)
+		Render(ansi.Truncate(title, contentWidth, "…"))
+	footerRendered := styles.Dim(ansi.Truncate(footer, contentWidth, "…"))
 
 	fullContent := headerRendered + "\n" + divider + "\n" +
 		body + "\n" +
@@ -1369,7 +1375,7 @@ func (m Model) renderVersionsBrowser() string {
 			BottomRight: "┘",
 		}).
 		BorderForeground(lipgloss.Color("#7aa2f7")).
-		Width(innerWidth).
+		Width(outerWidth).
 		Padding(0, 1)
 
 	return outerStyle.Render(fullContent)
