@@ -16,9 +16,32 @@ func TestTextEditPreservesReferenceDefinitionsAndDocumentBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := strings.Replace(source, "before", "after **bold** [ref]", 1)
+		// A continuation belongs to the editable first paragraph, not to a
+		// separate body block. Replacing the full title replaces it too.
 		want = strings.Replace(want, "\n>   continuation", "", 1)
 		if got := SerializeAST(doc); got != want {
 			t.Fatalf("got %q; want %q", got, want)
+		}
+	}
+}
+
+func TestTextEditReplacesContinuationButPreservesSeparateBody(t *testing.T) {
+	for _, quote := range []string{"", "> "} {
+		for _, newline := range []string{"\n", "\r\n"} {
+			source := quote + "- [ ] before\n" + quote + "  continuation\n" + quote + "\n" + quote + "  Separate **body** with [ref].\n\n[ref]: /guide\n"
+			want := quote + "- [ ] after\n" + quote + "\n" + quote + "  Separate **body** with [ref].\n\n[ref]: /guide\n"
+			source = strings.ReplaceAll(source, "\n", newline)
+			want = strings.ReplaceAll(want, "\n", newline)
+			f := ParseMarkdown(source)
+			if len(f.Todos) != 1 || !strings.Contains(f.Todos[0].Text, "before continuation") {
+				t.Fatalf("task text must expose the first paragraph continuation: %+v", f.Todos)
+			}
+			if err := f.UpdateTodoItem(0, "after", false); err != nil {
+				t.Fatal(err)
+			}
+			if got := SerializeMarkdown(f); got != want {
+				t.Fatalf("separate body changed: got %q; want %q", got, want)
+			}
 		}
 	}
 }
