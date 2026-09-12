@@ -614,6 +614,12 @@ func (m Model) handleMoveKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if target < 0 || target >= len(m.FileModel.Todos) {
 				break
 			}
+			// Reordering a subtree must not implicitly outdent it. A shallower
+			// target is the boundary of its parent's children; nesting changes
+			// remain explicit through indent/outdent commands.
+			if m.FileModel.Todos[target].Depth != depth {
+				break
+			}
 			action.Target = target
 		}
 		index, err := editor.Apply(&m.FileModel, action)
