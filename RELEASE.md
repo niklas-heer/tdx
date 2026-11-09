@@ -1,6 +1,6 @@
 # Releasing tdx
 
-tdx remains pre-1.0. The current release is **[0.14.0](https://github.com/niklas-heer/tdx/releases/tag/v0.14.0)**. A 1.0 release requires a separate stabilization decision.
+tdx remains pre-1.0. The current release is **[0.15.0](https://github.com/niklas-heer/tdx/releases/tag/v0.15.0)**. A 1.0 release requires a separate stabilization decision.
 
 Update `version` in `tdx.toml` and write reviewed user-facing notes in `docs/releases/<version>.md` in a pull request. Update README release highlights, website feature descriptions and upgrade instructions at the same time. Merge the release changes and wait for CI to pass before publishing.
 
