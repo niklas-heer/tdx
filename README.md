@@ -48,19 +48,19 @@ While focused, **n** adds a task after the selection; in an empty section it cre
 
 Section editing uses the same guarded saves and version history as task editing. Read-only files support section browsing and focus without permitting heading edits.
 
-### What's new in 0.14.0
+### What's new in 0.15.0
 
-[Release notes and upgrade guidance](docs/releases/0.14.0.md) · [Download v0.14.0](https://github.com/niklas-heer/tdx/releases/tag/v0.14.0)
+[Release notes and upgrade guidance](docs/releases/0.15.0.md) · [Download v0.15.0](https://github.com/niklas-heer/tdx/releases/tag/v0.15.0)
 
-- Preserve surrounding Markdown bytes during checkbox-only edits, with faster cached updates.
-- Keep undo history intact when cancelling input and detect external edits made while typing.
-- Validate sustained use with replayable sessions, CLI contracts and real-terminal tests.
-- Manage projects directly through Markdown headings, without opening another editor.
-- Compose tdx with scripts and editors using filtered JSON output and explicit file selection.
-- Type and paste international text in task, search, command, and recent-file inputs.
-- Use the current Bubble Tea and Lip Gloss v2 terminal renderer and input handling.
-- Use mise for reproducible development tools and tasks. `mise tasks` lists available commands; `mise run check` runs local validation.
-- Installation defaults to `~/.local/bin`; set `TDX_INSTALL_DIR` to choose another directory. Existing todo files and global configuration remain compatible.
+- Save named views of your filters and section focus, and optionally reopen the last one.
+- Filter `list` by priority, due date and section, and retry `done`/`undone` safely.
+- Guard scripted writes with `list --with-revision` and `--if-revision`; generate shell completions.
+- Edit, move and sort tasks without rewriting unrelated Markdown; unsupported edits fail instead of corrupting a file.
+- Use manual save as the new name for read-only mode; the old flags and setting keep working.
+- Copy reliably on macOS, Linux and Windows, and enjoy steadier inline TUI frames.
+- Install verified releases with checksums and signed provenance.
+
+Highlights of 0.14.0 (sections, JSON output, international input) are in the [0.14.0 notes](docs/releases/0.14.0.md).
 
 ## Saved views
 
@@ -164,7 +164,7 @@ The installer verifies the selected executable against the release's `SHA256SUMS
 
 New releases also publish a signed provenance bundle. With GitHub CLI installed, verify a downloaded executable using `gh attestation verify <binary> --repo niklas-heer/tdx`. Checksum verification detects mismatched bytes; attestation verification separately checks the build's provenance.
 
-The installer writes to `~/.local/bin` by default. Add that directory to `PATH`, or set `TDX_INSTALL_DIR` when running the script. To pin a release, use `curl -fsSL https://niklas-heer.github.io/tdx/install.sh | TDX_VERSION=0.14.0 bash`. Check `command -v tdx` if an older installation exists elsewhere.
+The installer writes to `~/.local/bin` by default. Add that directory to `PATH`, or set `TDX_INSTALL_DIR` when running the script. To pin a release, use `curl -fsSL https://niklas-heer.github.io/tdx/install.sh | TDX_VERSION=0.15.0 bash`. Check `command -v tdx` if an older installation exists elsewhere.
 
 ### Download Binary
 
