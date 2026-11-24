@@ -56,12 +56,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case FileChangedMsg:
 		// File changed on disk - try to auto-reload
-		return m, m.checkAndReloadFile()
-	case reloadedMsg:
-		// Successfully reloaded from disk
-		m = msg.model
-		m.clearSections()
-		m.InvalidateHeadingsCache()  // Invalidate cache on reload
+		m.reloadIfChanged()
 		return m, watchFileChanges() // Continue watching
 	case SearchDebounceMsg:
 		// Debounced search update
@@ -1334,39 +1329,42 @@ func (m *Model) writeIfPersist() {
 	}
 }
 
-// checkAndReloadFile checks if the file changed and reloads if safe
-func (m Model) checkAndReloadFile() tea.Cmd {
+// reloadIfChanged replaces the document with the file on disk when it changed
+// and no state depends on the loaded version. It runs inside Update, so no key
+// handled later can be overwritten by a reload decided earlier.
+func (m *Model) reloadIfChanged() {
 	if m.ConflictPending || m.InputMode || m.EditMode || m.MoveMode || m.HeadingInput != "" {
 		// Keep the revision captured before interactive input. Refreshing it here
 		// would let a later Enter overwrite external changes without a conflict.
-		return watchFileChanges() // Continue watching
+		return
 	}
 	if m.SearchMode {
 		// Search results index the current task list; reload once search closes.
-		return watchFileChanges()
+		return
 	}
 	if m.ReadOnly && m.FileModel.HasUnsavedChanges() {
 		// Manual save: keep unsaved edits and the loaded revision, so :save
 		// reports the external change as a conflict instead of losing either.
-		return watchFileChanges()
+		return
 	}
 
 	// Check if file was modified externally
 	modified, err := m.FileModel.CheckFileModified()
 	if err != nil || !modified {
-		return watchFileChanges() // Continue watching
+		return
 	}
 
 	// With no pending local candidate, external disk content is authoritative.
 	diskFM, err := m.Config().Store.ReadFile(m.FilePath)
 	if diskFM == nil {
-		return watchFileChanges()
+		return
 	}
 	m.FileModel = *diskFM
 	m.RefreshAvailableTags()
 	m.history.Clear()
 	m.Err = err
-	return func() tea.Msg { return reloadedMsg{model: m} }
+	m.clearSections()
+	m.InvalidateHeadingsCache()
 }
 
 func (m *Model) recordSaveError(err error, localContent string) {
@@ -1413,11 +1411,6 @@ func (m Model) handleConflictDiffKey(key string) (tea.Model, tea.Cmd) {
 	}
 	m.clampConflictDiffScroll(len(m.conflictDiffLines()))
 	return m, nil
-}
-
-// reloadedMsg carries the updated model after successful reload
-type reloadedMsg struct {
-	model Model
 }
 
 // isTodoVisible returns true if the todo at the given index is visible given current filters

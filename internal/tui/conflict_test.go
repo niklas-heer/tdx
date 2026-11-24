@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/config"
@@ -127,16 +126,11 @@ func TestExternalReloadRetainsReadHookErrorAndDiskModel(t *testing.T) {
 	m.Config().Store.OnRead = func(string, string) error { return hookErr }
 	t.Cleanup(func() { m.Config().Store.OnRead = originalHook })
 
-	cmd := m.checkAndReloadFile()
-	msg := cmd()
-	reloaded, ok := msg.(reloadedMsg)
-	if !ok {
-		t.Fatalf("reload message = %T, want reloadedMsg", msg)
+	m.reloadIfChanged()
+	if !errors.Is(m.Err, hookErr) {
+		t.Fatalf("reload error = %v, want hook error", m.Err)
 	}
-	if !errors.Is(reloaded.model.Err, hookErr) {
-		t.Fatalf("reload error = %v, want hook error", reloaded.model.Err)
-	}
-	if got := markdown.SerializeMarkdown(&reloaded.model.FileModel); got != external {
+	if got := markdown.SerializeMarkdown(&m.FileModel); got != external {
 		t.Fatalf("reloaded model = %q, want authoritative disk content", got)
 	}
 }
@@ -283,19 +277,11 @@ func TestRecentFileSwitchRefusedWhileConflictPending(t *testing.T) {
 	}
 }
 
-// reloadsWithin reports whether a watcher command reloads the document
-// rather than only scheduling the next poll (a one-second tick).
-func reloadsWithin(t *testing.T, cmd tea.Cmd) bool {
-	t.Helper()
-	done := make(chan tea.Msg, 1)
-	go func() { done <- cmd() }()
-	select {
-	case msg := <-done:
-		_, ok := msg.(reloadedMsg)
-		return ok
-	case <-time.After(200 * time.Millisecond):
-		return false
-	}
+// reloads reports whether the watcher replaced the document.
+func reloads(m *Model) bool {
+	before := markdown.SerializeMarkdown(&m.FileModel)
+	m.reloadIfChanged()
+	return markdown.SerializeMarkdown(&m.FileModel) != before
 }
 
 func manualSaveModel(t *testing.T, initial string) (Model, string) {
@@ -323,8 +309,12 @@ func TestManualSaveKeepsUnsavedEditsWhenFileChanges(t *testing.T) {
 		if err := os.WriteFile(path, []byte(external), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if !reloadsWithin(t, m.checkAndReloadFile()) {
-			t.Fatal("an unedited manual-save document should reload external changes")
+		// The reload is applied in the update that notices the change; no later
+		// message carries an older model that could undo keys handled meanwhile.
+		result, _ := m.Update(FileChangedMsg{})
+		m = result.(Model)
+		if got := markdown.SerializeMarkdown(&m.FileModel); got != external {
+			t.Fatalf("an unedited manual-save document should reload external changes, got %q", got)
 		}
 	})
 
@@ -336,7 +326,7 @@ func TestManualSaveKeepsUnsavedEditsWhenFileChanges(t *testing.T) {
 		if err := os.WriteFile(path, []byte(external), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if reloadsWithin(t, m.checkAndReloadFile()) {
+		if reloads(&m) {
 			t.Fatal("watcher discarded unsaved manual-save edits")
 		}
 		executeCommand(&m, "save")
@@ -359,7 +349,7 @@ func TestOpenSearchDefersReload(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Todos\n\n- [ ] alpha\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if reloadsWithin(t, m.checkAndReloadFile()) {
+	if reloads(&m) {
 		t.Fatal("reload while searching would leave stale search results")
 	}
 	_ = m.View()
