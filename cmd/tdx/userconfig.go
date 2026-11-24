@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"embed"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -245,38 +249,42 @@ func DefaultConfig() *UserConfig {
 	}
 }
 
+// userConfigDir is os.UserConfigDir, replaceable in tests.
+var userConfigDir = os.UserConfigDir
+
+// configSearchPaths lists the config file locations in the order LoadConfig
+// checks them.
+func configSearchPaths() []string {
+	var paths []string
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		paths = append(paths, filepath.Join(xdgConfig, "tdx", "config.toml"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".config", "tdx", "config.toml"))
+	}
+	if configDir, err := userConfigDir(); err == nil {
+		paths = append(paths, filepath.Join(configDir, "tdx", "config.toml"))
+	}
+	return paths
+}
+
+// findConfigPath returns the config file LoadConfig reads, or "" when none
+// exists.
+func findConfigPath() string {
+	for _, path := range configSearchPaths() {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
 // LoadConfig loads config from ~/.config/tdx/config.toml or returns defaults
 func LoadConfig() *UserConfig {
 	defaults := DefaultConfig()
 	config := &UserConfig{}
 
-	// Try multiple config locations
-	var configPaths []string
-
-	// First check XDG_CONFIG_HOME environment variable
-	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
-		configPaths = append(configPaths, filepath.Join(xdgConfig, "tdx", "config.toml"))
-	}
-
-	// Then try ~/.config/tdx/config.toml
-	if home, err := os.UserHomeDir(); err == nil {
-		configPaths = append(configPaths, filepath.Join(home, ".config", "tdx", "config.toml"))
-	}
-
-	// Finally try OS-specific config dir
-	if configDir, err := os.UserConfigDir(); err == nil {
-		configPaths = append(configPaths, filepath.Join(configDir, "tdx", "config.toml"))
-	}
-
-	// Find first existing config file
-	var configPath string
-	for _, path := range configPaths {
-		if _, err := os.Stat(path); err == nil {
-			configPath = path
-			break
-		}
-	}
-
+	configPath := findConfigPath()
 	if configPath == "" {
 		return defaults
 	}
@@ -517,68 +525,79 @@ func getConfigPath() (string, error) {
 	return filepath.Join(configDir, "config.toml"), nil
 }
 
-// minimalSaveConfig is used for saving config without colors (colors come from theme)
-type minimalSaveConfig struct {
-	Views *ViewsConfig `toml:"views,omitempty"`
-	Theme struct {
-		Name string `toml:"name"`
-	} `toml:"theme"`
-	Display  *DisplayConfig  `toml:"display,omitempty"`
-	Defaults *DefaultsConfig `toml:"defaults,omitempty"`
-	Recent   *RecentConfig   `toml:"recent,omitempty"`
+// SaveTheme records themeName as theme.name in the config file LoadConfig
+// reads, or creates ~/.config/tdx/config.toml (or $XDG_CONFIG_HOME/tdx) when
+// no config exists. Every other key is kept; comments and formatting are not.
+// A config that does not parse is left untouched and an error is returned.
+func SaveTheme(themeName string) error {
+	if err := saveTheme(themeName); err != nil {
+		return fmt.Errorf("theme not saved: %w", err)
+	}
+	return nil
 }
 
-// SaveTheme saves the theme name to the config file
-// Only saves the theme name, not colors, so the builtin theme colors are used
-func SaveTheme(themeName string) error {
-	configPath, err := getConfigPath()
-	if err != nil {
+func saveTheme(themeName string) error {
+	configPath := findConfigPath()
+	if configPath == "" {
+		var err error
+		if configPath, err = getConfigPath(); err != nil {
+			return err
+		}
+	}
+	// Write through a symlinked config to the file it points at.
+	if resolved, err := filepath.EvalSymlinks(configPath); err == nil {
+		configPath = resolved
+	}
+
+	raw := map[string]any{}
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(configPath); err == nil {
+		mode = info.Mode().Perm()
+		if _, err := toml.DecodeFile(configPath, &raw); err != nil {
+			return fmt.Errorf("%s could not be parsed: %w", configPath, err)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 
-	// Load existing config to preserve other settings
-	existingConfig := &UserConfig{}
-	if _, err := os.Stat(configPath); err == nil {
-		// File exists, load it to preserve settings
-		_, _ = toml.DecodeFile(configPath, existingConfig)
+	theme, ok := raw["theme"].(map[string]any)
+	if !ok {
+		theme = map[string]any{}
+		raw["theme"] = theme
 	}
+	theme["name"] = themeName
 
-	// Create config with theme name and preserve other settings
-	minConfig := &minimalSaveConfig{}
-	minConfig.Theme.Name = themeName
-	if existingConfig.Views.Restore {
-		minConfig.Views = &existingConfig.Views
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(raw); err != nil {
+		return err
 	}
+	return writeFileAtomic(configPath, buf.Bytes(), mode)
+}
 
-	// Preserve display settings if they were customized
-	defaults := DefaultConfig()
-	if existingConfig.Display.CheckSymbol != "" ||
-		existingConfig.Display.SelectMarker != "" {
-		minConfig.Display = &existingConfig.Display
-	}
-
-	// Preserve defaults settings if any were customized
-	if existingConfig.Defaults.ManualSave != nil || existingConfig.Defaults.File != defaults.Defaults.File ||
-		existingConfig.Defaults.MaxVisible != defaults.Defaults.MaxVisible ||
-		existingConfig.Defaults.WordWrap != defaults.Defaults.WordWrap ||
-		existingConfig.Defaults.ShowHeadings != defaults.Defaults.ShowHeadings ||
-		existingConfig.Defaults.ReadOnly != defaults.Defaults.ReadOnly ||
-		existingConfig.Defaults.FilterDone != defaults.Defaults.FilterDone {
-		minConfig.Defaults = &existingConfig.Defaults
-	}
-
-	// Preserve recent settings if customized
-	if existingConfig.Recent.MaxFiles != 0 && existingConfig.Recent.MaxFiles != defaults.Recent.MaxFiles {
-		minConfig.Recent = &existingConfig.Recent
-	}
-
-	// Write config to file
-	f, err := os.Create(configPath)
+// writeFileAtomic replaces path with data through a temporary file in the same
+// directory, so readers never see a partially written file.
+func writeFileAtomic(path string, data []byte, mode os.FileMode) (err error) {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
-
-	encoder := toml.NewEncoder(f)
-	return encoder.Encode(minConfig)
+	defer func() {
+		if err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+		}
+	}()
+	if _, err = tmp.Write(data); err != nil {
+		return err
+	}
+	if err = tmp.Chmod(mode); err != nil {
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }

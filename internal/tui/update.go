@@ -893,7 +893,7 @@ func (m Model) handleThemeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.CurrentThemeName = selectedTheme
 			// Save theme to config
 			if m.ThemeSaveFunc != nil {
-				_ = m.ThemeSaveFunc(selectedTheme)
+				m.Err = m.ThemeSaveFunc(selectedTheme)
 			}
 		}
 		m.ThemeMode = false

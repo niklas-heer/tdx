@@ -3,8 +3,11 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 )
 
 func TestNewStyleFuncs(t *testing.T) {
@@ -66,6 +69,7 @@ func TestGetConfigPath_Coverage(t *testing.T) {
 }
 
 func TestSaveTheme_Coverage(t *testing.T) {
+	isolateHome(t)
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
@@ -96,6 +100,7 @@ func TestSaveTheme_Coverage(t *testing.T) {
 }
 
 func TestSaveTheme_PreservesExisting_Coverage(t *testing.T) {
+	isolateHome(t)
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
@@ -215,6 +220,7 @@ func TestDefaultConfig_HasAllFields(t *testing.T) {
 }
 
 func TestLoadConfig_DefaultsWhenNoFile(t *testing.T) {
+	isolateHome(t)
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
@@ -239,6 +245,7 @@ func TestLoadConfig_DefaultsWhenNoFile(t *testing.T) {
 }
 
 func TestLoadConfig_ParsesDefaultsSection(t *testing.T) {
+	isolateHome(t)
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
@@ -296,6 +303,7 @@ max_files = 30
 }
 
 func TestLoadConfig_PartialDefaults(t *testing.T) {
+	isolateHome(t)
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
@@ -341,6 +349,7 @@ filter_done = true
 }
 
 func TestLoadConfig_MaxVisibleZeroIsValid(t *testing.T) {
+	isolateHome(t)
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
@@ -367,6 +376,7 @@ max_visible = 0
 }
 
 func TestSaveTheme_PreservesDefaultsSection(t *testing.T) {
+	isolateHome(t)
 	// Save original env
 	origXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() { _ = os.Setenv("XDG_CONFIG_HOME", origXDG) }()
@@ -604,6 +614,7 @@ func TestResolveFilePath_CustomFilename(t *testing.T) {
 }
 
 func TestSavedViewsConfigAndManualSaveAlias(t *testing.T) {
+	isolateHome(t)
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	configDir := filepath.Join(dir, "tdx")
@@ -624,5 +635,191 @@ func TestSavedViewsConfigAndManualSaveAlias(t *testing.T) {
 	cfg = LoadConfig()
 	if cfg.Defaults.ManualSave == nil || *cfg.Defaults.ManualSave || !cfg.Views.Restore {
 		t.Fatal("theme change dropped workflow settings")
+	}
+}
+
+// isolateHome points every home and config directory lookup at fresh temp
+// directories so tests never read or write a developer's real config. It
+// returns the stand-ins for the home directory and os.UserConfigDir.
+func isolateHome(t *testing.T) (home, userConfig string) {
+	t.Helper()
+	root := t.TempDir()
+	home = filepath.Join(root, "home")
+	userConfig = filepath.Join(root, "user-config")
+	for _, dir := range []string{home, userConfig} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("APPDATA", userConfig)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	orig := userConfigDir
+	userConfigDir = func() (string, error) { return userConfig, nil }
+	t.Cleanup(func() { userConfigDir = orig })
+	return home, userConfig
+}
+
+func writeConfig(t *testing.T, path, content string, mode os.FileMode) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func decodeRaw(t *testing.T, path string) map[string]any {
+	t.Helper()
+	raw := map[string]any{}
+	if _, err := toml.DecodeFile(path, &raw); err != nil {
+		t.Fatalf("decode %s: %v", path, err)
+	}
+	return raw
+}
+
+func TestSaveTheme_KeepsUnrelatedSettings(t *testing.T) {
+	home, _ := isolateHome(t)
+	path := filepath.Join(home, ".config", "tdx", "config.toml")
+	writeConfig(t, path, `[theme]
+name = "nord"
+
+[versioning]
+max_versions = 5
+
+[colors]
+Base = "#ffffff"
+`, 0o644)
+
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatalf("SaveTheme: %v", err)
+	}
+
+	raw := decodeRaw(t, path)
+	if got := raw["theme"].(map[string]any)["name"]; got != "dracula" {
+		t.Errorf("theme.name = %v, want dracula", got)
+	}
+	if got := raw["versioning"].(map[string]any)["max_versions"]; got != int64(5) {
+		t.Errorf("versioning.max_versions = %v, want 5", got)
+	}
+	if got := raw["colors"].(map[string]any)["Base"]; got != "#ffffff" {
+		t.Errorf("colors.Base = %v, want #ffffff", got)
+	}
+	if _, ok := raw["defaults"]; ok {
+		content, _ := os.ReadFile(path)
+		t.Errorf("SaveTheme added a [defaults] table:\n%s", content)
+	}
+
+	cfg := LoadConfig()
+	if cfg.Versioning.MaxVersions != 5 {
+		t.Errorf("MaxVersions = %d, want 5", cfg.Versioning.MaxVersions)
+	}
+	if !cfg.Defaults.WordWrap || cfg.Defaults.File != "todo.md" {
+		t.Errorf("defaults changed after theme save: %+v", cfg.Defaults)
+	}
+}
+
+func TestSaveTheme_RefusesUnparseableConfig(t *testing.T) {
+	home, _ := isolateHome(t)
+	dir := filepath.Join(home, ".config", "tdx")
+	path := filepath.Join(dir, "config.toml")
+	broken := "# my settings\n[theme\nname = \"nord\"\n[versioning]\nmax_versions = 5\n"
+	writeConfig(t, path, broken, 0o644)
+
+	err := SaveTheme("dracula")
+	if err == nil {
+		t.Fatal("SaveTheme succeeded on a config that does not parse")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("error should name the config path, got %v", err)
+	}
+	content, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(content) != broken {
+		t.Errorf("config changed:\n%s", content)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Errorf("expected only config.toml in %s, found %d entries", dir, len(entries))
+	}
+}
+
+func TestSaveTheme_WritesToTheConfigLoadConfigRead(t *testing.T) {
+	home, userConfig := isolateHome(t)
+	path := filepath.Join(userConfig, "tdx", "config.toml")
+	writeConfig(t, path, "[theme]\nname = \"nord\"\n\n[versioning]\nmax_versions = 5\n", 0o644)
+
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatalf("SaveTheme: %v", err)
+	}
+
+	shadow := filepath.Join(home, ".config", "tdx", "config.toml")
+	if _, err := os.Stat(shadow); !os.IsNotExist(err) {
+		t.Errorf("SaveTheme created %s, which would shadow %s", shadow, path)
+	}
+	if got := decodeRaw(t, path)["theme"].(map[string]any)["name"]; got != "dracula" {
+		t.Errorf("theme.name in %s = %v, want dracula", path, got)
+	}
+	cfg := LoadConfig()
+	if cfg.Theme.Name != "dracula" || cfg.Versioning.MaxVersions != 5 {
+		t.Errorf("LoadConfig after save: theme %q, max_versions %d", cfg.Theme.Name, cfg.Versioning.MaxVersions)
+	}
+}
+
+func TestSaveTheme_CreatesConfigWhenNoneExists(t *testing.T) {
+	home, userConfig := isolateHome(t)
+
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatalf("SaveTheme: %v", err)
+	}
+
+	path := filepath.Join(home, ".config", "tdx", "config.toml")
+	raw := decodeRaw(t, path)
+	if got := raw["theme"].(map[string]any)["name"]; got != "dracula" {
+		t.Errorf("theme.name = %v, want dracula", got)
+	}
+	if len(raw) != 1 {
+		t.Errorf("new config should hold only [theme], got %v", raw)
+	}
+	if _, err := os.Stat(filepath.Join(userConfig, "tdx")); !os.IsNotExist(err) {
+		t.Error("SaveTheme should not create the OS-specific config directory")
+	}
+}
+
+func TestSaveTheme_KeepsFileModeAndSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes and symlinks differ on Windows")
+	}
+	home, _ := isolateHome(t)
+	target := filepath.Join(home, "dotfiles", "tdx.toml")
+	writeConfig(t, target, "[theme]\nname = \"nord\"\n", 0o600)
+	link := filepath.Join(home, ".config", "tdx", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatalf("SaveTheme: %v", err)
+	}
+
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("config symlink was replaced: %v", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
+	}
+	if got := decodeRaw(t, target)["theme"].(map[string]any)["name"]; got != "dracula" {
+		t.Errorf("theme.name = %v, want dracula", got)
 	}
 }

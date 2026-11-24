@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -299,5 +300,24 @@ func TestSaveTheme_OnlyWritesThemeName(t *testing.T) {
 		if strings.Contains(contentStr, key+" =") || strings.Contains(contentStr, key+"=") {
 			t.Errorf("Expected config to NOT contain color key '%s', got:\n%s", key, contentStr)
 		}
+	}
+}
+
+// TestTUI_ThemePicker_ShowsSaveError checks that a failed theme save is shown
+// instead of being dropped.
+func TestTUI_ThemePicker_ShowsSaveError(t *testing.T) {
+	file := tempTestFile(t)
+	runCLI(t, file, "add", "Task 1")
+
+	cfg := *testRuntime.Config
+	cfg.ThemeSaveFunc = func(string) error {
+		return errors.New("theme not saved: config.toml could not be parsed")
+	}
+	rt := testRuntime
+	rt.Config = &cfg
+
+	output := rt.RunPiped(file, []byte(":theme\r\r"), false)
+	if !strings.Contains(output, "theme not saved") {
+		t.Errorf("expected the save error in the TUI, got:\n%s", output)
 	}
 }
