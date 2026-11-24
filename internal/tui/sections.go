@@ -154,14 +154,16 @@ func (m Model) handleHeadingInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.Err = fmt.Errorf("read-only file: section editing is disabled")
 			return m, nil
 		}
-		m.saveHistory()
+		// Record undo only for an edit that succeeds; a rejected one leaves the
+		// document, the cursor and the history as they were.
+		m.history.Begin(&m.FileModel)
 		headings := m.GetHeadings()
 		index := m.SectionCursor
 		if m.HeadingInput == "rename" {
 			m.Err = m.applyAction(editor.Action{Kind: editor.RenameHeading, Index: index, Text: m.InputBuffer})
 		} else {
 			level := 1
-			if len(headings) > 0 {
+			if index >= 0 && index < len(headings) {
 				level = headings[index].Level
 				if m.HeadingInput == "child" {
 					level++
@@ -169,11 +171,16 @@ func (m Model) handleHeadingInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			} else {
 				index = -1
 			}
-			m.SectionCursor, m.Err = editor.Apply(&m.FileModel, editor.Action{Kind: editor.CreateHeading, Index: index, Level: level, Text: m.InputBuffer})
+			var cursor int
+			if cursor, m.Err = editor.Apply(&m.FileModel, editor.Action{Kind: editor.CreateHeading, Index: index, Level: level, Text: m.InputBuffer}); m.Err == nil {
+				m.SectionCursor = cursor
+			}
 		}
 		if m.Err != nil {
+			m.history.Cancel(&m.FileModel)
 			return m, nil
 		}
+		m.history.Commit()
 		m.HeadingInput = ""
 		m.InputBuffer = ""
 		m.CursorPos = 0

@@ -80,3 +80,29 @@ func TestSelectionFlushesPendingQuery(t *testing.T) {
 		t.Fatalf("selected stale search result: %d", m.SelectedIndex)
 	}
 }
+
+// Regression: a rejected section creation set the cursor to -1 and pushed an
+// undo entry; pressing Enter again then indexed headings[-1] and panicked.
+func TestRejectedSectionCreationKeepsCursorAndHistory(t *testing.T) {
+	m := testModelWithMarkdown("> ## Quoted\n>\n> - [ ] inside\n\n- [ ] outside\n")
+	press := func(keys ...tea.KeyPressMsg) {
+		for _, key := range keys {
+			result, _ := m.Update(key)
+			m = result.(Model)
+		}
+	}
+	press(tea.KeyPressMsg{Text: "s"}, tea.KeyPressMsg{Text: "n"})
+	m.InputBuffer, m.CursorPos = "Sibling", len("Sibling")
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+	press(enter)
+	if m.Err == nil {
+		t.Fatal("creating a sibling of a quoted heading should be rejected")
+	}
+	if m.SectionCursor != 0 || m.history.Len() != 0 {
+		t.Fatalf("rejected edit changed cursor to %d and history to %d entries", m.SectionCursor, m.history.Len())
+	}
+	press(enter, enter) // dismiss the error, then retry
+	if m.SectionCursor != 0 {
+		t.Fatalf("retry moved the cursor to %d", m.SectionCursor)
+	}
+}
