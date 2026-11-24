@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -561,13 +562,20 @@ func TestPrepareReplacementStageFailures(t *testing.T) {
 	})
 	for _, stage := range []string{"chmod", "write", "sync", "close"} {
 		t.Run(stage, func(t *testing.T) {
+			tmp := filepath.Join(t.TempDir(), "fake.tmp")
+			if err := os.WriteFile(tmp, []byte("partial"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 			createTempFile = func(string, string) (replacementFile, error) {
-				return &failingReplacement{name: filepath.Join(t.TempDir(), "fake.tmp"), stage: stage}, nil
+				return &failingReplacement{name: tmp, stage: stage}, nil
 			}
 			if _, err := prepareReplacement(target, "content"); err == nil {
 				t.Fatalf("prepareReplacement() succeeded with %s failure", stage)
 			}
 			createTempFile = originalCreate
+			if _, err := os.Stat(tmp); !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("%s failure left the temporary file behind (stat: %v)", stage, err)
+			}
 		})
 	}
 }

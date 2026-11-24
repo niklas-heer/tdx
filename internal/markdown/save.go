@@ -165,7 +165,8 @@ func prepareReplacement(target, content string) (name string, err error) {
 	if err != nil {
 		return "", fmt.Errorf("create replacement: %w", err)
 	}
-	name = tmp.Name()
+	// Error returns clear the named result, so cleanup keeps its own copy.
+	tmpName := tmp.Name()
 	closed := false
 	defer func() {
 		if !closed {
@@ -174,7 +175,7 @@ func prepareReplacement(target, content string) (name string, err error) {
 			}
 		}
 		if err != nil {
-			_ = os.Remove(name)
+			_ = os.Remove(tmpName)
 		}
 	}()
 
@@ -193,7 +194,7 @@ func prepareReplacement(target, content string) (name string, err error) {
 		return "", fmt.Errorf("close replacement: %w", err)
 	}
 	closed = true
-	return name, nil
+	return tmpName, nil
 }
 
 func (store Store) writeContent(filePath, content string, expected *fileRevision, fm *FileModel, force bool) (err error) {
