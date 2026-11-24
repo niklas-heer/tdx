@@ -1,6 +1,12 @@
 package util
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 func TestFuzzyScore_ExactMatch(t *testing.T) {
 	score := FuzzyScore("task", "My task here")
@@ -39,8 +45,44 @@ func TestWrapText_NoWrapNeeded(t *testing.T) {
 
 func TestWrapText_NeedsWrap(t *testing.T) {
 	lines := WrapText("this is a long text that needs wrapping", 20, "  ")
-	if len(lines) <= 1 {
-		t.Errorf("Long text should wrap, got %v", lines)
+	want := []string{"this is a long text", "  that needs wrapping"}
+	if !reflect.DeepEqual(lines, want) {
+		t.Errorf("got %q, want %q", lines, want)
+	}
+}
+
+func TestWrapText_KeepsHyphenatedWordsWhole(t *testing.T) {
+	lines := WrapText("ship it @due(2026-12-01) #work", 16, "")
+	want := []string{"ship it", "@due(2026-12-01)", "#work"}
+	if !reflect.DeepEqual(lines, want) {
+		t.Errorf("got %q, want %q", lines, want)
+	}
+}
+
+func TestWrapText_HardBreaksWordsWiderThanALine(t *testing.T) {
+	lines := WrapText("go abcdefghijklmnopqrstuvwxyz", 12, " ")
+	want := []string{"go", " abcdefghijkl", " mnopqrstuvwx", " yz"}
+	if !reflect.DeepEqual(lines, want) {
+		t.Errorf("got %q, want %q", lines, want)
+	}
+}
+
+func TestWrapText_CarriesStylesAcrossLines(t *testing.T) {
+	const dim = "\x1b[38;2;86;95;137m"
+	lines := WrapText("plain words "+dim+"styled words that wrap\x1b[39m end", 16, "  ")
+	for i, line := range lines {
+		if strings.Count(line, "\x1b[") != strings.Count(line, "m") {
+			t.Errorf("line %d splits an escape sequence: %q", i, line)
+		}
+		if w := ansi.StringWidth(line); w > 16+2 {
+			t.Errorf("line %d is %d cells wide: %q", i, w, line)
+		}
+	}
+	if !strings.HasPrefix(lines[1], "  "+dim) {
+		t.Errorf("continuation line should reopen the colour after the indent: %q", lines[1])
+	}
+	if got := ansi.Strip(strings.Join(lines, "|")); got != "plain words|  styled words|  that wrap end" {
+		t.Errorf("visible text %q", got)
 	}
 }
 

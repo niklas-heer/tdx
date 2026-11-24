@@ -305,3 +305,38 @@ func TestInlineLayoutConflictDiffKeepsResolutionFooter(t *testing.T) {
 		}
 	}
 }
+
+// Regression: wrapping used to count the parameters of a CSI colour sequence as
+// visible text and could split it, printing fragments such as "m@due(" or
+// "95;137m@due(" in narrow terminals.
+func TestWrappedTaskKeepsColourSequencesWhole(t *testing.T) {
+	const task = "Ship the release notes for the new version @due(2026-12-01) #work"
+	truecolor := func(s string) string { return "\x1b[38;2;86;95;137m" + s + "\x1b[39m" }
+	for width := 26; width <= 60; width++ { // from 26 the date fits on a line
+		t.Run(fmt.Sprintf("width%d", width), func(t *testing.T) {
+			m := testModelWithMarkdown("- [ ] " + task + "\n- [ ] Short task\n")
+			m.TermWidth, m.TermHeight = width, 14
+			m.WordWrap = true
+			m.styles.Dim, m.styles.Tag = truecolor, truecolor
+			m.styles.DueUrgent, m.styles.DueSoon, m.styles.DueFuture = truecolor, truecolor, truecolor
+			plain := assertInlineFrameBounds(t, m)
+			if strings.ContainsAny(plain, ";\t") {
+				t.Fatalf("escape sequence fragment or tab leaked into display:\n%s", plain)
+			}
+			var words []string
+			for _, row := range strings.Split(plain, "\n") {
+				if strings.Contains(row, "Short task") {
+					break
+				}
+				if i := strings.Index(row, "[ ] "); i >= 0 {
+					row = row[i+len("[ ] "):]
+				}
+				words = append(words, strings.Fields(row)...)
+			}
+			if got := strings.Join(words, " "); got != task {
+				t.Fatalf("wrapped task reads %q, want %q:\n%s", got, task, plain)
+			}
+		})
+	}
+}
+

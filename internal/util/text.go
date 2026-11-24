@@ -1,15 +1,12 @@
 package util
 
 import (
-	"regexp"
+	"bytes"
 	"strings"
-	"unicode/utf8"
 
-	"github.com/mattn/go-runewidth"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
-
-// ANSI escape code regex (matches CSI sequences and OSC 8 hyperlinks)
-var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m|\x1b\]8;;[^\x1b]*\x1b\\`)
 
 // FuzzyScore returns a score for how well query matches text
 // Higher score = better match
@@ -52,133 +49,60 @@ func FuzzyScore(query, text string) int {
 	return 0
 }
 
-// StripANSI removes ANSI escape codes from text
-func StripANSI(text string) string {
-	return ansiRe.ReplaceAllString(text, "")
-}
-
-// VisibleWidth returns the visible width of text, ignoring ANSI escape codes
-func VisibleWidth(text string) int {
-	stripped := StripANSI(text)
-	return runewidth.StringWidth(stripped)
-}
-
-// WrapText wraps text to fit within maxWidth, returning multiple lines
-// indent is the string to prepend to continuation lines
-// NOTE: This function is ANSI-aware - it calculates visual width correctly
-// even when text contains escape codes (colors, hyperlinks, etc.)
+// WrapText wraps styled text to maxWidth terminal cells and prepends indent to
+// continuation lines, so they align with the first line's text. It breaks at
+// spaces, so tokens such as @due(2026-12-01) stay whole, and splits only a word
+// wider than a line. Escape sequences are never split; colours and links are
+// closed at the end of a line and reopened on the next.
 func WrapText(text string, maxWidth int, indent string) []string {
-	visibleWidth := VisibleWidth(text)
-	if maxWidth <= 0 || visibleWidth <= maxWidth {
+	// Below this, wrapping produces a column of fragments; the frame truncates.
+	const minWrapWidth = 10
+	if maxWidth <= minWrapWidth || ansi.StringWidth(text) <= maxWidth {
 		return []string{text}
 	}
 
-	var lines []string
-	indentWidth := VisibleWidth(indent)
-	firstLineWidth := maxWidth
-	contLineWidth := maxWidth - indentWidth
-
-	if contLineWidth <= 10 {
-		// Too narrow to wrap meaningfully
-		return []string{text}
+	var wrapped, line strings.Builder
+	lineWidth := 0
+	newline := func() {
+		wrapped.WriteString(line.String())
+		wrapped.WriteByte('\n')
+		line.Reset()
+		lineWidth = 0
 	}
-
-	remaining := text
-	isFirst := true
-
-	for len(remaining) > 0 {
-		lineWidth := contLineWidth
-		if isFirst {
-			lineWidth = firstLineWidth
-			isFirst = false
+	// Escape sequences contain no spaces, so each one stays inside a word.
+	for _, word := range strings.Split(text, " ") {
+		width := ansi.StringWidth(word)
+		switch {
+		case line.Len() == 0:
+		case lineWidth+1+width <= maxWidth:
+			line.WriteByte(' ')
+			lineWidth++
+		default:
+			newline()
 		}
-
-		if VisibleWidth(remaining) <= lineWidth {
-			if len(lines) > 0 {
-				lines = append(lines, indent+remaining)
-			} else {
-				lines = append(lines, remaining)
+		if width > maxWidth {
+			pieces := strings.Split(ansi.Hardwrap(word, maxWidth, false), "\n")
+			for _, piece := range pieces[:len(pieces)-1] {
+				line.WriteString(piece)
+				newline()
 			}
-			break
+			word = pieces[len(pieces)-1]
+			width = ansi.StringWidth(word)
 		}
-
-		// Find break point (prefer space)
-		// We need to track both byte position and visible width
-		breakAt := 0
-		lastSpace := -1
-		lastSpaceWidth := 0
-		width := 0
-		inEscape := false
-
-		i := 0
-		for i < len(remaining) {
-			// Check for start of escape sequence
-			if remaining[i] == '\x1b' {
-				inEscape = true
-				i++
-				continue
-			}
-
-			// If we're in an escape sequence, find the end
-			if inEscape {
-				// CSI sequence ends with a letter
-				if remaining[i] >= 'A' && remaining[i] <= 'z' {
-					inEscape = false
-					i++
-					continue
-				} else if remaining[i] == ']' {
-					// OSC sequence - scan until we find the terminator
-					for i < len(remaining)-1 {
-						i++
-						if remaining[i] == '\x1b' && i+1 < len(remaining) && remaining[i+1] == '\\' {
-							i += 2
-							inEscape = false
-							break
-						}
-					}
-					continue
-				}
-				i++
-				continue
-			}
-
-			// Regular character - use rune iteration
-			r, size := utf8.DecodeRuneInString(remaining[i:])
-			w := runewidth.RuneWidth(r)
-
-			if width+w > lineWidth {
-				break
-			}
-
-			width += w
-			i += size
-			breakAt = i
-
-			if r == ' ' {
-				lastSpace = breakAt
-				lastSpaceWidth = width
-			}
-		}
-
-		// Prefer breaking at space if it's not too far back
-		if lastSpace > 0 && lastSpaceWidth > lineWidth/2 {
-			breakAt = lastSpace
-		}
-
-		if breakAt == 0 {
-			// Can't fit even one character - force break
-			breakAt = 1
-		}
-
-		line := remaining[:breakAt]
-		if len(lines) > 0 {
-			lines = append(lines, indent+line)
-		} else {
-			lines = append(lines, line)
-		}
-		remaining = strings.TrimLeft(remaining[breakAt:], " ")
+		line.WriteString(word)
+		lineWidth += width
 	}
+	wrapped.WriteString(line.String())
 
+	var styled bytes.Buffer
+	writer := lipgloss.NewWrapWriter(&styled)
+	_, _ = writer.Write([]byte(wrapped.String()))
+	_ = writer.Close()
+
+	lines := strings.Split(styled.String(), "\n")
+	for i := 1; i < len(lines); i++ {
+		lines[i] = indent + lines[i]
+	}
 	return lines
 }
 
