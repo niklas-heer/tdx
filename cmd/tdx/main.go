@@ -356,9 +356,8 @@ func handleLastCommand(runtime tui.Runtime, readOnly bool, showHeadings bool, ma
 		os.Exit(1)
 	}
 
-	// Sort by score and open the most recent
-	recentFiles.SortByScore()
-	filePath := recentFiles.Files[0].Path
+	// "last" means strict recency, not the frequency-weighted recent-files order.
+	filePath := recentFiles.LatestPath()
 	runtime.Run(filePath, readOnly, showHeadings, maxVisible)
 }
 
