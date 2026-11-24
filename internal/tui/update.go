@@ -1341,6 +1341,15 @@ func (m Model) checkAndReloadFile() tea.Cmd {
 		// would let a later Enter overwrite external changes without a conflict.
 		return watchFileChanges() // Continue watching
 	}
+	if m.SearchMode {
+		// Search results index the current task list; reload once search closes.
+		return watchFileChanges()
+	}
+	if m.ReadOnly && m.FileModel.HasUnsavedChanges() {
+		// Manual save: keep unsaved edits and the loaded revision, so :save
+		// reports the external change as a conflict instead of losing either.
+		return watchFileChanges()
+	}
 
 	// Check if file was modified externally
 	modified, err := m.FileModel.CheckFileModified()

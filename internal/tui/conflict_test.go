@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/niklas-heer/tdx/internal/config"
+	"github.com/niklas-heer/tdx/internal/editor"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -279,4 +281,86 @@ func TestRecentFileSwitchRefusedWhileConflictPending(t *testing.T) {
 	if got, _ := os.ReadFile(source); string(got) != local {
 		t.Fatalf("force-save should still resolve the original file: got %q, external was %q", got, external)
 	}
+}
+
+// reloadsWithin reports whether a watcher command reloads the document
+// rather than only scheduling the next poll (a one-second tick).
+func reloadsWithin(t *testing.T, cmd tea.Cmd) bool {
+	t.Helper()
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case msg := <-done:
+		_, ok := msg.(reloadedMsg)
+		return ok
+	case <-time.After(200 * time.Millisecond):
+		return false
+	}
+}
+
+func manualSaveModel(t *testing.T, initial string) (Model, string) {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(path, fm, true, false, -1, testConfig(), testStyles(), "test"), path
+}
+
+// Regression: in manual-save mode the watcher replaced unsaved edits with the
+// disk version, and :save then wrote over the external change unannounced.
+func TestManualSaveKeepsUnsavedEditsWhenFileChanges(t *testing.T) {
+	const initial = "---\nread-only: true\n---\n# Todos\n\n- [ ] a\n- [ ] b\n"
+	const external = "# Todos\n\n- [ ] a\n- [ ] b\n- [ ] added elsewhere\n"
+
+	t.Run("unedited document follows the file", func(t *testing.T) {
+		m, path := manualSaveModel(t, initial)
+		if err := os.WriteFile(path, []byte(external), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !reloadsWithin(t, m.checkAndReloadFile()) {
+			t.Fatal("an unedited manual-save document should reload external changes")
+		}
+	})
+
+	t.Run("unsaved edits are kept and :save reports the conflict", func(t *testing.T) {
+		m, path := manualSaveModel(t, initial)
+		if err := m.applyAction(editor.Action{Kind: editor.Toggle, Index: 0}); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(external), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if reloadsWithin(t, m.checkAndReloadFile()) {
+			t.Fatal("watcher discarded unsaved manual-save edits")
+		}
+		executeCommand(&m, "save")
+		if !m.ConflictPending {
+			t.Fatal(":save should report the external change as a conflict")
+		}
+		if got, _ := os.ReadFile(path); string(got) != external {
+			t.Fatalf(":save overwrote the external change: %q", got)
+		}
+	})
+}
+
+// Regression: reloading a shorter file while / search was open left search
+// results pointing past the new task list, and rendering panicked.
+func TestOpenSearchDefersReload(t *testing.T) {
+	m, path := manualSaveModel(t, "# Todos\n\n- [ ] alpha\n- [ ] alpine\n- [ ] alps\n")
+	m.ReadOnly = false
+	m.SearchMode, m.InputBuffer = true, "al"
+	m.updateSearchResults()
+	if err := os.WriteFile(path, []byte("# Todos\n\n- [ ] alpha\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if reloadsWithin(t, m.checkAndReloadFile()) {
+		t.Fatal("reload while searching would leave stale search results")
+	}
+	_ = m.View()
 }

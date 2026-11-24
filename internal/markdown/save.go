@@ -77,6 +77,20 @@ func (e *PostCommitError) Error() string {
 
 func (e *PostCommitError) Unwrap() error { return e.Err }
 
+// HasUnsavedChanges reports whether saving would write something other than
+// the disk revision the document was loaded from or last saved as. For a file
+// that does not exist yet, the new-file template counts as unchanged.
+func (fm *FileModel) HasUnsavedChanges() bool {
+	if fm == nil || !fm.revisionKnown {
+		return false
+	}
+	content := SerializeMarkdown(fm)
+	if !fm.revision.exists {
+		return content != SerializeMarkdown(ParseMarkdown(newFileTemplate))
+	}
+	return sha256.Sum256([]byte(content)) != fm.revision.hash
+}
+
 func (fm *FileModel) setRevision(revision fileRevision, modTime time.Time) {
 	fm.revision = revision
 	fm.revisionKnown = true

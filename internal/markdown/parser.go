@@ -47,6 +47,9 @@ func (fm *FileModel) GetAST() *ASTDocument {
 	return fm.ast
 }
 
+// newFileTemplate is the document tdx starts from when the file does not exist.
+const newFileTemplate = "# Todos\n\n"
+
 // ReadFile reads and parses a markdown file using AST
 func (store Store) ReadFile(filePath string) (*FileModel, error) {
 	revision, content, modTime, err := readDiskRevision(filePath)
@@ -54,7 +57,7 @@ func (store Store) ReadFile(filePath string) (*FileModel, error) {
 		return nil, err
 	}
 	if !revision.exists {
-		fm := ParseMarkdown("# Todos\n\n")
+		fm := ParseMarkdown(newFileTemplate)
 		fm.FilePath = filePath
 		fm.Metadata = &Metadata{}
 		fm.setRevision(revision, time.Time{})

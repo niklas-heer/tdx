@@ -839,3 +839,43 @@ func TestLockTimeoutIsBounded(t *testing.T) {
 		t.Fatalf("lock wait = %v, want bounded near %v", elapsed, lockWait)
 	}
 }
+
+func TestHasUnsavedChanges(t *testing.T) {
+	isolateSaveLocks(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "todo.md")
+	if err := os.WriteFile(path, []byte("---\nread-only: true\n---\n# Todos\n\n- [ ] a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fm.HasUnsavedChanges() {
+		t.Fatal("a freshly read document reports unsaved changes")
+	}
+	if err := fm.UpdateTodoItem(0, "a", true); err != nil {
+		t.Fatal(err)
+	}
+	if !fm.HasUnsavedChanges() {
+		t.Fatal("a toggled task is not reported as unsaved")
+	}
+	if err := WriteFile(path, fm); err != nil {
+		t.Fatal(err)
+	}
+	if fm.HasUnsavedChanges() {
+		t.Fatal("a saved document still reports unsaved changes")
+	}
+
+	missing, err := ReadFile(filepath.Join(dir, "new.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.HasUnsavedChanges() {
+		t.Fatal("the new-file template reports unsaved changes")
+	}
+	missing.AddTodoItem("first", false)
+	if !missing.HasUnsavedChanges() {
+		t.Fatal("a task added to a new file is not reported as unsaved")
+	}
+}
