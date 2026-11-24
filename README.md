@@ -7,6 +7,12 @@
 
 **Your todos, in markdown, done fast.**
 
+**[Watch the 59-second film](https://youtu.be/Z2-yN1zXzK4)** on YouTube: one Markdown file, one key, one box checked.
+
+<p align="center">
+  <a href="https://youtu.be/Z2-yN1zXzK4"><img src="assets/video.webp" alt="The tdx film: '- [x]' on paper beside a checked box in tdx, 'Just a text file.', with a 'Watch the film · 0:59' button." width="600"></a>
+</p>
+
 <p align="center">
   <img src="assets/demo-0.15.0.gif" alt="tdx demo" width="600">
 </p>
