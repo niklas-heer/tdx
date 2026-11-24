@@ -2,6 +2,7 @@ package util
 
 import (
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -157,5 +158,23 @@ func BenchmarkWrapText_VeryLong(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		WrapText(text, 60, "    ")
+	}
+}
+
+// Regression: a link destination may contain spaces, which must not count as
+// word breaks; every row must link to the whole destination.
+func TestWrapText_KeepsLinkDestinationsWhole(t *testing.T) {
+	const url = "docs/a long file name.md"
+	link := "\x1b]8;;" + url + "\x1b\\local documentation\x1b]8;;\x1b\\"
+	lines := WrapText("read the "+link+" before you start", 13, "")
+	if got := ansi.Strip(strings.Join(lines, "|")); got != "read the|local|documentation|before you|start" {
+		t.Errorf("visible text %q", got)
+	}
+	for i, line := range lines {
+		for _, dest := range regexp.MustCompile("\x1b]8;[^;]*;([^\x1b]*)\x1b\\\\").FindAllStringSubmatch(line, -1) {
+			if dest[1] != "" && dest[1] != url {
+				t.Errorf("line %d links to %q, want %q: %q", i, dest[1], url, line)
+			}
+		}
 	}
 }

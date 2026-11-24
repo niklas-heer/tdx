@@ -69,8 +69,7 @@ func WrapText(text string, maxWidth int, indent string) []string {
 		line.Reset()
 		lineWidth = 0
 	}
-	// Escape sequences contain no spaces, so each one stays inside a word.
-	for _, word := range strings.Split(text, " ") {
+	for _, word := range visibleWords(text) {
 		width := ansi.StringWidth(word)
 		switch {
 		case line.Len() == 0:
@@ -104,6 +103,25 @@ func WrapText(text string, maxWidth int, indent string) []string {
 		lines[i] = indent + lines[i]
 	}
 	return lines
+}
+
+// visibleWords splits text at the spaces it displays. An escape sequence, such
+// as a link whose destination contains spaces, stays whole inside a word.
+func visibleWords(text string) []string {
+	var words []string
+	var word strings.Builder
+	var state byte
+	for len(text) > 0 {
+		seq, _, n, newState := ansi.DecodeSequence(text, state, nil)
+		if seq == " " {
+			words = append(words, word.String())
+			word.Reset()
+		} else {
+			word.WriteString(seq)
+		}
+		state, text = newState, text[n:]
+	}
+	return append(words, word.String())
 }
 
 func Min(a, b int) int {
