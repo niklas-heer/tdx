@@ -388,3 +388,22 @@ func TestSmallTerminalUsesEveryRow(t *testing.T) {
 		}
 	})
 }
+
+// With an explicit max_visible the window keeps its "▲/▼ N more" counts, but
+// in a sized terminal it must not reserve a blank row the viewport then counts.
+func TestExplicitMaxVisibleUsesEveryRow(t *testing.T) {
+	var source strings.Builder
+	for i := 0; i < 30; i++ {
+		fmt.Fprintf(&source, "- [ ] Task %02d\n", i)
+	}
+	m := testModelWithMarkdown(source.String())
+	m.Config().Display.MaxVisible = 10
+	m.TermWidth, m.TermHeight = 60, 10
+	plain := assertInlineFrameBounds(t, m)
+	if got := strings.Count(plain, "[ ] Task"); got != 7 {
+		t.Fatalf("%d tasks visible at 10 rows, want 7 (8 task rows, one for \"▼ more\"):\n%s", got, plain)
+	}
+	if strings.HasPrefix(plain, "\n") {
+		t.Fatalf("frame starts with a blank row:\n%s", plain)
+	}
+}

@@ -171,10 +171,11 @@ func (m Model) renderMainContentWithAnchor() (string, int) {
 	// wrapped tasks and headings as the rows they take. Every task takes at
 	// least one row, so rendering a frame's height of tasks around the
 	// selection is enough; the viewport then replaces this window's indicators
-	// with its own, and no placeholder rows are kept for them.
+	// with its own. In a sized terminal no blank placeholder rows are kept for
+	// absent indicators, whatever max_visible is: the viewport would count them.
 	effectiveMaxVisible := configMaxVisible
-	autoFit := configMaxVisible == 0 && m.frameHeight() > 0
-	if autoFit {
+	sized := m.frameHeight() > 0
+	if configMaxVisible == 0 && sized {
 		effectiveMaxVisible = m.frameHeight()
 	}
 	if m.InputMode && effectiveMaxVisible > 0 {
@@ -226,7 +227,7 @@ func (m Model) renderMainContentWithAnchor() (string, int) {
 	if effectiveMaxVisible > 0 && totalCount > effectiveMaxVisible {
 		if hasMoreAbove {
 			fmt.Fprintf(&b, "      %s\n", styles.Dim(fmt.Sprintf("▲ %d more", startIdx)))
-		} else if !autoFit {
+		} else if !sized {
 			b.WriteString("\n")
 		}
 	}
@@ -391,7 +392,7 @@ func (m Model) renderMainContentWithAnchor() (string, int) {
 	if effectiveMaxVisible > 0 && totalCount > effectiveMaxVisible {
 		if hasMoreBelow && !m.InputMode {
 			fmt.Fprintf(&b, "      %s\n", styles.Dim(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow))))
-		} else if !autoFit {
+		} else if !sized {
 			b.WriteString("\n")
 		}
 	}
