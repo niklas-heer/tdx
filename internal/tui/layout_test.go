@@ -340,3 +340,51 @@ func TestWrappedTaskKeepsColourSequencesWhole(t *testing.T) {
 	}
 }
 
+// Regression: at 10 rows the list, the section overview and a focused section
+// reserved rows twice (an item cap plus the row viewport) and showed fewer
+// tasks or sections than fit.
+func TestSmallTerminalUsesEveryRow(t *testing.T) {
+	const fixture = "## Film\n\n- [ ] Check this box\n- [ ] Open the file\n- [ ] Edit it anywhere\n- [ ] Focus a project\n- [ ] Script it\n- [ ] Read the diff\n\n## You\n\n- [ ] Install tdx !p1\n"
+	newModel := func() Model {
+		m := testModelWithMarkdown(fixture)
+		m.Config().Display.MaxVisible = 0 // the default: fit the terminal
+		m.TermWidth, m.TermHeight = 30, 10
+		return m
+	}
+
+	t.Run("list", func(t *testing.T) {
+		plain := assertInlineFrameBounds(t, newModel())
+		for _, task := range []string{"Check this box", "Read the diff", "Install tdx"} {
+			if !strings.Contains(plain, task) {
+				t.Errorf("list omits %q although all seven tasks fit:\n%s", task, plain)
+			}
+		}
+		if strings.Contains(plain, "more") {
+			t.Errorf("list shows a scroll indicator although nothing is hidden:\n%s", plain)
+		}
+	})
+
+	t.Run("sections", func(t *testing.T) {
+		m := newModel()
+		m.SectionsMode = true
+		plain := assertInlineFrameBounds(t, m)
+		if !strings.Contains(plain, "Film") || !strings.Contains(plain, "You") || strings.Contains(plain, "more sections") {
+			t.Errorf("overview should list both sections:\n%s", plain)
+		}
+	})
+
+	t.Run("focus", func(t *testing.T) {
+		m := newModel()
+		m.ShowHeadings = true // as in the release's default look: "## Film" takes a row
+		m.SectionFocus = 1
+		plain := assertInlineFrameBounds(t, m)
+		for _, task := range []string{"Check this box", "Open the file", "Edit it anywhere", "Focus a project"} {
+			if !strings.Contains(plain, task) {
+				t.Errorf("focused section omits %q although it fits:\n%s", task, plain)
+			}
+		}
+		if !strings.Contains(plain, "▼ more") {
+			t.Errorf("focused section should say more tasks follow:\n%s", plain)
+		}
+	})
+}

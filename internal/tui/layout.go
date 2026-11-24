@@ -35,29 +35,36 @@ func fitFrame(content string, width, height int) string {
 // heading as a single task slot. The selected task/editor cursor is the anchor.
 func taskViewport(content string, anchor, height int) string {
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	return strings.Join(viewport(lines, anchor, height, "      ▲ more", "      ▼ more"), "\n")
+}
+
+// viewport returns at most height lines around anchor. From three rows up, a
+// side with hidden lines gets its indicator row; a side without one does not
+// give up a row.
+func viewport(lines []string, anchor, height int, above, below string) []string {
 	if len(lines) <= height {
-		return strings.Join(lines, "\n")
+		return lines
 	}
 	anchor = min(max(0, anchor), len(lines)-1)
-	rows := height
-	if height >= 3 {
-		rows -= 2
+	window := func(rows int) int { return min(max(0, anchor-rows/2), len(lines)-rows) }
+	if height < 3 {
+		start := window(height)
+		return lines[start : start+height]
 	}
-	start := min(max(0, anchor-rows/2), len(lines)-rows)
-	end := start + rows
-	visible := append([]string(nil), lines[start:end]...)
-	if height >= 3 {
-		above, below := "", ""
-		if start > 0 {
-			above = "      ▲ more"
-		}
-		if end < len(lines) {
-			below = "      ▼ more"
-		}
+	rows := height - 1
+	start := window(rows)
+	if start > 0 && start+rows < len(lines) {
+		rows--
+		start = window(rows)
+	}
+	visible := append([]string(nil), lines[start:start+rows]...)
+	if start > 0 {
 		visible = append([]string{above}, visible...)
+	}
+	if start+rows < len(lines) {
 		visible = append(visible, below)
 	}
-	return strings.Join(visible, "\n")
+	return visible
 }
 
 // renderEditorLine keeps the cursor visible both in wrapped text and when

@@ -188,26 +188,12 @@ func (m Model) handleHeadingInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) renderSections() string {
 	styles := m.Styles()
-	var b strings.Builder
-	b.WriteString(styles.Cyan("Sections") + "\n\n")
 	headings := m.GetHeadings()
+	var rows []string
 	if len(headings) == 0 {
-		b.WriteString("No sections yet. Press n to create one.\n")
+		rows = append(rows, "No sections yet. Press n to create one.")
 	}
-	height := m.TermHeight
-	if height <= 0 {
-		height = 20
-	}
-	rows := max(1, height-9)
-	start := max(0, m.SectionCursor-rows/2)
-	if start+rows > len(headings) {
-		start = max(0, len(headings)-rows)
-	}
-	if start > 0 {
-		b.WriteString(styles.Dim("↑ more sections") + "\n")
-	}
-	for i := start; i < len(headings) && i < start+rows; i++ {
-		h := headings[i]
+	for i, h := range headings {
 		first, last := sectionBounds(headings, i, len(m.FileModel.Todos))
 		done := 0
 		for _, todo := range m.FileModel.Todos[first:last] {
@@ -230,11 +216,10 @@ func (m Model) renderSections() string {
 		if i == m.SectionCursor {
 			title = styles.Cyan(title)
 		}
-		b.WriteString(title + "\n")
+		rows = append(rows, title)
 	}
-	if start+rows < len(headings) {
-		b.WriteString(styles.Dim("↓ more sections") + "\n")
-	}
+
+	var footer strings.Builder
 	if m.HeadingInput != "" {
 		label := "New section"
 		switch m.HeadingInput {
@@ -243,16 +228,22 @@ func (m Model) renderSections() string {
 		case "child":
 			label = "New subsection"
 		}
-		b.WriteString("\n" + label + ": " + m.InputBuffer[:m.CursorPos] + lipgloss.NewStyle().Reverse(true).Render(" ") + m.InputBuffer[m.CursorPos:] + "\n")
-		b.WriteString(styles.Dim("enter save · esc cancel"))
+		footer.WriteString("\n" + label + ": " + m.InputBuffer[:m.CursorPos] + lipgloss.NewStyle().Reverse(true).Render(" ") + m.InputBuffer[m.CursorPos:] + "\n")
+		footer.WriteString(styles.Dim("enter save · esc cancel"))
 	} else {
-		b.WriteString("\n" + styles.Dim("↑/↓ select · enter focus · space fold · a all tasks · esc close"))
+		footer.WriteString("\n" + styles.Dim("↑/↓ select · enter focus · space fold · a all tasks · esc close"))
 		if !m.ReadOnly {
-			b.WriteString("\n" + styles.Dim("e rename · n new section · N new subsection"))
+			footer.WriteString("\n" + styles.Dim("e rename · n new section · N new subsection"))
 		}
 	}
 	if m.Err != nil {
-		b.WriteString("\n" + m.Err.Error())
+		footer.WriteString("\n" + m.Err.Error())
 	}
-	return b.String() + "\n"
+
+	const headerRows = 2 // "Sections" and a blank row
+	if height := m.frameHeight(); height > 0 {
+		available := max(1, height-headerRows-strings.Count(footer.String(), "\n")-1)
+		rows = viewport(rows, m.SectionCursor, available, styles.Dim("↑ more sections"), styles.Dim("↓ more sections"))
+	}
+	return styles.Cyan("Sections") + "\n\n" + strings.Join(rows, "\n") + "\n" + footer.String() + "\n"
 }

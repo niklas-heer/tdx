@@ -161,3 +161,18 @@ func BenchmarkProcessPipedInput_Search(b *testing.B) {
 		m.ProcessPipedInput([]byte("/task\r"))
 	}
 }
+
+// A frame of a large file at a normal terminal size, with the default
+// (automatic) max_visible.
+func BenchmarkView_2000Todos(b *testing.B) {
+	fm := &markdown.FileModel{Todos: generateTodos(2000)}
+	m := New("/tmp/test.md", fm, false, false, -1, testConfig(), testStyles(), "")
+	m.Config().Display.MaxVisible = 0
+	m.TermWidth, m.TermHeight = 100, 40
+	m.SelectedIndex = 1000
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = m.View()
+	}
+}

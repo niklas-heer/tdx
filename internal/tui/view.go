@@ -167,21 +167,15 @@ func (m Model) renderMainContentWithAnchor() (string, int) {
 		configMaxVisible = m.MaxVisibleOverride
 	}
 
-	// If max_visible is 0 (unlimited) but we have terminal height info,
-	// auto-calculate a reasonable limit based on terminal size
-	// Reserve lines for: status bar (1), empty line (1), potential headings, scroll indicators
-	autoMaxVisible := 0
-	if configMaxVisible == 0 && m.TermHeight > 0 {
-		// Reserve ~4 lines for UI chrome (status bar, spacing, etc.)
-		autoMaxVisible = m.TermHeight - 4
-		if autoMaxVisible < 5 {
-			autoMaxVisible = 5 // Minimum reasonable visible items
-		}
-	}
-
+	// With max_visible 0 the frame's row viewport fits the terminal, counting
+	// wrapped tasks and headings as the rows they take. Every task takes at
+	// least one row, so rendering a frame's height of tasks around the
+	// selection is enough; the viewport then replaces this window's indicators
+	// with its own, and no placeholder rows are kept for them.
 	effectiveMaxVisible := configMaxVisible
-	if effectiveMaxVisible == 0 && autoMaxVisible > 0 {
-		effectiveMaxVisible = autoMaxVisible
+	autoFit := configMaxVisible == 0 && m.frameHeight() > 0
+	if autoFit {
+		effectiveMaxVisible = m.frameHeight()
 	}
 	if m.InputMode && effectiveMaxVisible > 0 {
 		effectiveMaxVisible = effectiveMaxVisible - 1
@@ -232,7 +226,7 @@ func (m Model) renderMainContentWithAnchor() (string, int) {
 	if effectiveMaxVisible > 0 && totalCount > effectiveMaxVisible {
 		if hasMoreAbove {
 			fmt.Fprintf(&b, "      %s\n", styles.Dim(fmt.Sprintf("▲ %d more", startIdx)))
-		} else {
+		} else if !autoFit {
 			b.WriteString("\n")
 		}
 	}
@@ -397,7 +391,7 @@ func (m Model) renderMainContentWithAnchor() (string, int) {
 	if effectiveMaxVisible > 0 && totalCount > effectiveMaxVisible {
 		if hasMoreBelow && !m.InputMode {
 			fmt.Fprintf(&b, "      %s\n", styles.Dim(fmt.Sprintf("▼ %d more", totalCount-startIdx-len(todosToShow))))
-		} else {
+		} else if !autoFit {
 			b.WriteString("\n")
 		}
 	}
