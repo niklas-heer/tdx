@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/niklas-heer/tdx/internal/config"
 	"github.com/niklas-heer/tdx/internal/markdown"
 )
 
@@ -246,5 +247,36 @@ func TestVersionRestoreRefusesExternalChange(t *testing.T) {
 	}
 	if restored.ConflictLocalContent != snapshot {
 		t.Fatalf("retained restore candidate = %q, want snapshot", restored.ConflictLocalContent)
+	}
+}
+
+// Regression: switching files with a conflict pending kept the conflict's
+// local candidate, and :force-save then wrote it into the other file.
+func TestRecentFileSwitchRefusedWhileConflictPending(t *testing.T) {
+	m, local, external := conflictModel(t)
+	m.writeIfPersist()
+	m.ConflictDiffMode = false
+	if !m.ConflictPending {
+		t.Fatal("setup: expected a pending conflict")
+	}
+	m.Err = nil // the user dismissed the conflict message
+	other := filepath.Join(t.TempDir(), "other.md")
+	const otherText = "# Other\n\n- [ ] keep me\n"
+	if err := os.WriteFile(other, []byte(otherText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	source := m.FilePath
+	m.RecentFiles = []config.RecentFile{{Path: other}}
+	m.RecentFilesMode = true
+	m = viewKey(m, tea.KeyEnter)
+	if m.FilePath != source || m.Err == nil || !strings.Contains(m.Err.Error(), "conflict") {
+		t.Fatalf("switch with a pending conflict: path %q, err %v", m.FilePath, m.Err)
+	}
+	executeCommand(&m, "force-save")
+	if got, _ := os.ReadFile(other); string(got) != otherText {
+		t.Fatalf("other file was overwritten: %q", got)
+	}
+	if got, _ := os.ReadFile(source); string(got) != local {
+		t.Fatalf("force-save should still resolve the original file: got %q, external was %q", got, external)
 	}
 }

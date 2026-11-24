@@ -1633,6 +1633,13 @@ func (m Model) handleRecentFilesInput(key string) (tea.Model, tea.Cmd) {
 		}
 
 	case "enter":
+		// The retained local candidate belongs to this file; :force-save after a
+		// switch would write it into the other one.
+		if m.ConflictPending {
+			m.Err = fmt.Errorf("resolve the save conflict first (:force-save, :reload or :diff)")
+			m.RecentFilesMode = false
+			return m, nil
+		}
 		// Open selected file
 		if m.RecentFilesCursor < len(filteredFiles) {
 			selectedFile := filteredFiles[m.RecentFilesCursor]
