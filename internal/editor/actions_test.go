@@ -116,3 +116,31 @@ func BenchmarkDocumentToggle(b *testing.B) {
 		})
 	}
 }
+
+// Regression: toggling once passed the item's combined text, notes
+// included, as the new title; with notes present every toggle rewrote it.
+func TestToggleLeavesTitleAndNotesAlone(t *testing.T) {
+	const source = "# Todos\n\n- [ ] **Draft** title\n\n  notes here\n"
+	for _, action := range []Action{{Kind: Toggle}, {Kind: SetChecked, Checked: true}} {
+		doc := markdown.ParseMarkdown(source)
+		if _, err := Apply(doc, action); err != nil {
+			t.Fatalf("%s: %v", action.Kind, err)
+		}
+		want := strings.Replace(source, "[ ]", "[x]", 1)
+		if got := markdown.SerializeMarkdown(doc); got != want {
+			t.Fatalf("%s changed more than the checkbox:\n%s", action.Kind, got)
+		}
+	}
+}
+
+// The editor-core spec: checkbox changes update cached state without
+// re-extracting task text.
+func BenchmarkToggleLongTitleWithNotes(b *testing.B) {
+	doc := markdown.ParseMarkdown("# Todos\n\n- [ ] " + strings.Repeat("long title ", 500) + "\n\n  notes\n")
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := Apply(doc, Action{Kind: Toggle}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

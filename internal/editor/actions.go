@@ -67,9 +67,9 @@ func Apply(doc *markdown.FileModel, action Action) (int, error) {
 	case Edit:
 		return index, doc.UpdateTodoItem(index, action.Text, doc.Todos[index].Checked)
 	case Toggle:
-		return index, doc.UpdateTodoItem(index, doc.Todos[index].Text, !doc.Todos[index].Checked)
+		return index, doc.SetTodoChecked(index, !doc.Todos[index].Checked)
 	case SetChecked:
-		return index, doc.UpdateTodoItem(index, doc.Todos[index].Text, action.Checked)
+		return index, doc.SetTodoChecked(index, action.Checked)
 	case Delete:
 		return index, doc.DeleteTodoItem(index)
 	case Move:

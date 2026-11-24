@@ -264,3 +264,23 @@ func TestTodoTitleExcludesFollowingBlocks(t *testing.T) {
 		t.Fatalf("TodoTitle(1) = %q", got)
 	}
 }
+
+// UpdateTodoItem replaces only the title paragraph, so "unchanged" must mean
+// the title is unchanged, not the item's combined text.
+func TestUpdateTodoItemComparesWithTitle(t *testing.T) {
+	const source = "# Todos\n\n- [ ] **Draft**\n\n  Notes\n"
+	fm := ParseMarkdown(source)
+	if err := fm.UpdateTodoItem(0, fm.TodoTitle(0), false); err != nil {
+		t.Fatal(err)
+	}
+	if got := SerializeMarkdown(fm); got != source {
+		t.Fatalf("an unchanged title rewrote the task (bold lost?):\n%s", got)
+	}
+	combined := fm.Todos[0].Text
+	if err := fm.UpdateTodoItem(0, combined, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := fm.TodoTitle(0); got != combined {
+		t.Fatalf("an edit equal to the combined text was ignored: title %q, want %q", got, combined)
+	}
+}

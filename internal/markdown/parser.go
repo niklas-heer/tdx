@@ -301,6 +301,26 @@ func (fm *FileModel) TodoTitle(index int) string {
 	return fm.Todos[index].Text
 }
 
+// SetTodoChecked changes only a task's checkbox. It patches the checkbox byte
+// and the cached checked state, without extracting any task text.
+func (fm *FileModel) SetTodoChecked(index int, checked bool) error {
+	if index < 0 || index >= len(fm.Todos) {
+		return fmt.Errorf("invalid todo index: %d", index)
+	}
+	if fm.Todos[index].Checked == checked {
+		return nil
+	}
+	if fm.ast != nil {
+		if err := fm.ast.ToggleTodo(index); err != nil {
+			return err
+		}
+	} else {
+		fm.dirty = true
+	}
+	fm.Todos[index].Checked = checked
+	return nil
+}
+
 // UpdateTodoItem updates an existing todo
 func (fm *FileModel) UpdateTodoItem(index int, text string, checked bool) error {
 	if index < 0 || index >= len(fm.Todos) {
@@ -308,9 +328,11 @@ func (fm *FileModel) UpdateTodoItem(index int, text string, checked bool) error 
 	}
 
 	if fm.ast != nil {
-		textChanged := fm.Todos[index].Text != text
+		// The edit replaces only the title paragraph; compare with it, not
+		// with Todo.Text, which also holds any notes below the title.
+		textChanged := fm.TodoTitle(index) != text
 		// Update via AST
-		if fm.Todos[index].Text != text {
+		if textChanged {
 			if err := fm.ast.UpdateTodoText(index, text); err != nil {
 				return err
 			}

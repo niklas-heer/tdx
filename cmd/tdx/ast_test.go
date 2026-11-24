@@ -359,3 +359,15 @@ func TestAST_HandlesEmptyLines(t *testing.T) {
 		t.Error("Edit failed with blank lines present")
 	}
 }
+
+func TestToggleTaskWithNotesChangesOnlyTheCheckbox(t *testing.T) {
+	file := tempTestFile(t)
+	const source = "# Todos\n\n- [ ] **Draft** title\n\n  notes here\n"
+	if err := os.WriteFile(file, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runCLI(t, file, "toggle", "1")
+	if got, want := readTestFile(t, file), strings.Replace(source, "[ ]", "[x]", 1); got != want {
+		t.Fatalf("toggle rewrote the task:\n%s", got)
+	}
+}
