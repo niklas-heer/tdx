@@ -240,6 +240,22 @@ func (r *RecentFiles) SortByScore() {
 	})
 }
 
+// LatestPath returns the file whose LastAccessed timestamp is newest. Unlike
+// SortByScore, this is strict recency: frequency must not make an older file
+// the target of the "last" command.
+func (r *RecentFiles) LatestPath() string {
+	if len(r.Files) == 0 {
+		return ""
+	}
+	latest := r.Files[0]
+	for _, file := range r.Files[1:] {
+		if file.LastAccessed.After(latest.LastAccessed) {
+			latest = file
+		}
+	}
+	return latest.Path
+}
+
 // calculateScore computes a score for a file based on recency and frequency
 // Score formula: accessCount * (1 / (hoursSinceAccess + 1))
 // This gives higher weight to recent files, with frequency as a multiplier

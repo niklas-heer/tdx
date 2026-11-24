@@ -140,6 +140,24 @@ func TestRecentFilesSortByScore(t *testing.T) {
 	}
 }
 
+func TestLatestPathUsesAccessTimeNotFrequencyScore(t *testing.T) {
+	now := time.Now()
+	frequent := filepath.Join(t.TempDir(), "frequent.md")
+	recent := filepath.Join(t.TempDir(), "recent.md")
+	rf := &RecentFiles{Files: []RecentFile{
+		{Path: frequent, LastAccessed: now.Add(-24 * time.Hour), AccessCount: 10},
+		{Path: recent, LastAccessed: now, AccessCount: 1},
+	}}
+
+	rf.SortByScore()
+	if rf.Files[0].Path != frequent {
+		t.Fatalf("test setup requires the frequency-weighted file to rank first")
+	}
+	if got := rf.LatestPath(); got != recent {
+		t.Fatalf("LatestPath() = %q, want most recently opened %q", got, recent)
+	}
+}
+
 func TestGetCursorPosition(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.md")
