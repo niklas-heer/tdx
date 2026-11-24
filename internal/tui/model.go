@@ -76,11 +76,25 @@ type Runtime struct {
 	Version string
 }
 
-// FlagOverrides records which settings the command line set explicitly.
+// FlagOverrides holds the settings given on the command line. Each file
+// opens with them, over its frontmatter.
 type FlagOverrides struct {
 	ReadOnly     bool // -r, --read-only, --manual-save
 	ShowHeadings bool // --show-headings
-	MaxVisible   bool // -m, --max-visible
+	MaxVisible   *int // -m, --max-visible; nil when not given
+}
+
+func (m *Model) applyFlagOverrides() {
+	flags := m.Config().Flags
+	if flags.ReadOnly {
+		m.ReadOnly = true
+	}
+	if flags.ShowHeadings {
+		m.ShowHeadings = true
+	}
+	if flags.MaxVisible != nil {
+		m.MaxVisibleOverride = *flags.MaxVisible
+	}
 }
 
 // Model holds the TUI application state
@@ -277,6 +291,7 @@ func New(filePath string, fm *markdown.FileModel, readOnly bool, showHeadings bo
 }
 
 func (m *Model) applyFileMetadata() {
+	defer m.applyFlagOverrides()
 	metadata := m.FileModel.Metadata
 	if metadata == nil {
 		return
@@ -287,14 +302,13 @@ func (m *Model) applyFileMetadata() {
 	if metadata.WordWrap != nil {
 		m.WordWrap = *metadata.WordWrap
 	}
-	flags := m.Config().Flags
-	if metadata.ShowHeadings != nil && !flags.ShowHeadings {
+	if metadata.ShowHeadings != nil {
 		m.ShowHeadings = *metadata.ShowHeadings
 	}
-	if metadata.ReadOnly != nil && !flags.ReadOnly {
+	if metadata.ReadOnly != nil {
 		m.ReadOnly = *metadata.ReadOnly
 	}
-	if metadata.MaxVisible != nil && !flags.MaxVisible {
+	if metadata.MaxVisible != nil {
 		m.MaxVisibleOverride = *metadata.MaxVisible
 	}
 }

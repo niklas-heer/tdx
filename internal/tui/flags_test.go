@@ -45,9 +45,12 @@ func TestCommandLineFlagsOutrankFrontmatter(t *testing.T) {
 		return New(first, fm, true, true, 7, cfg, testStyles(), "test")
 	}
 
+	seven := 7
 	t.Run("explicit flags win, also after switching files", func(t *testing.T) {
-		m := open(t, FlagOverrides{ReadOnly: true, ShowHeadings: true, MaxVisible: true})
+		m := open(t, FlagOverrides{ReadOnly: true, ShowHeadings: true, MaxVisible: &seven})
 		check(t, m, true, true, 7)
+		// Changed during the session; the next file opens with the flags again.
+		m.ReadOnly, m.ShowHeadings, m.MaxVisibleOverride = false, false, 1
 		m.RecentFiles = []config.RecentFile{{Path: second}}
 		m.RecentFilesMode = true
 		result, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
