@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -252,6 +253,10 @@ func DefaultConfig() *UserConfig {
 // userConfigDir is os.UserConfigDir, replaceable in tests.
 var userConfigDir = os.UserConfigDir
 
+// configWarnings receives problems found while loading the config. It is
+// stderr so warnings never mix into command output such as JSON.
+var configWarnings io.Writer = os.Stderr
+
 // configSearchPaths lists the config file locations in the order LoadConfig
 // checks them.
 func configSearchPaths() []string {
@@ -291,6 +296,7 @@ func LoadConfig() *UserConfig {
 
 	// Load and parse config
 	if _, err := toml.DecodeFile(configPath, config); err != nil {
+		_, _ = fmt.Fprintf(configWarnings, "tdx: warning: could not parse %s: %v; using default settings\n", configPath, err)
 		return defaults
 	}
 

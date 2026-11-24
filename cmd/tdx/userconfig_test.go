@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -821,5 +822,47 @@ func TestSaveTheme_KeepsFileModeAndSymlink(t *testing.T) {
 	}
 	if got := decodeRaw(t, target)["theme"].(map[string]any)["name"]; got != "dracula" {
 		t.Errorf("theme.name = %v, want dracula", got)
+	}
+}
+
+func TestLoadConfig_WarnsWhenConfigDoesNotParse(t *testing.T) {
+	home, _ := isolateHome(t)
+	path := filepath.Join(home, ".config", "tdx", "config.toml")
+	writeConfig(t, path, "[theme\nname = \"nord\"\n", 0o644)
+	var warnings bytes.Buffer
+	orig := configWarnings
+	configWarnings = &warnings
+	t.Cleanup(func() { configWarnings = orig })
+
+	cfg := LoadConfig()
+
+	if cfg.Theme.Name != "tokyo-night" {
+		t.Errorf("broken config should fall back to defaults, got theme %q", cfg.Theme.Name)
+	}
+	got := warnings.String()
+	if strings.Count(got, "\n") != 1 || !strings.HasPrefix(got, "tdx: warning:") {
+		t.Errorf("expected one warning line, got %q", got)
+	}
+	if !strings.Contains(got, path) {
+		t.Errorf("warning should name %s, got %q", path, got)
+	}
+	if !strings.Contains(got, "toml: line 2") {
+		t.Errorf("warning should include the parse error, got %q", got)
+	}
+}
+
+func TestLoadConfig_NoWarningForValidOrMissingConfig(t *testing.T) {
+	home, _ := isolateHome(t)
+	var warnings bytes.Buffer
+	orig := configWarnings
+	configWarnings = &warnings
+	t.Cleanup(func() { configWarnings = orig })
+
+	LoadConfig()
+	writeConfig(t, filepath.Join(home, ".config", "tdx", "config.toml"), "[theme]\nname = \"nord\"\n", 0o644)
+	LoadConfig()
+
+	if warnings.Len() != 0 {
+		t.Errorf("unexpected warning: %q", warnings.String())
 	}
 }
