@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -248,5 +249,18 @@ func TestUpdateTodoText_SpecialCharacters(t *testing.T) {
 		if fm2.Todos[0].Text != newText {
 			t.Errorf("After round-trip for '%s': expected '%s', got '%s'", newText, newText, fm2.Todos[0].Text)
 		}
+	}
+}
+
+func TestTodoTitleExcludesFollowingBlocks(t *testing.T) {
+	fm := ParseMarkdown("# Todos\n\n- [ ] Draft [the post](https://example.com) `now`\n  over two lines\n\n  Notes paragraph\n\n  - [ ] child\n")
+	if got, want := fm.TodoTitle(0), "Draft [the post](https://example.com) `now` over two lines"; got != want {
+		t.Fatalf("TodoTitle(0) = %q, want %q", got, want)
+	}
+	if !strings.Contains(fm.Todos[0].Text, "Notes paragraph") {
+		t.Fatalf("Todo.Text should still include the notes: %q", fm.Todos[0].Text)
+	}
+	if got := fm.TodoTitle(1); got != "child" {
+		t.Fatalf("TodoTitle(1) = %q", got)
 	}
 }

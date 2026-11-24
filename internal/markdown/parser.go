@@ -284,6 +284,23 @@ func (fm *FileModel) InsertTodoItemAfterChecked(afterIndex int, text string, che
 	return len(fm.Todos) - 1, nil
 }
 
+// TodoTitle returns the editable title of a task: the text an edit replaces,
+// without the notes or other blocks that follow it in the same list item.
+func (fm *FileModel) TodoTitle(index int) string {
+	if index < 0 || index >= len(fm.Todos) {
+		return ""
+	}
+	if fm.ast != nil {
+		if fm.dirty {
+			fm.syncTodosToAST()
+		}
+		if title, err := fm.ast.TodoTitle(index); err == nil {
+			return title
+		}
+	}
+	return fm.Todos[index].Text
+}
+
 // UpdateTodoItem updates an existing todo
 func (fm *FileModel) UpdateTodoItem(index int, text string, checked bool) error {
 	if index < 0 || index >= len(fm.Todos) {

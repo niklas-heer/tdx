@@ -227,76 +227,98 @@ func (doc *ASTDocument) extractTodoText(listItem ast.Node, checkbox ast.Node) st
 		if child.Kind() == ast.KindList {
 			continue
 		}
-
-		// Walk this child and collect text nodes
-		_ = ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			// Skip the checkbox itself
-			if n == checkbox {
-				return ast.WalkSkipChildren, nil
-			}
-
-			// Skip any nested lists encountered during walk
-			if n.Kind() == ast.KindList {
-				return ast.WalkSkipChildren, nil
-			}
-			if entering && writeInlineNodeText(&buf, doc, n) {
-				return ast.WalkSkipChildren, nil
-			}
-
-			// Collect text content
-			switch node := n.(type) {
-			case *ast.Text:
-				if entering {
-					segment := node.Segment
-					buf.Write(segment.Value(doc.Source))
-					// Add space if this is a soft line break
-					if node.SoftLineBreak() {
-						buf.WriteByte(' ')
-					}
-				}
-			case *ast.String:
-				if entering {
-					buf.Write(node.Value)
-				}
-			case *ast.CodeSpan:
-				if entering {
-					// Code spans need special handling
-					buf.WriteByte('`')
-					for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-						if textNode, ok := child.(*ast.Text); ok {
-							segment := textNode.Segment
-							buf.Write(segment.Value(doc.Source))
-						}
-					}
-					buf.WriteByte('`')
-					return ast.WalkSkipChildren, nil
-				}
-			case *ast.Link:
-				// Preserve full markdown link syntax [text](url)
-				if entering {
-					buf.WriteByte('[')
-					// Collect link text from children
-					for linkChild := node.FirstChild(); linkChild != nil; linkChild = linkChild.NextSibling() {
-						if textNode, ok := linkChild.(*ast.Text); ok {
-							segment := textNode.Segment
-							buf.Write(segment.Value(doc.Source))
-						}
-					}
-					buf.WriteByte(']')
-					buf.WriteByte('(')
-					buf.Write(node.Destination)
-					buf.WriteByte(')')
-					return ast.WalkSkipChildren, nil
-				}
-			case *ast.Emphasis:
-				// Could preserve emphasis markers if needed
-			}
-
-			return ast.WalkContinue, nil
-		})
+		doc.writeBlockText(&buf, child, checkbox)
 	}
 
 	return strings.TrimSpace(buf.String())
+}
+
+// TodoTitle returns the text of the paragraph holding the task's checkbox: the
+// part UpdateTodoText replaces. Todo.Text also includes the item's later
+// blocks, such as an indented notes paragraph.
+func (doc *ASTDocument) TodoTitle(index int) (string, error) {
+	node, err := doc.FindTodoNode(index)
+	if err != nil {
+		return "", err
+	}
+	container := node.CheckBox.Parent()
+	if container == nil {
+		return "", fmt.Errorf("task text source location unavailable")
+	}
+	var buf bytes.Buffer
+	doc.writeBlockText(&buf, container, node.CheckBox)
+	return strings.TrimSpace(buf.String()), nil
+}
+
+// writeBlockText appends the text of one block of a task, skipping its
+// checkbox and nested lists.
+func (doc *ASTDocument) writeBlockText(buf *bytes.Buffer, child ast.Node, checkbox ast.Node) {
+	// Walk this child and collect text nodes
+	_ = ast.Walk(child, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		// Skip the checkbox itself
+		if n == checkbox {
+			return ast.WalkSkipChildren, nil
+		}
+
+		// Skip any nested lists encountered during walk
+		if n.Kind() == ast.KindList {
+			return ast.WalkSkipChildren, nil
+		}
+		if entering && writeInlineNodeText(buf, doc, n) {
+			return ast.WalkSkipChildren, nil
+		}
+
+		// Collect text content
+		switch node := n.(type) {
+		case *ast.Text:
+			if entering {
+				segment := node.Segment
+				buf.Write(segment.Value(doc.Source))
+				// Add space if this is a soft line break
+				if node.SoftLineBreak() {
+					buf.WriteByte(' ')
+				}
+			}
+		case *ast.String:
+			if entering {
+				buf.Write(node.Value)
+			}
+		case *ast.CodeSpan:
+			if entering {
+				// Code spans need special handling
+				buf.WriteByte('`')
+				for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+					if textNode, ok := child.(*ast.Text); ok {
+						segment := textNode.Segment
+						buf.Write(segment.Value(doc.Source))
+					}
+				}
+				buf.WriteByte('`')
+				return ast.WalkSkipChildren, nil
+			}
+		case *ast.Link:
+			// Preserve full markdown link syntax [text](url)
+			if entering {
+				buf.WriteByte('[')
+				// Collect link text from children
+				for linkChild := node.FirstChild(); linkChild != nil; linkChild = linkChild.NextSibling() {
+					if textNode, ok := linkChild.(*ast.Text); ok {
+						segment := textNode.Segment
+						buf.Write(segment.Value(doc.Source))
+					}
+				}
+				buf.WriteByte(']')
+				buf.WriteByte('(')
+				buf.Write(node.Destination)
+				buf.WriteByte(')')
+				return ast.WalkSkipChildren, nil
+			}
+		case *ast.Emphasis:
+			// Could preserve emphasis markers if needed
+		}
+
+		return ast.WalkContinue, nil
+	})
 }
 
 // FindTodoNode finds the TodoNode for a given todo index

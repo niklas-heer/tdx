@@ -62,3 +62,30 @@ func TestCommandLineFlagsOutrankFrontmatter(t *testing.T) {
 		check(t, open(t, FlagOverrides{}), false, false, 3)
 	})
 }
+
+// Regression: `e` seeded the editor with the whole item, notes included, but
+// saving replaced only the checkbox paragraph, so the notes were copied into
+// the title. An unchanged edit must leave the file as it was.
+func TestEditingTitleLeavesNotesInPlace(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "todo.md")
+	const original = "# Todos\n\n- [ ] Draft the post\n\n  Notes paragraph with #idea\n\n- [ ] Next\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(path, fm, false, false, -1, testConfig(), testStyles(), "test")
+	result, _ := m.Update(tea.KeyPressMsg{Text: "e", Code: 'e'})
+	m = result.(Model)
+	if m.InputBuffer != "Draft the post" {
+		t.Fatalf("editor starts with %q, want only the title", m.InputBuffer)
+	}
+	result, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = result.(Model)
+	if got, _ := os.ReadFile(path); string(got) != original {
+		t.Fatalf("unchanged edit rewrote the task:\n%s", got)
+	}
+}

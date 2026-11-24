@@ -268,7 +268,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if len(m.FileModel.Todos) > 0 {
 			m.history.Begin(&m.FileModel)
 			m.EditMode = true
-			m.InputBuffer = m.FileModel.Todos[m.SelectedIndex].Text
+			m.InputBuffer = m.FileModel.TodoTitle(m.SelectedIndex)
 			m.CursorPos = len(m.InputBuffer)
 		}
 
