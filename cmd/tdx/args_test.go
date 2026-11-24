@@ -46,3 +46,24 @@ func TestParseArgs(t *testing.T) {
 		t.Fatalf("filtered options = %+v, err = %v", opts, err)
 	}
 }
+
+// A setting from the command line outranks frontmatter; one from config.toml
+// does not, so parseArgs records where each came from.
+func TestParseArgsMarksCommandLineSettings(t *testing.T) {
+	defaults := DefaultConfig().Defaults
+	defaults.ReadOnly, defaults.ShowHeadings = true, true
+	opts, err := parseArgs([]string{"todo.md"}, defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.ReadOnly || opts.ReadOnlyFlag || !opts.ShowHeadings || opts.ShowHeadingsFlag || opts.MaxVisible != -1 {
+		t.Fatalf("config defaults marked as flags: %+v", opts)
+	}
+	opts, err = parseArgs([]string{"--manual-save", "--show-headings", "-m", "5", "todo.md"}, DefaultConfig().Defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.ReadOnlyFlag || !opts.ShowHeadingsFlag || opts.MaxVisible != 5 {
+		t.Fatalf("command-line flags not marked: %+v", opts)
+	}
+}

@@ -15,7 +15,9 @@ type cliOptions struct {
 	Args             []string
 	ReadOnly         bool
 	ShowHeadings     bool
-	MaxVisible       int
+	MaxVisible       int  // -1 unless given
+	ReadOnlyFlag     bool // ReadOnly came from the command line, not the config
+	ShowHeadingsFlag bool // ShowHeadings came from the command line
 	List             cmd.ListOptions
 	ExpectedRevision string
 }
@@ -101,9 +103,9 @@ func parseArgs(args []string, defaults DefaultsConfig) (cliOptions, error) {
 				}
 				switch name {
 				case "--read-only", "-r", "--manual-save":
-					opts.ReadOnly = true
+					opts.ReadOnly, opts.ReadOnlyFlag = true, true
 				case "--show-headings":
-					opts.ShowHeadings = true
+					opts.ShowHeadings, opts.ShowHeadingsFlag = true, true
 				case "--with-revision":
 					opts.List.WithRevision, listFlags = true, true
 				case "--json":

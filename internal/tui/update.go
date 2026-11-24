@@ -1774,22 +1774,8 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 		return
 	}
 
-	// Config defaults arrive through the runtime from main.go (loaded from config.toml)
-	// Priority: CLI flags > frontmatter > config.toml defaults
-
-	// Apply frontmatter settings (higher priority than config.toml)
-	if fm.Metadata != nil {
-		if fm.Metadata.ReadOnly != nil {
-			readOnly = *fm.Metadata.ReadOnly
-		}
-		if fm.Metadata.ShowHeadings != nil {
-			showHeadings = *fm.Metadata.ShowHeadings
-		}
-		if fm.Metadata.MaxVisible != nil {
-			maxVisible = *fm.Metadata.MaxVisible
-		}
-	}
-
+	// Priority: CLI flags > frontmatter > config.toml defaults. New applies the
+	// frontmatter except for settings runtime.Config.Flags marks as explicit.
 	m := New(filePath, fm, readOnly, showHeadings, maxVisible, runtime.Config, runtime.Styles, runtime.Version)
 
 	// Try to restore cursor position from recent files (if file content hasn't changed)

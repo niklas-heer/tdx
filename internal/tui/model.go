@@ -59,6 +59,9 @@ type ConfigType struct {
 		ShowHeadings bool
 		ReadOnly     bool
 	}
+	// Flags marks the settings given on the command line. They outrank a
+	// file's frontmatter, which outranks Defaults.
+	Flags FlagOverrides
 
 	// Optional versioning functions injected by cmd/tdx/main.go.
 	// When nil, versioning functionality is disabled.
@@ -71,6 +74,13 @@ type Runtime struct {
 	Config  *ConfigType
 	Styles  *StyleFuncsType
 	Version string
+}
+
+// FlagOverrides records which settings the command line set explicitly.
+type FlagOverrides struct {
+	ReadOnly     bool // -r, --read-only, --manual-save
+	ShowHeadings bool // --show-headings
+	MaxVisible   bool // -m, --max-visible
 }
 
 // Model holds the TUI application state
@@ -277,13 +287,14 @@ func (m *Model) applyFileMetadata() {
 	if metadata.WordWrap != nil {
 		m.WordWrap = *metadata.WordWrap
 	}
-	if metadata.ShowHeadings != nil {
+	flags := m.Config().Flags
+	if metadata.ShowHeadings != nil && !flags.ShowHeadings {
 		m.ShowHeadings = *metadata.ShowHeadings
 	}
-	if metadata.ReadOnly != nil {
+	if metadata.ReadOnly != nil && !flags.ReadOnly {
 		m.ReadOnly = *metadata.ReadOnly
 	}
-	if metadata.MaxVisible != nil {
+	if metadata.MaxVisible != nil && !flags.MaxVisible {
 		m.MaxVisibleOverride = *metadata.MaxVisible
 	}
 }

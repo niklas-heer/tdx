@@ -159,6 +159,7 @@ func run() (exitCode int) {
 	}
 	filePath, command, cmdArgs := opts.File, opts.Command, opts.Args
 	readOnly, showHeadings, maxVisible := opts.ReadOnly, opts.ShowHeadings, opts.MaxVisible
+	tuiCfg.Flags = tui.FlagOverrides{ReadOnly: opts.ReadOnlyFlag, ShowHeadings: opts.ShowHeadingsFlag, MaxVisible: maxVisible >= 0}
 	switch command {
 	case "list", "add", "toggle", "edit", "delete", "done", "undone":
 		if err := cmd.ValidateCommand(command, cmdArgs); err != nil {
