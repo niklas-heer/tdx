@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/BurntSushi/toml"
@@ -550,60 +551,54 @@ func saveTheme(themeName string) error {
 			return err
 		}
 	}
-	// Write through a symlinked config to the file it points at.
-	if resolved, err := filepath.EvalSymlinks(configPath); err == nil {
-		configPath = resolved
-	}
-
 	raw := map[string]any{}
-	mode := os.FileMode(0o644)
-	if info, err := os.Stat(configPath); err == nil {
-		mode = info.Mode().Perm()
-		if _, err := toml.DecodeFile(configPath, &raw); err != nil {
+	content, err := os.ReadFile(configPath)
+	switch {
+	case err == nil:
+		// Refuse what LoadConfig would reject, such as a value of the wrong type.
+		var typed UserConfig
+		if _, err := toml.Decode(string(content), &raw); err != nil {
 			return fmt.Errorf("%s could not be parsed: %w", configPath, err)
 		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
+		if _, err := toml.Decode(string(content), &typed); err != nil {
+			return fmt.Errorf("%s could not be parsed: %w", configPath, err)
+		}
+	case !errors.Is(err, fs.ErrNotExist): // a dangling link reads as not existing
 		return err
 	}
 
-	theme, ok := raw["theme"].(map[string]any)
-	if !ok {
-		theme = map[string]any{}
-		raw["theme"] = theme
+	// LoadConfig matches keys case-insensitively and may read any theme table
+	// whose key differs only in case: set one name in each of them.
+	updated := false
+	for key, value := range raw {
+		if theme, ok := value.(map[string]any); ok && strings.EqualFold(key, "theme") {
+			setThemeName(theme, themeName)
+			updated = true
+		}
 	}
-	theme["name"] = themeName
+	if !updated {
+		raw["theme"] = map[string]any{"name": themeName}
+	}
 
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(raw); err != nil {
 		return err
 	}
-	return writeFileAtomic(configPath, buf.Bytes(), mode)
+	// Write in place through the path LoadConfig reads, as before: the
+	// operating system then resolves symlinks, link chains and permissions
+	// exactly as it does for reading. Only a file that parsed is rewritten.
+	return os.WriteFile(configPath, buf.Bytes(), 0o644)
 }
 
-// writeFileAtomic replaces path with data through a temporary file in the same
-// directory, so readers never see a partially written file.
-func writeFileAtomic(path string, data []byte, mode os.FileMode) (err error) {
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(tmp.Name())
+// setThemeName leaves a single name key in a theme table, keeping the case
+// of an existing one.
+func setThemeName(theme map[string]any, themeName string) {
+	nameKey := "name"
+	for key := range theme {
+		if strings.EqualFold(key, "name") {
+			nameKey = key
+			delete(theme, key)
 		}
-	}()
-	if _, err = tmp.Write(data); err != nil {
-		return err
 	}
-	if err = tmp.Chmod(mode); err != nil {
-		return err
-	}
-	if err = tmp.Sync(); err != nil {
-		return err
-	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	theme[nameKey] = themeName
 }

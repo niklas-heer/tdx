@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -864,5 +865,213 @@ func TestLoadConfig_NoWarningForValidOrMissingConfig(t *testing.T) {
 
 	if warnings.Len() != 0 {
 		t.Errorf("unexpected warning: %q", warnings.String())
+	}
+}
+
+// Round-2 council cases for SaveTheme.
+func TestSaveTheme_RefusesConfigLoadConfigRejects(t *testing.T) {
+	home, _ := isolateHome(t)
+	path := filepath.Join(home, ".config", "tdx", "config.toml")
+	const bad = "[defaults]\nword_wrap = \"no\"\n"
+	writeConfig(t, path, bad, 0o644)
+	if err := SaveTheme("dracula"); err == nil {
+		t.Fatal("SaveTheme accepted a config whose values LoadConfig rejects")
+	}
+	if got, _ := os.ReadFile(path); string(got) != bad {
+		t.Fatalf("config changed: %q", got)
+	}
+}
+
+func TestSaveTheme_UpdatesExistingThemeTableWhateverItsCase(t *testing.T) {
+	home, _ := isolateHome(t)
+	path := filepath.Join(home, ".config", "tdx", "config.toml")
+	writeConfig(t, path, "[Theme]\nName = \"nord\"\n", 0o644)
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatal(err)
+	}
+	raw := decodeRaw(t, path)
+	if len(raw) != 1 {
+		t.Fatalf("theme table duplicated: %v", raw)
+	}
+	theme, _ := raw["Theme"].(map[string]any)
+	if len(theme) != 1 || theme["Name"] != "dracula" {
+		t.Fatalf("theme table = %v, want only Name = dracula", raw)
+	}
+	if cfg := LoadConfig(); cfg.Theme.Name != "dracula" {
+		t.Fatalf("LoadConfig reads theme %q", cfg.Theme.Name)
+	}
+}
+
+func TestSaveTheme_WritesThroughDanglingSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks differ on Windows")
+	}
+	home, _ := isolateHome(t)
+	target := filepath.Join(home, "dotfiles", "tdx.toml")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, ".config", "tdx", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("config symlink was replaced: %v", err)
+	}
+	if got := decodeRaw(t, target)["theme"].(map[string]any)["name"]; got != "dracula" {
+		t.Fatalf("link target theme.name = %v", got)
+	}
+}
+
+func TestSaveTheme_LeavesOneThemeName(t *testing.T) {
+	home, _ := isolateHome(t)
+	path := filepath.Join(home, ".config", "tdx", "config.toml")
+	writeConfig(t, path, "[theme]\nName = \"nord\"\nname = \"tokyo-night\"\n", 0o644)
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := LoadConfig(); cfg.Theme.Name != "dracula" {
+		t.Fatalf("LoadConfig reads theme %q after saving dracula", cfg.Theme.Name)
+	}
+	if theme := decodeRaw(t, path)["theme"].(map[string]any); len(theme) != 1 {
+		t.Fatalf("theme table keeps several names: %v", theme)
+	}
+}
+
+func TestSaveTheme_FollowsSymlinkChainToMissingFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks differ on Windows")
+	}
+	home, _ := isolateHome(t)
+	dir := filepath.Join(home, "dotfiles")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, ".config", "tdx", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	middle, target := filepath.Join(dir, "middle.toml"), filepath.Join(dir, "missing.toml")
+	if err := os.Symlink("missing.toml", middle); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(middle, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(middle); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("intermediate symlink was replaced: %v", err)
+	}
+	if got := decodeRaw(t, target)["theme"].(map[string]any)["name"]; got != "dracula" {
+		t.Fatalf("chain target theme.name = %v", got)
+	}
+}
+
+// A relative link target is resolved by the OS against the link's real
+// directory, which differs from its path when that directory is a symlink.
+func TestSaveTheme_ResolvesRelativeLinkThroughSymlinkedDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks differ on Windows")
+	}
+	home, _ := isolateHome(t)
+	dotfiles := filepath.Join(home, "dotfiles")
+	real := filepath.Join(dotfiles, "shared", "config.toml")
+	writeConfig(t, real, "[theme]\nname = \"nord\"\n", 0o644)
+	if err := os.MkdirAll(filepath.Join(dotfiles, "tdx"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../shared/config.toml", filepath.Join(dotfiles, "tdx", "config.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dotfiles, "tdx"), filepath.Join(home, ".config", "tdx")); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatal(err)
+	}
+	if got := decodeRaw(t, real)["theme"].(map[string]any)["name"]; got != "dracula" {
+		t.Fatalf("real config theme.name = %v", got)
+	}
+	if cfg := LoadConfig(); cfg.Theme.Name != "dracula" {
+		t.Fatalf("LoadConfig reads theme %q", cfg.Theme.Name)
+	}
+}
+
+func TestSaveTheme_WritesConfigInReadOnlyDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory permissions differ on Windows and for root")
+	}
+	home, _ := isolateHome(t)
+	path := filepath.Join(home, ".config", "tdx", "config.toml")
+	writeConfig(t, path, "[theme]\nname = \"nord\"\n", 0o644)
+	dir := filepath.Dir(path)
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	if err := SaveTheme("dracula"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg := LoadConfig(); cfg.Theme.Name != "dracula" {
+		t.Fatalf("LoadConfig reads theme %q", cfg.Theme.Name)
+	}
+}
+
+func TestSaveTheme_RefusesSymlinkChainLoadConfigCannotRead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks differ on Windows")
+	}
+	home, _ := isolateHome(t)
+	dir := filepath.Join(home, "links")
+	target := filepath.Join(dir, "target.toml")
+	const original = "[theme]\nname = \"nord\"\n"
+	writeConfig(t, target, original, 0o644)
+	next := target
+	for i := 0; i < 65; i++ {
+		link := filepath.Join(dir, fmt.Sprintf("link%02d.toml", i))
+		if err := os.Symlink(next, link); err != nil {
+			t.Fatal(err)
+		}
+		next = link
+	}
+	config := filepath.Join(home, ".config", "tdx", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(config), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(next, config); err != nil {
+		t.Fatal(err)
+	}
+	_ = SaveTheme("dracula")
+	if _, readErr := os.ReadFile(config); readErr == nil {
+		t.Skip("this system follows 66 links; nothing to check")
+	}
+	if got, _ := os.ReadFile(target); string(got) != original {
+		t.Fatalf("a chain LoadConfig cannot read was written through: %q", got)
+	}
+}
+
+func TestSaveTheme_UpdatesEveryThemeTableLoadConfigMayRead(t *testing.T) {
+	home, _ := isolateHome(t)
+	path := filepath.Join(home, ".config", "tdx", "config.toml")
+	writeConfig(t, path, "[Theme]\nName = \"nord\"\n\n[theme]\nname = \"nord\"\n", 0o644)
+	for i := 0; i < 20; i++ { // map order varies between runs
+		name := fmt.Sprintf("theme-%d", i)
+		if err := SaveTheme(name); err != nil {
+			t.Fatal(err)
+		}
+		if cfg := LoadConfig(); cfg.Theme.Name != name {
+			t.Fatalf("LoadConfig reads theme %q after saving %q", cfg.Theme.Name, name)
+		}
 	}
 }
