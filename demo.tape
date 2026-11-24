@@ -1,7 +1,7 @@
 # tdx demo - Your todos, in markdown, done fast
 # Run with: vhs demo.tape
 
-Output assets/demo-0.11.0.gif
+Output assets/demo-0.15.0.gif
 
 Require tdx
 
@@ -18,20 +18,23 @@ Set Margin 10
 Set MarginFill "#1a1b26"
 Set CursorBlink false
 
-# Setup: Create a demo todo file with sections, tags, and priorities
+# Setup: isolated HOME, a scratch directory and a todo file whose due dates
+# are relative to the recording day (BSD `date -v` on macOS, GNU `date -d` elsewhere)
 Hide
-Type "rm -f demo_todo.md"
+Type 'DEMO="$(mktemp -d)" && export HOME="$DEMO" XDG_CONFIG_HOME="$DEMO/.config" && cd "$DEMO"'
 Enter
-Type "cat > demo_todo.md << 'EOF'"
+Type 'd() { date -v"$1"d +%F 2>/dev/null || date -d "$1 day" +%F; }'
+Enter
+Type "cat > demo_todo.md << EOF"
 Enter
 Type "# Project Tasks"
 Enter
 Enter
 Type "## Backend"
 Enter
-Type "- [ ] Fix security vulnerability !p1 #backend #urgent @due(2025-11-28)"
+Type "- [ ] Fix security vulnerability !p1 #backend #urgent @due($(d -1))"
 Enter
-Type "- [ ] Set up CI/CD pipeline !p2 #devops @due(2025-12-05)"
+Type "- [ ] Set up CI/CD pipeline !p2 #devops @due($(d +6))"
 Enter
 Type "- [ ] Write unit tests #testing"
 Enter
@@ -40,16 +43,16 @@ Enter
 Enter
 Type "## Frontend"
 Enter
-Type "- [ ] Update documentation !p3 #docs @due(2025-12-15)"
+Type "- [ ] Update documentation !p3 #docs @due($(d +16))"
 Enter
-Type "- [ ] Add error handling !p1 #bugfix #urgent @due(2025-11-29)"
+Type "- [ ] Add error handling !p1 #bugfix #urgent @due($(d +0))"
 Enter
 Type "- [x] Design mockups #design"
 Enter
 Enter
 Type "## DevOps"
 Enter
-Type "- [ ] Configure monitoring !p2 #devops @due(2025-12-01)"
+Type "- [ ] Configure monitoring !p2 #devops @due($(d +2))"
 Enter
 Type "- [ ] Set up staging env #devops"
 Enter
@@ -81,10 +84,6 @@ Sleep 400ms
 Type "j"
 Sleep 400ms
 
-# Vim-style jump with number
-Type "2k"
-Sleep 1s
-
 # Jump to last item with G
 Type "G"
 Sleep 1s
@@ -109,6 +108,18 @@ Sleep 600ms
 Type@50ms "Implement caching layer !p2 #backend"
 Sleep 400ms
 Enter
+Sleep 1s
+
+# Section overview - browse headings with completion counts
+Type "s"
+Sleep 1.2s
+Type "j"
+Sleep 600ms
+Enter
+Sleep 1.2s
+
+# Back to all sections
+Type "S"
 Sleep 1s
 
 # Priority filtering - show only p1 tasks
@@ -166,14 +177,6 @@ Type "j"
 Sleep 400ms
 Enter
 Sleep 1s
-
-# Sort by due date
-Type ":"
-Sleep 500ms
-Type@60ms "sort-due"
-Sleep 600ms
-Enter
-Sleep 1.2s
 
 # Clear due filter
 Type "D"
@@ -236,10 +239,6 @@ Sleep 800ms
 Escape
 Sleep 1s
 
-# Copy to clipboard
-Type "c"
-Sleep 1s
-
 # Show help menu
 Type "?"
 Sleep 2.5s
@@ -255,7 +254,7 @@ Type@60ms "# CLI commands work too!"
 Enter
 Sleep 800ms
 
-Type "tdx demo_todo.md list"
+Type "tdx demo_todo.md list --priority 1 --status open"
 Enter
 Sleep 1.5s
 
@@ -263,17 +262,17 @@ Type "tdx demo_todo.md add 'Review pull requests !p2 #review'"
 Enter
 Sleep 1s
 
-Type "tdx demo_todo.md toggle 1"
+Type "tdx demo_todo.md done 2"
 Enter
 Sleep 1s
 
 # Final message
-Type@60ms "# Fast. Vim-style. Priorities. Due dates. Themes."
+Type@60ms "# Fast. Vim-style. Sections. Priorities. Due dates."
 Enter
 Sleep 2.5s
 
 # Cleanup
 Hide
-Type "rm -f demo_todo.md"
+Type 'cd / && rm -rf "$DEMO"'
 Enter
 Show
