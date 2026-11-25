@@ -20,6 +20,9 @@ type Service struct {
 	GreenStyle       func(string) string
 	CheckSymbol      string
 	ExpectedRevision string
+	// ReadOnlyDefault is the configured manual-save default. A file's own
+	// read-only setting overrides it; command-line flags are checked by the caller.
+	ReadOnlyDefault bool
 }
 
 func (s Service) output() io.Writer {
@@ -198,11 +201,40 @@ func (s Service) HandleCommand(command string, cmdArgs []string, filePath string
 	return fmt.Errorf("unknown command: %s", command)
 }
 
-// readForMutation checks the supplied revision against the same snapshot that
-// will be edited, avoiding a separate-read race before the guarded save.
+// CheckReadOnly rejects a mutation before history storage is opened. It reads
+// without store hooks, so a refused command records nothing.
+func (s Service) CheckReadOnly(path string) error {
+	fm, err := (markdown.Store{}).ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return s.readOnlyError(fm)
+}
+
+// readOnlyError applies the TUI's precedence below command-line flags: the
+// file's own read-only setting, then the configured default.
+func (s Service) readOnlyError(fm *markdown.FileModel) error {
+	if fm.Metadata != nil && fm.Metadata.ReadOnly != nil {
+		if *fm.Metadata.ReadOnly {
+			return fmt.Errorf("read-only file: its frontmatter sets read-only: true")
+		}
+		return nil
+	}
+	if s.ReadOnlyDefault {
+		return fmt.Errorf("read-only mode: task editing is disabled")
+	}
+	return nil
+}
+
+// readForMutation checks the supplied revision and read-only setting against
+// the same snapshot that will be edited, avoiding a separate-read race before
+// the guarded save.
 func (s Service) readForMutation(path string) (*markdown.FileModel, error) {
 	fm, err := s.Store.ReadFile(path)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.readOnlyError(fm); err != nil {
 		return nil, err
 	}
 	if s.ExpectedRevision != "" {

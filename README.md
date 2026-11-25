@@ -282,7 +282,7 @@ Start tdx with `--manual-save`, `-r`, or `--read-only` for workflows where you w
 tdx -r checklist.md
 ```
 
-The status bar displays `MANUAL SAVE`. Use `:save` to save when ready, or `:manual-save` (legacy alias `:read-only`) to enable automatic saving. This mode permits temporary task edits; CLI mutation commands are rejected when either flag is present. The preferred global setting is `[defaults] manual_save = true`; an explicitly set `manual_save` overrides the legacy `read_only` setting.
+The status bar displays `MANUAL SAVE`. Use `:save` to save when ready, or `:manual-save` (legacy alias `:read-only`) to enable automatic saving. This mode permits temporary task edits. CLI commands that change tasks are rejected while manual save is on, decided in the same order as other settings: a flag, then the file's `read-only` setting, then `config.toml`. The preferred global setting is `[defaults] manual_save = true`; an explicitly set `manual_save` overrides the legacy `read_only` setting.
 
 **Vim-style navigation:**
 - `5j` - Move down 5 lines
@@ -569,7 +569,7 @@ show-headings: true
 
 **Examples:**
 
-Read-only checklist:
+Read-only checklist (TUI edits need `:save`, CLI changes are rejected):
 ```markdown
 ---
 read-only: true

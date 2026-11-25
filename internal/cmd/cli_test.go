@@ -208,3 +208,44 @@ func TestHandleCommand(t *testing.T) {
 		})
 	}
 }
+
+// The service re-checks read-only on the snapshot it edits, in case the file's
+// setting changed after the caller's check.
+func TestMutationsFollowTheSnapshotsReadOnlySetting(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // save locks live in the config directory
+	commands := [][]string{
+		{"add", "new"}, {"toggle", "1"}, {"edit", "1", "renamed"},
+		{"delete", "1"}, {"done", "1"}, {"undone", "1"},
+	}
+	for _, tc := range []struct {
+		name        string
+		frontmatter string
+		defaultOn   bool
+		wantRefused bool
+	}{
+		{"file read-only", "---\nread-only: true\n---\n", false, true},
+		{"file opts out of config default", "---\nread-only: false\n---\n", true, false},
+		{"config default", "", true, true},
+		{"no setting", "", false, false},
+	} {
+		for _, args := range commands {
+			t.Run(tc.name+"/"+args[0], func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "todo.md")
+				content := tc.frontmatter + "- [ ] task\n"
+				if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				s := Service{Out: io.Discard, ReadOnlyDefault: tc.defaultOn}
+				err := s.HandleCommand(args[0], args[1:], path)
+				got, _ := os.ReadFile(path)
+				if tc.wantRefused {
+					if err == nil || !strings.Contains(err.Error(), "read-only") || string(got) != content {
+						t.Fatalf("err=%v, file %q; want a refusal and no change", err, got)
+					}
+				} else if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			})
+		}
+	}
+}

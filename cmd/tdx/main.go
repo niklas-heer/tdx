@@ -171,7 +171,7 @@ func run() (exitCode int) {
 			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
 			return 1
 		}
-		if readOnly && command != "list" {
+		if opts.ReadOnlyFlag && command != "list" {
 			fmt.Fprintln(os.Stderr, "tdx: read-only mode: task editing is disabled")
 			return 1
 		}
@@ -185,6 +185,16 @@ func run() (exitCode int) {
 
 	// Resolve file path (expand ~ and make absolute)
 	filePath = resolveFilePath(filePath)
+
+	// Below the flag, the file's read-only setting outranks the config default.
+	cli.ReadOnlyDefault = readOnly
+	switch command {
+	case "add", "toggle", "edit", "delete", "done", "undone":
+		if err := cli.CheckReadOnly(filePath); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
+	}
 
 	if commandUsesVersioning(command, cmdArgs) {
 		versions, err := versioning.Open(appConfig.Versioning.MaxVersions)

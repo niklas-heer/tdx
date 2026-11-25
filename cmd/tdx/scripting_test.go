@@ -123,3 +123,58 @@ func TestCLILiteralArgumentsAndReadOnlyConfig(t *testing.T) {
 		t.Fatalf("config bypassed: %q %q %v", out, stderr, err)
 	}
 }
+
+func TestCLIFollowsTheFilesReadOnlySetting(t *testing.T) {
+	root := t.TempDir()
+	locked := filepath.Join(root, "locked.md")
+	lockedContent := "---\nread-only: true\n---\n- [ ] Keep\n"
+	open := filepath.Join(root, "open.md")
+	if err := os.WriteFile(locked, []byte(lockedContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(open, []byte("---\nread-only: false\n---\n- [ ] Change\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// History cannot open under a file, so the refusal must come first.
+	blocked := filepath.Join(root, "blocked")
+	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"add", "new"}, {"toggle", "1"}, {"edit", "1", "renamed"},
+		{"delete", "1"}, {"done", "1"}, {"undone", "1"},
+	} {
+		_, stderr, err := scriptCLI(t, blocked, append([]string{locked}, args...)...)
+		if err == nil || !strings.Contains(stderr, "read-only file") {
+			t.Fatalf("%s on a read-only file: err=%v stderr=%q", args[0], err, stderr)
+		}
+	}
+	if got, _ := os.ReadFile(locked); string(got) != lockedContent {
+		t.Fatalf("read-only file changed: %q", got)
+	}
+
+	// read-only: false in the file outranks manual_save = true in config.toml.
+	configRoot := filepath.Join(root, "config")
+	if err := os.MkdirAll(filepath.Join(configRoot, "tdx"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configRoot, "tdx", "config.toml"), []byte("[defaults]\nmanual_save = true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, stderr, err := scriptCLI(t, configRoot, open, "done", "1"); err != nil {
+		t.Fatalf("done on a file that opts out of manual save: %v %s", err, stderr)
+	}
+	if got, _ := os.ReadFile(open); !strings.Contains(string(got), "- [x] Change") {
+		t.Fatalf("file that opts out of manual save was not changed: %q", got)
+	}
+	plain := filepath.Join(root, "plain.md")
+	if err := os.WriteFile(plain, []byte("- [ ] Default\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, stderr, err := scriptCLI(t, configRoot, plain, "done", "1"); err == nil || !strings.Contains(stderr, "read-only mode") {
+		t.Fatalf("config manual_save no longer applies: err=%v stderr=%q", err, stderr)
+	}
+	if _, stderr, err := scriptCLI(t, configRoot, "--read-only", open, "undone", "1"); err == nil || !strings.Contains(stderr, "read-only mode") {
+		t.Fatalf("flag did not outrank read-only: false: err=%v stderr=%q", err, stderr)
+	}
+}
