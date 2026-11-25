@@ -27,6 +27,23 @@ func (m Model) View() tea.View {
 	return tea.NewView(content)
 }
 
+// renderQuitWarning uses a single line, the longest that fits, so the frame
+// fitter never drops it however small the terminal is.
+func (m Model) renderQuitWarning() string {
+	text := "⚠ unsaved"
+	for _, candidate := range []string{
+		"⚠ " + errUnsavedQuit.Error() + " · any other key stays",
+		"⚠ " + errUnsavedQuit.Error(),
+		"⚠ unsaved: esc again quits",
+	} {
+		if m.TermWidth <= 0 || ansi.StringWidth(candidate) <= m.TermWidth {
+			text = candidate
+			break
+		}
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#f7768e")).Render(text)
+}
+
 func compositeOverlay(foreground, background string) string {
 	y := max(0, lipgloss.Height(background)-lipgloss.Height(foreground)-1)
 	return lipgloss.NewCompositor(lipgloss.NewLayer(background), lipgloss.NewLayer(foreground).Y(y).Z(1)).Render()
@@ -34,18 +51,21 @@ func compositeOverlay(foreground, background string) string {
 
 func (m Model) renderView() string {
 	styles := m.Styles()
+	// The quit warning gets the whole frame, so no view, overlay or short
+	// terminal can hide it before the next key quits.
+	if m.quitPending() {
+		return m.renderQuitWarning()
+	}
 	if m.HelpMode {
 		return RenderHelp(m.Version(), styles.Cyan, styles.Dim)
 	}
 	if m.ConflictDiffMode {
 		return m.renderConflictDiff()
 	}
-
 	// Full-screen version browser bypasses the normal overlay compositor.
 	if m.VersionsMode {
 		return m.renderVersionsBrowser()
 	}
-
 	if m.ViewMode != "" {
 		return m.renderViews()
 	}

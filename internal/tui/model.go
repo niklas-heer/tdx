@@ -133,6 +133,8 @@ type Model struct {
 
 	CopyFeedback bool
 	Err          error
+	piped        bool // Input comes from ProcessPipedInput, not a terminal.
+	quitArmedAt  time.Time
 
 	// Command palette state
 	Commands           []Command

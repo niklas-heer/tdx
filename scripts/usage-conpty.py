@@ -86,6 +86,12 @@ def run(binary, output):
                     process.write("u")
                     until(lambda: path.read_bytes() == original, "edit undo")
                 process.setwinsize(30, 120)
+                if manual:
+                    # Unsaved manual-save edits: the first Ctrl+D only warns.
+                    start = len("".join(transcript))
+                    process.write("\x04")
+                    until(lambda: "unsaved" in "".join(transcript)[start:], "quit warning for unsaved changes")
+                    time.sleep(0.3)  # Confirm after the warning has been shown.
                 process.write("\x04")
                 until(lambda: not process.isalive(), "clean exit")
                 assert process.exitstatus == 0, process.exitstatus

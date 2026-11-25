@@ -150,6 +150,14 @@ def run(binary, output):
                     terminal.send(b":reload\r")
                     terminal.until(lambda: b"External" in terminal.output[start:], "reload external content")
                     original = external
+                else:
+                    # Quitting with an unsaved manual-save edit warns first.
+                    start = len(terminal.output)
+                    terminal.send(b" ")
+                    terminal.pump(0.15)
+                    terminal.send(b"\x1b")
+                    terminal.until(lambda: b"unsaved" in terminal.output[start:], "quit warning for unsaved changes")
+                    terminal.pump(0.3)  # Confirm after the warning has been shown.
                 terminal.close()
                 assert path.read_bytes() == original, "exit changed file"
                 results.append({"scenario": label, "passed": True, "wall_seconds": time.monotonic()-started})

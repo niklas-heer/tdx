@@ -240,7 +240,7 @@ tdx
 | `:` | Command palette |
 | `u` | Undo |
 | `?` | Help menu |
-| `Esc` | Quit |
+| `Esc` | Quit (asks again if there are unsaved changes) |
 | `Cmd+V` / `Ctrl+Y` | Paste (in edit mode) |
 
 **Command Palette (`:`):**

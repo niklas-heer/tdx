@@ -75,11 +75,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.PasteMsg:
 		return m.handlePaste(msg.Content)
 	case tea.KeyPressMsg:
+		if m.quitPending() {
+			// The warning is on screen: another quit key confirms, any other key
+			// stays and dismisses it. A quit key arriving with the first, as from
+			// a double press or key repeat, comes before the warning can be read.
+			if isQuitKey(msg.String()) {
+				if msg.IsRepeat || time.Since(m.quitArmedAt) < quitConfirmDelay {
+					return m, nil
+				}
+				return m, tea.Quit
+			}
+			m.Err = nil
+			return m, nil
+		}
 		if msg.String() == "ctrl+d" && !m.VersionsMode {
-			return m, tea.Quit
+			return m.requestQuit()
 		}
 		return m.handleKey(msg)
 	}
+	return m, nil
+}
+
+func isQuitKey(key string) bool {
+	return key == "esc" || key == "ctrl+c" || key == "ctrl+d"
+}
+
+// errUnsavedQuit is the quit warning. A quit is armed only while it is the
+// displayed error, so anything that replaces or clears the warning disarms it.
+var errUnsavedQuit = errors.New("unsaved changes: esc again quits without saving")
+
+func (m Model) quitPending() bool { return m.Err == errUnsavedQuit }
+
+// quitConfirmDelay is how long the warning shows before a quit key confirms.
+const quitConfirmDelay = 200 * time.Millisecond
+
+// requestQuit warns once before discarding changes that are not on disk, such
+// as manual-save edits or an autosave that failed.
+func (m Model) requestQuit() (tea.Model, tea.Cmd) {
+	// Piped input has no one to confirm; ProcessPipedInput decides when it stops.
+	if m.piped || !m.FileModel.HasUnsavedChanges() {
+		return m, tea.Quit
+	}
+	m.Err = errUnsavedQuit
+	m.quitArmedAt = time.Now()
 	return m, nil
 }
 
@@ -202,7 +240,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	switch key {
 	case "esc", "ctrl+c":
-		return m, tea.Quit
+		return m.requestQuit()
 
 	case "j", "down":
 		if m.hasActiveFilters() || m.ShowHeadings {
@@ -1512,6 +1550,7 @@ func byteToKeyMsg(b byte) tea.KeyPressMsg {
 
 // ProcessPipedInput decodes UTF-8 and terminal editing keys for testing/scripting.
 func (m *Model) ProcessPipedInput(input []byte) {
+	m.piped = true
 	for i := 0; i < len(input); i++ {
 		b := input[i]
 		if strings.HasPrefix(string(input[i:]), "\x1b[200~") {
