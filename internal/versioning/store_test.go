@@ -255,6 +255,74 @@ func TestSaveVersion_DifferentContentAddsRow(t *testing.T) {
 	}
 }
 
+func TestSaveVersion_RevisitedContentBecomesNewest(t *testing.T) {
+	SetStoreDirForTesting(t.TempDir())
+	defer ResetStoreDirForTesting()
+
+	s := openStore(t)
+	const filePath = "/a/todo.md"
+	for _, content := range []string{"A", "B", "A"} {
+		if err := s.SaveVersion(filePath, content); err != nil {
+			t.Fatalf("SaveVersion(%q) error: %v", content, err)
+		}
+	}
+
+	versions, err := s.ListVersions(filePath)
+	if err != nil {
+		t.Fatalf("ListVersions() error: %v", err)
+	}
+	if len(versions) != 2 {
+		t.Fatalf("expected 2 versions, got %d", len(versions))
+	}
+	if got, _ := s.ReadVersion(filePath, versions[0].ID); got != "A" {
+		t.Fatalf("newest version = %q, want the revisited content", got)
+	}
+	// Saving the newest content again changes nothing.
+	if err := s.SaveVersion(filePath, "A"); err != nil {
+		t.Fatalf("SaveVersion(A) again error: %v", err)
+	}
+	if again, _ := s.ListVersions(filePath); len(again) != 2 || again[0] != versions[0] {
+		t.Fatalf("repeating the newest save changed history: %v, was %v", again, versions)
+	}
+	if err := s.Prune(filePath, 1); err != nil {
+		t.Fatalf("Prune() error: %v", err)
+	}
+	versions, _ = s.ListVersions(filePath)
+	if len(versions) != 1 {
+		t.Fatalf("expected 1 version after Prune(1), got %d", len(versions))
+	}
+	if got, _ := s.ReadVersion(filePath, versions[0].ID); got != "A" {
+		t.Fatalf("pruning kept %q, want the current content", got)
+	}
+}
+
+func TestRecordReadNeverMovesAnOlderVersion(t *testing.T) {
+	SetStoreDirForTesting(t.TempDir())
+	defer ResetStoreDirForTesting()
+
+	s := openStore(t)
+	const filePath = "/a/todo.md"
+	_ = s.SaveVersion(filePath, "A")
+	_ = s.SaveVersion(filePath, "B")
+	// A read of A that is recorded late must not bury the newer save of B.
+	if err := s.RecordRead(filePath, "A"); err != nil {
+		t.Fatalf("RecordRead() error: %v", err)
+	}
+	versions, _ := s.ListVersions(filePath)
+	if len(versions) != 2 {
+		t.Fatalf("expected 2 versions, got %d", len(versions))
+	}
+	if got, _ := s.ReadVersion(filePath, versions[0].ID); got != "B" {
+		t.Fatalf("newest version = %q after a late read, want B", got)
+	}
+	if err := s.RecordRead(filePath, "C"); err != nil {
+		t.Fatalf("RecordRead() error: %v", err)
+	}
+	if versions, _ = s.ListVersions(filePath); len(versions) != 3 {
+		t.Fatalf("a read of new content was not recorded: %d versions", len(versions))
+	}
+}
+
 func TestSaveVersion_MultipleFiles(t *testing.T) {
 	dir := t.TempDir()
 	SetStoreDirForTesting(dir)

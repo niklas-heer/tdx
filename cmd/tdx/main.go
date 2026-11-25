@@ -18,10 +18,12 @@ import (
 
 // historyStore adapts a version store to the Markdown persistence boundary.
 func historyStore(versions *versioning.Store) markdown.Store {
-	capture := func(filePath, content string) error {
-		return errors.Join(versions.SaveVersion(filePath, content), versions.Prune(filePath, versions.MaxVersions))
+	capture := func(record func(filePath, content string) error) func(filePath, content string) error {
+		return func(filePath, content string) error {
+			return errors.Join(record(filePath, content), versions.Prune(filePath, versions.MaxVersions))
+		}
 	}
-	return markdown.Store{OnRead: capture, OnWrite: capture}
+	return markdown.Store{OnRead: capture(versions.RecordRead), OnWrite: capture(versions.SaveVersion)}
 }
 
 func wireVersioningTUI(cfg *tui.ConfigType, versions *versioning.Store) {

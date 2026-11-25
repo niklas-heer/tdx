@@ -165,21 +165,54 @@ func (s *Store) resolveFileID(filePath string) (int64, error) {
 	return id, nil
 }
 
-// SaveVersion inserts a zstd-compressed snapshot of content for the given file.
-// The version_hash is computed from the uncompressed content so deduplication is hash-based.
-// If an identical version (same SHA-256 hash) already exists for that file the call is a no-op.
+// SaveVersion records content that tdx committed to filePath, zstd-compressed and
+// deduplicated by the SHA-256 of the uncompressed content. Saving the newest
+// version again is a no-op. Saving content that matches an older version moves it
+// to the newest position, so history and pruning follow what the file holds now.
 func (s *Store) SaveVersion(filePath, content string) error {
+	return s.saveVersion(filePath, content, true)
+}
+
+// RecordRead records content read from filePath only if it is new to the file's
+// history. A read can be stale by the time it is recorded, so unlike a save it
+// never moves an existing version ahead of newer ones.
+func (s *Store) RecordRead(filePath, content string) error {
+	return s.saveVersion(filePath, content, false)
+}
+
+func (s *Store) saveVersion(filePath, content string, promote bool) (err error) {
 	fileID, err := s.resolveFileID(filePath)
 	if err != nil {
 		return err
 	}
 	hash := sha256sum(content)
 	compressed := zstdEncoder.EncodeAll([]byte(content), nil)
-	_, err = s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("versioning: save version: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if promote {
+		if _, err = tx.Exec(`
+			DELETE FROM file_versions
+			WHERE file_id = ? AND version_hash = ?
+			  AND id < (SELECT MAX(id) FROM file_versions WHERE file_id = ?)`,
+			fileID, hash, fileID,
+		); err != nil {
+			return fmt.Errorf("versioning: save version: %w", err)
+		}
+	}
+	if _, err = tx.Exec(
 		`INSERT OR IGNORE INTO file_versions (file_id, version_hash, content) VALUES (?, ?, ?)`,
 		fileID, hash, compressed,
-	)
-	if err != nil {
+	); err != nil {
+		return fmt.Errorf("versioning: save version: %w", err)
+	}
+	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("versioning: save version: %w", err)
 	}
 	return nil
