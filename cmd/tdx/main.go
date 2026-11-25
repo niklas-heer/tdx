@@ -269,10 +269,16 @@ func run() (exitCode int) {
 			return 1
 		}
 	case "recent":
-		handleRecentCommand(runtime, cmdArgs, readOnly, showHeadings, maxVisible)
+		if err := handleRecentCommand(runtime, cmdArgs, readOnly, showHeadings, maxVisible); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
 	case "":
 		// Launch TUI
-		runtime.Run(filePath, readOnly, showHeadings, maxVisible)
+		if err := runtime.Run(filePath, readOnly, showHeadings, maxVisible); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "tdx: unknown command: %s (see tdx help)\n", command)
 		return 1
@@ -359,31 +365,29 @@ func handleLastCommand(runtime tui.Runtime, readOnly bool, showHeadings bool, ma
 	}
 
 	// "last" means strict recency, not the frequency-weighted recent-files order.
-	runtime.Run(recentFiles.LatestPath(), readOnly, showHeadings, maxVisible)
-	return nil
+	return runtime.Run(recentFiles.LatestPath(), readOnly, showHeadings, maxVisible)
 }
 
-func handleRecentCommand(runtime tui.Runtime, args []string, readOnly bool, showHeadings bool, maxVisible int) {
+// handleRecentCommand returns errors so main's deferred cleanup still runs.
+func handleRecentCommand(runtime tui.Runtime, args []string, readOnly bool, showHeadings bool, maxVisible int) error {
 	// Handle "clear" subcommand
 	if len(args) > 0 && args[0] == "clear" {
 		if err := runtime.Config.Recent.Clear(); err != nil {
-			_, _ = lipgloss.Fprintf(os.Stdout, "Error clearing recent files: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("clear recent files: %w", err)
 		}
 		_, _ = lipgloss.Fprintln(os.Stdout, "Recent files cleared")
-		return
+		return nil
 	}
 
 	// Load recent files
 	recentFiles, err := runtime.Config.Recent.Load()
 	if err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error loading recent files: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("load recent files: %w", err)
 	}
 
 	if len(recentFiles.Files) == 0 {
 		_, _ = lipgloss.Fprintln(os.Stdout, "No recent files")
-		return
+		return nil
 	}
 
 	// Sort by score (recency * frequency)
@@ -393,14 +397,11 @@ func handleRecentCommand(runtime tui.Runtime, args []string, readOnly bool, show
 	if len(args) > 0 {
 		index, err := strconv.Atoi(args[0])
 		if err != nil || index < 1 || index > len(recentFiles.Files) {
-			_, _ = lipgloss.Fprintf(os.Stdout, "Error: invalid file number. Use 1-%d\n", len(recentFiles.Files))
-			os.Exit(1)
+			return fmt.Errorf("invalid file number; use 1-%d", len(recentFiles.Files))
 		}
 
 		// Open the selected file (1-indexed)
-		filePath := recentFiles.Files[index-1].Path
-		runtime.Run(filePath, readOnly, showHeadings, maxVisible)
-		return
+		return runtime.Run(recentFiles.Files[index-1].Path, readOnly, showHeadings, maxVisible)
 	}
 
 	// No args - list all recent files
@@ -421,6 +422,7 @@ func handleRecentCommand(runtime tui.Runtime, args []string, readOnly bool, show
 			file.LastAccessed.Format("2006-01-02 15:04"))
 	}
 	_, _ = lipgloss.Fprintln(os.Stdout, "\nUse 'tdx recent <number>' to open a file")
+	return nil
 }
 
 // resolveFilePath expands ~ to home directory and resolves relative paths to absolute

@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	commandpkg "github.com/niklas-heer/tdx/internal/cmd"
 )
@@ -176,5 +178,31 @@ func TestCLIFollowsTheFilesReadOnlySetting(t *testing.T) {
 	}
 	if _, stderr, err := scriptCLI(t, configRoot, "--read-only", open, "undone", "1"); err == nil || !strings.Contains(stderr, "read-only mode") {
 		t.Fatalf("flag did not outrank read-only: false: err=%v stderr=%q", err, stderr)
+	}
+}
+
+// Regression: when the TUI could not open its file, tdx printed the error to
+// stdout and exited 0, including for `tdx last` and `tdx recent <n>`.
+func TestOpeningFailuresExitNonzero(t *testing.T) {
+	root := t.TempDir()
+	configRoot := filepath.Join(root, "config")
+	dir := filepath.Join(root, "notes")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A directory exists, so recent-file cleanup keeps it, but it cannot be opened.
+	recent := fmt.Sprintf(`{"files":[{"path":%q,"last_accessed":%q,"access_count":1}],"max_recent":20}`,
+		dir, time.Now().Format(time.RFC3339))
+	if err := os.MkdirAll(filepath.Join(configRoot, "tdx"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configRoot, "tdx", "recent.json"), []byte(recent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{dir}, {"last"}, {"recent", "1"}, {"recent", "9"}} {
+		out, stderr, err := scriptCLI(t, configRoot, args...)
+		if err == nil || out != "" || !strings.HasPrefix(stderr, "tdx: ") {
+			t.Fatalf("tdx %v: err=%v out=%q stderr=%q; want a failing exit with the error on stderr", args, err, out, stderr)
+		}
 	}
 }

@@ -1800,11 +1800,11 @@ func (runtime Runtime) RunPiped(filePath string, input []byte, readOnly bool) st
 }
 
 // Run starts the TUI with Bubbletea
-func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) {
+// Run returns errors so the caller can report them on stderr with a failing exit status.
+func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, maxVisible int) error {
 	fm, err := runtime.store().ReadFile(filePath)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		return err
 	}
 
 	// Priority: CLI flags > frontmatter > config.toml defaults. New applies the
@@ -1829,7 +1829,7 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 		fmt.Print(ansi.Strip(m.View().Content))
 		// Save cursor position to recent files
 		_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
-		return
+		return nil
 	}
 
 	// Normal TTY - use Bubbletea (no alt screen to keep context visible)
@@ -1837,8 +1837,7 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		return
+		return err
 	}
 
 	// Save cursor position to recent files when exiting
@@ -1846,6 +1845,7 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 		// Save with current cursor position
 		_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
 	}
+	return nil
 }
 
 // handleVersionsKey handles key events when the version browser modal is active.
