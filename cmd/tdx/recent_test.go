@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/niklas-heer/tdx/internal/config"
 )
@@ -234,5 +237,72 @@ func TestRecentFilesCursorResetOnChange(t *testing.T) {
 
 	if !strings.Contains(output, "0 ➜ [ ] New Task 1") {
 		t.Errorf("Expected cursor reset to first task after file change, got: %s", output)
+	}
+}
+
+// Regression: `tdx last` opened the newest entry even after its file was
+// deleted, which recreated an empty file at the old path.
+func TestLastSkipsDeletedFiles(t *testing.T) {
+	root := t.TempDir()
+	configRoot := filepath.Join(root, "config")
+	gone := filepath.Join(root, "gone.md")
+	recent, err := json.Marshal(config.RecentFiles{Files: []config.RecentFile{
+		{Path: gone, LastAccessed: time.Now(), AccessCount: 1},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(configRoot, "tdx"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configRoot, "tdx", "recent.json"), recent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, stderr, err := scriptCLI(t, configRoot, "last")
+	if err == nil || out != "" || !strings.Contains(stderr, "no recent files") {
+		t.Fatalf("tdx last with only a deleted file: err=%v out=%q stderr=%q", err, out, stderr)
+	}
+	if _, err := os.Stat(gone); !os.IsNotExist(err) {
+		t.Fatalf("tdx last recreated the deleted file: %v", err)
+	}
+}
+
+// tdx last opens the newest file that still exists, not the most frequent one.
+func TestLastOpensTheNewestSurvivingFile(t *testing.T) {
+	root := t.TempDir()
+	configRoot := filepath.Join(root, "config")
+	frequent := filepath.Join(root, "frequent.md")
+	newer := filepath.Join(root, "newer.md")
+	for path, task := range map[string]string{frequent: "Frequent task", newer: "Newer task"} {
+		if err := os.WriteFile(path, []byte("- [ ] "+task+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now()
+	recent, err := json.Marshal(config.RecentFiles{MaxRecent: 20, Files: []config.RecentFile{
+		{Path: frequent, LastAccessed: now.Add(-24 * time.Hour), AccessCount: 50},
+		{Path: newer, LastAccessed: now.Add(-time.Hour), AccessCount: 1},
+		{Path: filepath.Join(root, "deleted.md"), LastAccessed: now, AccessCount: 1},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(configRoot, "tdx"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configRoot, "tdx", "recent.json"), recent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command(testBinary, "last")
+	command.Env = append(os.Environ(), "XDG_CONFIG_HOME="+configRoot)
+	command.Stdin = strings.NewReader("") // piped: render once and exit
+	out, err := command.Output()
+	if err != nil {
+		t.Fatalf("tdx last: %v", err)
+	}
+	if !strings.Contains(string(out), "Newer task") || strings.Contains(string(out), "Frequent task") {
+		t.Fatalf("tdx last opened the wrong file:\n%s", out)
 	}
 }

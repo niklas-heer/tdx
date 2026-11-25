@@ -4,11 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"syscall"
 	"time"
 )
 
@@ -217,11 +220,14 @@ func GetRecentFilesPath() (string, error) {
 	return filepath.Join(configDir, "recent.json"), nil
 }
 
-// CleanupMissing removes files that no longer exist from the list
+// CleanupMissing removes files that no longer exist from the list, including
+// paths whose parent is now a file. Files that cannot be checked, for example
+// behind a directory without access, are kept.
 func (r *RecentFiles) CleanupMissing() {
 	valid := []RecentFile{}
 	for _, file := range r.Files {
-		if _, err := os.Stat(file.Path); err == nil {
+		_, err := os.Stat(file.Path)
+		if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
 			valid = append(valid, file)
 		}
 	}
