@@ -162,6 +162,22 @@ func lockPath(target string) (string, error) {
 	return filepath.Join(dir, name), nil
 }
 
+// checkWritable refuses targets the user has write-protected. Saves replace the
+// file by rename, which only needs a writable directory, so without this check a
+// 0444 file would be changed anyway. Opening for writing without truncating
+// changes nothing and applies permission bits, the Windows read-only attribute
+// and access-control lists alike.
+func checkWritable(target string) error {
+	f, err := os.OpenFile(target, os.O_WRONLY, 0)
+	if errors.Is(err, fs.ErrPermission) {
+		return fmt.Errorf("write-protected file, make it writable to save: %s: %w", target, fs.ErrPermission)
+	}
+	if err != nil {
+		return fmt.Errorf("check write access: %w", err)
+	}
+	return f.Close()
+}
+
 func prepareReplacement(target, content string) (name string, err error) {
 	var mode fs.FileMode
 	preserveMode := false
@@ -270,6 +286,13 @@ func (store Store) writeContent(filePath, content string, expected *fileRevision
 		}
 	}
 
+	// Checked under the lock and after the conflict check, so a file changed
+	// on disk reports the conflict first and a later chmod cannot slip past.
+	if current.exists {
+		if err := checkWritable(target); err != nil {
+			return err
+		}
+	}
 	if err := renameFile(tmpPath, target); err != nil {
 		return fmt.Errorf("replace file: %w", err)
 	}

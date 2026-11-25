@@ -1342,15 +1342,15 @@ func (m *Model) reloadIfChanged() {
 		// Search results index the current task list; reload once search closes.
 		return
 	}
-	if m.ReadOnly && m.FileModel.HasUnsavedChanges() {
-		// Manual save: keep unsaved edits and the loaded revision, so :save
-		// reports the external change as a conflict instead of losing either.
-		return
-	}
-
 	// Check if file was modified externally
 	modified, err := m.FileModel.CheckFileModified()
 	if err != nil || !modified {
+		return
+	}
+	if m.FileModel.HasUnsavedChanges() {
+		// Manual-save edits, or edits whose autosave failed: keep them and the
+		// loaded revision, so the next save reports the external change as a
+		// conflict instead of losing either.
 		return
 	}
 

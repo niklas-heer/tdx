@@ -354,3 +354,50 @@ func TestOpenSearchDefersReload(t *testing.T) {
 	}
 	_ = m.View()
 }
+
+// Regression: after an autosave failed (here on a write-protected file), the
+// watcher replaced the unsaved edit with the external version of the file.
+func TestReloadKeepsEditsWhoseAutosaveFailed(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write to write-protected files")
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "todo.md")
+	if err := os.WriteFile(path, []byte("# Todos\n\n- [ ] a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := markdown.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(path, fm, false, false, -1, testConfig(), testStyles(), "test")
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	result, _ := m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	m = result.(Model)
+	if m.Err == nil || !m.FileModel.Todos[0].Checked {
+		t.Fatalf("autosave to a write-protected file: err=%v checked=%v", m.Err, m.FileModel.Todos[0].Checked)
+	}
+	_ = os.Chmod(path, 0o644)
+	if err := os.WriteFile(path, []byte("# Todos\n\n- [ ] a\n- [ ] added elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if reloads(&m) {
+		t.Fatal("watcher discarded the edit whose autosave failed")
+	}
+	if !m.FileModel.Todos[0].Checked {
+		t.Fatal("unsaved toggle lost")
+	}
+	// The replacement is write-protected too; the retry reports the conflict.
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	m.Err = nil // dismiss the earlier write-protection error
+	result, _ = m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	m = result.(Model)
+	if !m.ConflictPending || !errors.Is(m.Err, markdown.ErrFileChanged) {
+		t.Fatalf("retry after the external change: conflict=%v err=%v, want the conflict reported", m.ConflictPending, m.Err)
+	}
+}

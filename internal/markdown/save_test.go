@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -529,6 +530,80 @@ func TestReplaceFailureLeavesOriginalAndCleansTemp(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join(dir, ".todo.md.tdx-*.tmp"))
 	if len(matches) != 0 {
 		t.Fatalf("temporary files remain after replace failure: %v", matches)
+	}
+}
+
+func TestWriteRefusesWriteProtectedFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write to write-protected files")
+	}
+	isolateSaveLocks(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "todo.md")
+	original := "# Todos\n\n- [ ] task\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm, err := ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	before, _ := os.Stat(path)
+	fm.AddTodoItem("new", false)
+
+	err = WriteFile(path, fm)
+	if !errors.Is(err, fs.ErrPermission) || !strings.Contains(err.Error(), "write-protected") {
+		t.Fatalf("WriteFile() error = %v, want a write-protection error", err)
+	}
+	if err := WriteFileUnchecked(path, fm); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("WriteFileUnchecked() error = %v, want a write-protection error", err)
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != original {
+		t.Fatalf("write-protected file changed: %q", got)
+	}
+	after, _ := os.Stat(path)
+	if after.Mode() != before.Mode() {
+		t.Fatalf("mode changed from %v to %v", before.Mode(), after.Mode())
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, ".todo.md.tdx-*.tmp"))
+	if len(matches) != 0 {
+		t.Fatalf("temporary files remain: %v", matches)
+	}
+}
+
+func TestWriteRechecksProtectionUnderTheLock(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write to write-protected files")
+	}
+	isolateSaveLocks(t)
+	path := filepath.Join(t.TempDir(), "todo.md")
+	original := "# Todos\n\n- [ ] task\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	fm, err := ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm.AddTodoItem("new", false)
+	saveStageHook = func(stage string) {
+		if stage == "prepared" {
+			_ = os.Chmod(path, 0o444)
+		}
+	}
+	t.Cleanup(func() { saveStageHook = nil })
+
+	if err := WriteFile(path, fm); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("WriteFile() error = %v, want a write-protection error", err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != original {
+		t.Fatalf("file protected during the save was replaced: %q", got)
 	}
 }
 
