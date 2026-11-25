@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"syscall"
 	"time"
@@ -143,10 +144,15 @@ func (s RecentStore) SaveFile(filePath string, cursorPos int) error {
 	// Clean up non-existent files
 	recent.CleanupMissing()
 
-	// Sort and trim to max size
+	// Sort and trim to max size. The file just opened always stays, so that
+	// `tdx last` finds it even when busier files outscore it.
 	recent.SortByScore()
-	if len(recent.Files) > recent.MaxRecent {
-		recent.Files = recent.Files[:recent.MaxRecent]
+	for len(recent.Files) > max(recent.MaxRecent, 1) {
+		last := len(recent.Files) - 1
+		if recent.Files[last].Path == absPath {
+			last--
+		}
+		recent.Files = slices.Delete(recent.Files, last, last+1)
 	}
 
 	return s.save(recent)
