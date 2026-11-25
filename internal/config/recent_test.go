@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -276,5 +277,45 @@ func TestClearRecentFiles(t *testing.T) {
 	rf, _ = LoadRecentFiles()
 	if len(rf.Files) != 0 {
 		t.Errorf("Expected 0 files after clear, got %d", len(rf.Files))
+	}
+}
+
+func TestCleanupMissingDropsOnlyDeletedFiles(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	older := filepath.Join(dir, "older.md")
+	if err := os.WriteFile(older, []byte("- [ ] a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rf := &RecentFiles{Files: []RecentFile{
+		{Path: older, LastAccessed: now.Add(-time.Hour)},
+		{Path: filepath.Join(dir, "deleted.md"), LastAccessed: now},
+		// Its parent directory was replaced by a regular file.
+		{Path: filepath.Join(older, "gone.md"), LastAccessed: now.Add(time.Minute)},
+	}}
+	rf.CleanupMissing()
+	if got := rf.LatestPath(); got != older {
+		t.Fatalf("LatestPath() after cleanup = %q, want the newest existing file %q", got, older)
+	}
+
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		return
+	}
+	locked := filepath.Join(dir, "locked")
+	if err := os.Mkdir(locked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hidden := filepath.Join(locked, "todo.md")
+	if err := os.WriteFile(hidden, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	rf = &RecentFiles{Files: []RecentFile{{Path: hidden, LastAccessed: now}}}
+	rf.CleanupMissing()
+	if len(rf.Files) != 1 {
+		t.Fatal("CleanupMissing dropped a file it could not check")
 	}
 }

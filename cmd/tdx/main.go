@@ -264,7 +264,10 @@ func run() (exitCode int) {
 			return 1
 		}
 	case "last":
-		handleLastCommand(runtime, readOnly, showHeadings, maxVisible)
+		if err := handleLastCommand(runtime, readOnly, showHeadings, maxVisible); err != nil {
+			fmt.Fprintf(os.Stderr, "tdx: %v\n", err)
+			return 1
+		}
 	case "recent":
 		handleRecentCommand(runtime, cmdArgs, readOnly, showHeadings, maxVisible)
 	case "":
@@ -343,22 +346,21 @@ Errors go to stderr and return a nonzero exit code.`, Description)
 	_, _ = lipgloss.Fprintln(os.Stdout, help)
 }
 
-func handleLastCommand(runtime tui.Runtime, readOnly bool, showHeadings bool, maxVisible int) {
-	// Load recent files
+// handleLastCommand returns errors so main's deferred cleanup still runs.
+func handleLastCommand(runtime tui.Runtime, readOnly bool, showHeadings bool, maxVisible int) error {
 	recentFiles, err := runtime.Config.Recent.Load()
 	if err != nil {
-		_, _ = lipgloss.Fprintf(os.Stdout, "Error loading recent files: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("load recent files: %w", err)
 	}
-
+	// Opening a deleted file would recreate it empty, so skip files that are gone.
+	recentFiles.CleanupMissing()
 	if len(recentFiles.Files) == 0 {
-		_, _ = lipgloss.Fprintln(os.Stdout, "No recent files. Open a file first with 'tdx <file.md>'")
-		os.Exit(1)
+		return errors.New("no recent files; open a file first with 'tdx <file.md>'")
 	}
 
 	// "last" means strict recency, not the frequency-weighted recent-files order.
-	filePath := recentFiles.LatestPath()
-	runtime.Run(filePath, readOnly, showHeadings, maxVisible)
+	runtime.Run(recentFiles.LatestPath(), readOnly, showHeadings, maxVisible)
+	return nil
 }
 
 func handleRecentCommand(runtime tui.Runtime, args []string, readOnly bool, showHeadings bool, maxVisible int) {
