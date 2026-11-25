@@ -1793,8 +1793,8 @@ func (runtime Runtime) RunPiped(filePath string, input []byte, readOnly bool) st
 	m.ProcessPipedInput(input)
 	output := m.View().Content
 
-	// Save cursor position to recent files when exiting
-	_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
+	// Record the file shown at exit, which an in-app switch may have changed.
+	_ = m.Config().Recent.SaveFile(m.FilePath, m.SelectedIndex)
 
 	return ansi.Strip(output)
 }
@@ -1827,8 +1827,8 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 		input, _ := io.ReadAll(os.Stdin)
 		m.ProcessPipedInput(input)
 		fmt.Print(ansi.Strip(m.View().Content))
-		// Save cursor position to recent files
-		_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
+		// Record the file shown at exit, which an in-app switch may have changed.
+		_ = m.Config().Recent.SaveFile(m.FilePath, m.SelectedIndex)
 		return nil
 	}
 
@@ -1840,10 +1840,9 @@ func (runtime Runtime) Run(filePath string, readOnly bool, showHeadings bool, ma
 		return err
 	}
 
-	// Save cursor position to recent files when exiting
+	// Record the file shown at exit, which an in-app switch may have changed.
 	if m, ok := finalModel.(Model); ok {
-		// Save with current cursor position
-		_ = m.Config().Recent.SaveFile(filePath, m.SelectedIndex)
+		_ = m.Config().Recent.SaveFile(m.FilePath, m.SelectedIndex)
 	}
 	return nil
 }
