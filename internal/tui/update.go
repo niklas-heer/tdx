@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -327,22 +328,22 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "u":
+		headings := slices.Clone(m.GetHeadings())
 		if m.history.Undo(&m.FileModel) {
 			m.RefreshAvailableTags()
-			m.clearSections()
 			m.InvalidateHeadingsCache()
+			// Focus and folds refer to headings by position; keep them while
+			// the headings are the same.
+			if !sameHeadings(headings, m.GetHeadings()) {
+				m.clearSections()
+			}
 			m.InvalidateDocumentTree()
 			m.writeIfPersist()
 			if m.SelectedIndex >= len(m.FileModel.Todos) {
 				m.SelectedIndex = util.Max(0, len(m.FileModel.Todos)-1)
 			}
-			// If filters are active, ensure cursor moves to a visible task
-			if m.hasActiveFilters() {
-				tree := m.GetDocumentTree()
-				if selectedNode := tree.GetSelectedNode(); selectedNode != nil && selectedNode.Type == DocNodeTodo {
-					m.SelectedIndex = selectedNode.TodoIndex
-				}
-			}
+			// Filters, focus and folds may hide the restored position.
+			m.adjustSelectionForFilter()
 		}
 
 	case "?":

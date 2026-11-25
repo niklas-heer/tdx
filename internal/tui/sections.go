@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -57,6 +58,13 @@ func (m *Model) openSections() {
 	if m.SectionFocus > 0 {
 		m.SectionCursor = m.SectionFocus - 1
 	}
+}
+
+// sameHeadings reports whether two documents have the same section outline.
+func sameHeadings(a, b []markdown.Heading) bool {
+	return slices.EqualFunc(a, b, func(x, y markdown.Heading) bool {
+		return x.Level == y.Level && x.Text == y.Text
+	})
 }
 
 func (m *Model) clearSections() {
