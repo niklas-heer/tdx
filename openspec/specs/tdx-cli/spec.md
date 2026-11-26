@@ -109,7 +109,9 @@ The TUI SHALL support keyboard navigation, deletion, and toggling of todos, imme
   - After each toggle or deletion, the updated todo state SHALL be written back to `todo.md` using the atomic write behavior defined in previous requirements.
   - The written file SHALL reflect all toggles and deletions performed so far.
 - Exit behavior:
-  - Pressing `q` or `Esc` SHALL terminate the TUI and exit the process.
+  - Pressing `q` or `Esc` SHALL terminate the TUI and exit the process, unless the document has changes that are not on disk.
+  - In the interactive TUI, with unsaved changes, the first quit key (`Esc`, `Ctrl+C` or `Ctrl+D`) SHALL keep the TUI open and show a one-line warning that the changes would be lost, in place of any other view or overlay so it is never hidden; pressing a quit key again after the warning has been shown SHALL exit without saving, while a quit key arriving together with the first (within a short delay) or reported as a key repeat SHALL NOT confirm. Any other key SHALL cancel the pending quit.
+  - Piped (non-interactive) input has no one to confirm a quit; it SHALL keep stopping at `q` or `Esc`, and no quit key SHALL show a warning or consume the next scripted key.
   - On normal exit (including via `q` or `Esc`), the process exit code SHALL be `0`, assuming no I/O errors occurred.
 
 #### Scenario: Toggle selected todo and persist
@@ -132,7 +134,11 @@ The TUI SHALL support keyboard navigation, deletion, and toggling of todos, imme
 - **AND** `todo.md` SHALL be rewritten without that todo using atomic write semantics  
 - **AND** the selection SHALL move to the next available todo (or the previous one if the deleted todo was last, or render the empty state if none remain).
 
----
+#### Scenario: Quit with unsaved changes
+- **WHEN** the user has unsaved changes, for example in manual-save mode
+- **AND** presses `Esc`
+- **THEN** the TUI SHALL stay open and warn that the changes are unsaved
+- **AND** pressing `Esc` again SHALL exit without writing the file
 
 ### Requirement: Non-TUI CLI commands
 The CLI SHALL provide non-interactive commands for listing, adding, toggling, editing, and deleting todos without launching the TUI.

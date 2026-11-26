@@ -2,9 +2,7 @@
 
 ## Purpose
 Provide automatic, compressed snapshots of markdown files so users can recover earlier content.
-
 ## Requirements
-
 ### Requirement: SQLite-backed version store
 
 The system SHALL maintain a continuous version history for all markdown files opened interactively or modified by
@@ -45,11 +43,18 @@ tdx in a **single shared** SQLite database located in the tdx config directory (
   ```
 
 - The `version_hash` column SHALL hold the hex-encoded SHA-256 of the **uncompressed** file content.
-- Inserting a version with a hash that already exists for the same file SHALL be a no-op
-  (`INSERT OR IGNORE` on the `UNIQUE(file_id, version_hash)` constraint).
-- `Store.SaveVersion(filePath, content string) error` SHALL:
+- Saving committed content whose hash is already the file's newest version SHALL be a no-op.
+- Saving committed content whose hash exists only as an older version of the same file SHALL move
+  that content to the newest position: the older row SHALL be replaced by a new row with a new `id`
+  and the current timestamp, in one transaction, so `UNIQUE(file_id, version_hash)` still holds.
+- Recording content read from disk SHALL insert it only if its hash is not retained for the file and
+  SHALL never move an existing row, because a read may be recorded after a newer save. A read whose
+  version was already pruned is recorded as new; reads are not synchronized with saves.
+- `Store.SaveVersion(filePath, content string) error` records committed content. It SHALL:
   1. UPSERT `filePath` into `files` and retrieve its integer `file_id`.
-  2. INSERT OR IGNORE into `file_versions` using the resolved `file_id`.
+  2. In one transaction, delete an older row with the same hash unless it is the newest row, then
+     INSERT OR IGNORE into `file_versions` using the resolved `file_id`.
+- `Store.RecordRead(filePath, content string) error` records read content with INSERT OR IGNORE only.
 - The `Store` SHALL cache the `filePath → file_id` mapping in a `map[string]int64` to avoid
   repeated DB lookups within the same process session.
 - `versioning.DBPath() (string, error)` SHALL return `filepath.Join(getStoreDir(), "versions.sqlite")`.
@@ -88,13 +93,23 @@ tdx in a **single shared** SQLite database located in the tdx config directory (
 - **THEN** tdx SHALL NOT create or open `versions.sqlite`
 - **AND** the command SHALL work when the config directory is not writable
 
----
-
 #### Scenario: Script lists without history
 
 - **WHEN** a script invokes `tdx list`, including JSON and filtered queries
 - **THEN** the application SHALL not open the version store or register versioning hooks
 - **AND** the query SHALL work without a writable configuration directory
+
+#### Scenario: Content returns to an earlier version
+
+- **WHEN** tdx saves a file with content A, then content B, then content A again
+- **THEN** exactly one row SHALL hold content A
+- **AND** that row SHALL be the file's newest version, listed before B
+- **AND** pruning to one version SHALL keep content A
+
+#### Scenario: A stale read is recorded after a newer save
+
+- **WHEN** a read of content A, which history still retains, is recorded after tdx saved newer content B
+- **THEN** B SHALL remain the file's newest version
 
 ### Requirement: Automatic version capture on file write
 
